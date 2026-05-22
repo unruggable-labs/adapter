@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "chainId": "11155111",
+  "createdAt": 1779321755000,
+  "meta": {
+    "name": "Adapter8004 v0.0.6 - bindExisting + counterfactual v1 upgrade - Sepolia (TEMPLATE)",
+    "description": "TEMPLATE - NOT READY TO IMPORT. Generated as part of the audit follow-up to reports/adapter/2026-05-21-adapter8004-v0.0.6-adversarial-audit.md (N-H-01). The `to` is the canonical Sepolia Adapter8004 proxy 0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92. After the v0.0.6-final implementation is deployed on Sepolia by DeployAdapterImplementation.s.sol (which now refuses to run unless ADAPTER_PROXY_ADDRESS matches block.chainid via MismatchedProxyForChain), replace the placeholder `data` value with the upgradeToAndCall(<sepolia implementation>, 0x) encoding the script prints.",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+      "value": "0",
+      "data": "REPLACE_AFTER_SEPOLIA_IMPLEMENTATION_DEPLOY",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

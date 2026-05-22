@@ -16,6 +16,7 @@ import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistrat
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "./interfaces/IERC8004IdentityRegistry.sol";
 
+/// @custom:version 0.0.6
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -30,6 +31,12 @@ contract Adapter8004 is
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
+    /// @notice Reserved canonical-promotion metadata key. A counterfactual write that targets this
+    /// key would let a caller fabricate a promotion back-link before any canonical ERC-8004 mint has
+    /// occurred. The reservation is therefore enforced on every counterfactual write path.
+    string public constant CF_REGISTRATION_KEY = "cf-registration";
+    bytes32 private constant CF_REGISTRATION_KEY_HASH = keccak256(bytes(CF_REGISTRATION_KEY));
+
     /// @notice Canonical immutable delegate.xyz v2 registry, identical on Ethereum, Base, and Sepolia.
     /// A delegated hot wallet authorized here can drive ERC-721-bound agents while the NFT stays in
     /// cold storage. Authorization fails closed to direct ownership when the registry has no code.
@@ -39,10 +46,30 @@ contract Adapter8004 is
     /// only. delegate.xyz v2 also accepts empty/full delegations when this nonzero rights value is checked.
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
 
+    /// @notice Schema version emitted as the first non-indexed field on every counterfactual event.
+    /// Bumped only on payload-structure breakage (re-ordered or removed fields).
+    ///
+    /// !! BREAKING CHANGE WARNING !!
+    /// Adding, removing, or reordering any field in a counterfactual event (including this
+    /// `uint8 version` field itself) changes the event signature, which changes the keccak256
+    /// topic[0]. Indexers watching the old topic stop receiving events on the upgraded
+    /// implementation. Treat any change to this constant or to the surrounding event ABIs as
+    /// a hard cutover: bump the implementation, document the cutover block, and require every
+    /// downstream indexer to subscribe to the new topics from that block forward.
+    uint8 private constant COUNTERFACTUAL_PAYLOAD_VERSION = 1;
+
     error InvalidTokenContract();
+    /// @notice Thrown when a binding attempts to set `tokenContract` to the ERC-8004 identity registry
+    /// itself. Permitted-and-then-bound, the agent would be permanently uncontrollable because
+    /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
+    /// through `_hasBindingControl`.
+    error InvalidTokenContractIsRegistry();
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
     error UnknownAgent(uint256 agentId);
+    error AlreadyBound(uint256 agentId);
+    error NotAgentOwner(uint256 agentId, address owner);
+    error AgentTransferNotApproved(uint256 agentId);
 
     event AgentBound(
         uint256 indexed agentId,
@@ -120,6 +147,52 @@ contract Adapter8004 is
             _registerImpl(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
     }
 
+    function bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)
+        external
+        nonReentrant
+    {
+        // 1. Reject an unusable external token contract address (matches `register` taxonomy) and
+        //    reject the registry itself, which would lock the agent permanently post-bind.
+        _requireValidTokenContract(tokenContract);
+
+        // 2. Reject an already-bound agent so adapter bindings remain immutable post-bind.
+        if (_bindings[agentId].tokenContract != address(0)) {
+            revert AlreadyBound(agentId);
+        }
+
+        // 3. Require the caller to own the ERC-8004 agent in the registry. An external-token
+        //    controller cannot pull a stranger's agent into the adapter just because the adapter
+        //    happens to be approved. `ownerOf` will surface its native revert for unknown ids.
+        address owner = identityRegistry.ownerOf(agentId);
+        if (owner != msg.sender) {
+            revert NotAgentOwner(agentId, owner);
+        }
+
+        // 4. Require external-token binding control under the existing authority model
+        //    (direct ownership for ERC-721/1155/6909, plus delegate.xyz v2 for ERC-721).
+        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+
+        // 5. Require the adapter to have prior ERC-721 transfer approval for `agentId` —
+        //    either per-token (`approve`) or operator-level (`setApprovalForAll`).
+        _requireAgentTransferApproval(agentId, msg.sender);
+
+        // 6. Transfer the ERC-8004 identity into the adapter before any adapter storage or
+        //    registry-metadata writes. Any failure here reverts the whole transaction with no
+        //    adapter state changes.
+        IERC721(address(identityRegistry)).transferFrom(msg.sender, address(this), agentId);
+
+        // 7. Persist the immutable adapter binding for this agent.
+        _bindings[agentId] = Binding({standard: standard, tokenContract: tokenContract, tokenId: tokenId});
+
+        // 8. Overwrite the canonical binding metadata to point at this adapter. Any pre-existing
+        //    value at the reserved key (arbitrary user data or a value pointing at another adapter)
+        //    is intentionally replaced once the adapter owns the identity.
+        identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
+
+        // 9. Emit the existing binding event so indexers do not need a separate event family.
+        emit AgentBound(agentId, standard, tokenContract, tokenId, msg.sender);
+    }
+
     function _registerImpl(
         TokenStandard standard,
         address tokenContract,
@@ -127,10 +200,9 @@ contract Adapter8004 is
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) private returns (uint256 agentId) {
-        // 1. Reject an unusable external token contract address.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address, and reject the registry itself
+        //    (binding to the registry would lock the agent permanently post-register).
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the token being bound.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
@@ -311,8 +383,17 @@ contract Adapter8004 is
     /// scoped to this chain and this adapter proxy. Mirrors the internal `_registrationHash`
     /// used by every counterfactual emitter. Useful for off-chain consumers that need to
     /// derive the hash without reimplementing the encoding rules.
-    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32) {
-        return _registrationHash(tokenContract, tokenId);
+    function registrationHash(TokenStandard standard, address tokenContract, uint256 tokenId)
+        external
+        view
+        returns (bytes32)
+    {
+        return _registrationHash(standard, tokenContract, tokenId);
+    }
+
+    /// @inheritdoc IERC8004AdapterCounterfactual
+    function counterfactualPayloadVersion() external pure returns (uint8) {
+        return COUNTERFACTUAL_PAYLOAD_VERSION;
     }
 
     /// @notice Counterfactual registration: claim an identity for an external token without minting in the
@@ -348,23 +429,29 @@ contract Adapter8004 is
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) private returns (bytes32 computedHash) {
-        // 1. Reject an unusable external token contract address so the revert taxonomy matches `register`.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the token being claimed.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Reject user-supplied metadata entries that target the canonical binding record.
-        _requireNoReservedBindingKey(metadata);
+        // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
+        _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Compute the deterministic registration hash used as the indexer key for this claim.
-        computedHash = _registrationHash(tokenContract, tokenId);
+        computedHash = _registrationHash(standard, tokenContract, tokenId);
 
         // 5. Emit the counterfactual claim — the only on-chain record produced by this function.
         emit CounterfactualAgentRegistered(
-            computedHash, tokenContract, tokenId, standard, agentURI, metadata, msg.sender
+            computedHash,
+            tokenContract,
+            tokenId,
+            COUNTERFACTUAL_PAYLOAD_VERSION,
+            standard,
+            agentURI,
+            metadata,
+            msg.sender
         );
     }
 
@@ -376,17 +463,21 @@ contract Adapter8004 is
         uint256 tokenId,
         string calldata newURI
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address so the revert taxonomy matches `register`.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the bound token.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual URI update — the only on-chain record produced by this function.
         emit CounterfactualAgentURISet(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, newURI, msg.sender
+            _registrationHash(standard, tokenContract, tokenId),
+            tokenContract,
+            tokenId,
+            COUNTERFACTUAL_PAYLOAD_VERSION,
+            newURI,
+            msg.sender
         );
     }
 
@@ -398,22 +489,30 @@ contract Adapter8004 is
         string calldata metadataKey,
         bytes calldata metadataValue
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address so the revert taxonomy matches `register`.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the bound token.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Prevent callers from claiming the canonical binding metadata slot in counterfactual events.
-        if (keccak256(bytes(metadataKey)) == BINDING_METADATA_KEY_HASH) {
+        // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
+        //    Cache the key hash once: `metadataKey` is `calldata` but recomputing the hash twice in
+        //    a hot path still spends a few hundred gas for no benefit.
+        bytes32 keyHash = keccak256(bytes(metadataKey));
+        if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
             revert ReservedMetadataKey(metadataKey);
         }
 
         // 4. Emit the counterfactual metadata write — the only on-chain record produced by this function.
         emit CounterfactualMetadataSet(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, metadataKey, metadataValue, msg.sender
+            _registrationHash(standard, tokenContract, tokenId),
+            tokenContract,
+            tokenId,
+            COUNTERFACTUAL_PAYLOAD_VERSION,
+            metadataKey,
+            metadataValue,
+            msg.sender
         );
     }
 
@@ -424,20 +523,24 @@ contract Adapter8004 is
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address so the revert taxonomy matches `register`.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the bound token.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Prevent callers from claiming the canonical binding metadata slot in counterfactual events.
-        _requireNoReservedBindingKey(metadata);
+        // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
+        _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Emit the counterfactual batch — the only on-chain record produced by this function.
         emit CounterfactualMetadataBatchSet(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, metadata, msg.sender
+            _registrationHash(standard, tokenContract, tokenId),
+            tokenContract,
+            tokenId,
+            COUNTERFACTUAL_PAYLOAD_VERSION,
+            metadata,
+            msg.sender
         );
     }
 
@@ -450,17 +553,21 @@ contract Adapter8004 is
         uint256 tokenId,
         address newWallet
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address so the revert taxonomy matches `register`.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the bound token.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet assignment — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletSet(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, newWallet, msg.sender
+            _registrationHash(standard, tokenContract, tokenId),
+            tokenContract,
+            tokenId,
+            COUNTERFACTUAL_PAYLOAD_VERSION,
+            newWallet,
+            msg.sender
         );
     }
 
@@ -469,17 +576,20 @@ contract Adapter8004 is
         external
         nonReentrant
     {
-        // 1. Reject an unusable external token contract address so the revert taxonomy matches `register`.
-        if (tokenContract == address(0)) {
-            revert InvalidTokenContract();
-        }
+        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidTokenContract(tokenContract);
 
         // 2. Confirm the caller currently controls the bound token.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, msg.sender
+            _registrationHash(standard, tokenContract, tokenId),
+            tokenContract,
+            tokenId,
+            COUNTERFACTUAL_PAYLOAD_VERSION,
+            msg.sender
         );
     }
 
@@ -487,6 +597,18 @@ contract Adapter8004 is
         // 1. Restrict upgrades to the adapter owner.
         // 2. Accept the implementation address through UUPS validation in the inherited logic.
         newImplementation;
+    }
+
+    /// @dev Reject `address(0)` and the ERC-8004 identity registry itself as `tokenContract`. Binding
+    /// the registry would let `_hasBindingControl` resolve to the adapter post-bind, permanently
+    /// locking the agent away from any external controller.
+    function _requireValidTokenContract(address tokenContract) internal view {
+        if (tokenContract == address(0)) {
+            revert InvalidTokenContract();
+        }
+        if (tokenContract == address(identityRegistry)) {
+            revert InvalidTokenContractIsRegistry();
+        }
     }
 
     function _requireController(uint256 agentId, address account) internal view {
@@ -501,6 +623,17 @@ contract Adapter8004 is
         // 3. Revert when the caller no longer controls the bound token.
         if (!_hasBindingControl(binding, account)) {
             revert NotController(account, agentId);
+        }
+    }
+
+    /// @dev Reverts unless the adapter is approved to move `agentId` on the ERC-8004 registry,
+    /// either by per-token `approve(adapter, agentId)` or operator-level `setApprovalForAll(adapter, true)`
+    /// from `owner`. Casts the registry to `IERC721` locally to avoid widening the ERC-8004 metadata
+    /// interface.
+    function _requireAgentTransferApproval(uint256 agentId, address owner) internal view {
+        IERC721 registry721 = IERC721(address(identityRegistry));
+        if (registry721.getApproved(agentId) != address(this) && !registry721.isApprovedForAll(owner, address(this))) {
+            revert AgentTransferNotApproved(agentId);
         }
     }
 
@@ -587,13 +720,31 @@ contract Adapter8004 is
         }
     }
 
-    /// @dev `TokenStandard` is intentionally excluded from the hash. A hybrid token contract that implements
-    /// both ERC-721 and ERC-1155 at the same `tokenId` can therefore produce hash-colliding events on the
-    /// counterfactual path; this is acceptable by design because the token coordinates identify the
-    /// off-chain binding while the standard remains event payload context on registration.
-    function _registrationHash(address tokenContract, uint256 tokenId) internal view returns (bytes32) {
-        // 1. Bind the hash to the current chain, the proxy address, and the external token coordinates so
-        //    counterfactual claims cannot be replayed across chains, adapters, or token identities.
-        return keccak256(abi.encode(block.chainid, address(this), tokenContract, tokenId));
+    /// @dev Plural counterfactual-write variant: rejects any entry that targets either the canonical
+    /// binding metadata key (`agent-binding`) OR the canonical-promotion key (`cf-registration`). The
+    /// promotion key is reserved only on the counterfactual surface so an emitter cannot fabricate a
+    /// promotion back-link before any canonical ERC-8004 mint has occurred.
+    function _requireNoReservedCounterfactualKeys(IERC8004IdentityRegistry.MetadataEntry[] memory metadata)
+        internal
+        pure
+    {
+        uint256 length = metadata.length;
+        for (uint256 i; i < length; ++i) {
+            bytes32 keyHash = keccak256(bytes(metadata[i].metadataKey));
+            if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
+                revert ReservedMetadataKey(metadata[i].metadataKey);
+            }
+        }
+    }
+
+    function _registrationHash(TokenStandard standard, address tokenContract, uint256 tokenId)
+        internal
+        view
+        returns (bytes32)
+    {
+        // 1. Bind the hash to the current chain, proxy address, declared standard, and external token
+        //    coordinates so counterfactual claims cannot be replayed across chains, adapters, standards,
+        //    or token identities.
+        return keccak256(abi.encode(block.chainid, address(this), standard, tokenContract, tokenId));
     }
 }

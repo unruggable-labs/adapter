@@ -23,4 +23,17 @@ interface IERC8004AdapterRegistration {
         uint256 tokenId,
         string calldata agentURI
     ) external returns (uint256 agentId);
+
+    /// @notice Bind an already-minted ERC-8004 `agentId` into adapter management against an external
+    /// token. The caller MUST own the agent in the ERC-8004 registry and MUST currently control the
+    /// external token under `_requireBindingControl`. The adapter MUST have prior ERC-721 transfer
+    /// approval for `agentId` (per-token or operator-level). The pre-existing `agentURI` and all
+    /// non-binding metadata are preserved; only the reserved `agent-binding` metadata key is
+    /// overwritten to point at this adapter, and the default agent wallet is cleared.
+    function bindExisting(
+        uint256 agentId,
+        IERCAgentBindings.TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId
+    ) external;
 }

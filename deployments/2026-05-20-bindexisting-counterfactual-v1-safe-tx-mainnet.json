@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "chainId": "1",
+  "createdAt": 1779371867000,
+  "meta": {
+    "name": "Adapter8004 v0.0.6 - bindExisting + counterfactual v1 upgrade - Mainnet",
+    "description": "Upgrade the Adapter8004 UUPS proxy to v0.0.6, adding bindExisting and the versioned counterfactual event family (uint8 version, cf-registration reserved key). Implementation deployed at 0xB36Cb6D7E50CC74F2FC8F60c97C959854c5B7FCa (bytecode hash 0x432ca27bb3e78b227ace806368a8036cec20f31a0e89ad4fd24d0734e2b6f28e) by DeployAdapterImplementation.s.sol. Empty initializer (constants + new function only, no new storage).",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0xde152AfB7db5373F34876E1499fbD893A82dD336",
+      "value": "0",
+      "data": "0x4f1ef286000000000000000000000000b36cb6d7e50cc74f2fc8f60c97c959854c5b7fca00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
