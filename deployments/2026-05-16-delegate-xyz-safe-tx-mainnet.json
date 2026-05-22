@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "chainId": "1",
+  "createdAt": 1778976000000,
+  "meta": {
+    "name": "Adapter8004 delegate.xyz upgrade - Ethereum Mainnet (TEMPLATE)",
+    "description": "TEMPLATE - NOT READY TO IMPORT. The mainnet implementation is not yet deployed (deferred until gas is cheaper). After Step 1 deploys the mainnet implementation, replace the placeholder `data` value with the finalized calldata: 0x4f1ef286 + pad32(<mainnet implementation address>) + 0000...0040 + 0000...0000 (the upgradeToAndCall(address,bytes) encoding with an empty initializer). The script DeployAdapterImplementation.s.sol prints this exact `data`. See deployments/2026-05-16-delegate-xyz-upgrade-runbook.md.",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0xde152AfB7db5373F34876E1499fbD893A82dD336",
+      "value": "0",
+      "data": "REPLACE_AFTER_MAINNET_IMPLEMENTATION_DEPLOY",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "chainId": "11155111",
+  "createdAt": 1778976000000,
+  "meta": {
+    "name": "Adapter8004 delegate.xyz upgrade - Sepolia",
+    "description": "UUPS upgradeToAndCall on the Sepolia Adapter8004 proxy to the delegate.xyz v2 implementation 0x31a68E5bc0224ad081d6Ec20229B05F558609257. Empty initializer. See deployments/2026-05-16-delegate-xyz-upgrade-runbook.md.",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+      "value": "0",
+      "data": "0x4f1ef28600000000000000000000000031a68e5bc0224ad081d6ec20229b05f55860925700000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

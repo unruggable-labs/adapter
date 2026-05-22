@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "chainId": "8453",
+  "createdAt": 1778976000000,
+  "meta": {
+    "name": "Adapter8004 delegate.xyz upgrade - Base",
+    "description": "UUPS upgradeToAndCall on the Base Adapter8004 proxy to the delegate.xyz v2 implementation 0x0e30C112cbd52CeC452ee6a8C2DF87dC1bB64034. Empty initializer. See deployments/2026-05-16-delegate-xyz-upgrade-runbook.md.",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27",
+      "value": "0",
+      "data": "0x4f1ef2860000000000000000000000000e30c112cbd52cec452ee6a8c2df87dc1bb6403400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
