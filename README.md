@@ -1,10 +1,10 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.6`
+## Version `0.0.7`
 
-![version](https://img.shields.io/badge/version-0.0.6-blue)
+![version](https://img.shields.io/badge/version-0.0.7-blue)
 
-The current contract version is **`0.0.6`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.6` implementation is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.7`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.7` implementation is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -69,11 +69,12 @@ Supported binding standards:
 - ERC-1155
 - ERC-6909
 
-What `0.0.6` adds over the initial release:
+What `0.0.7` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting` + the signed register are not yet deployed anywhere):
 
 - `bindExisting(...)`: pull an already-minted ERC-8004 agent into adapter management against an external token, using a two-transaction approval model.
 - delegate.xyz v2 hot/cold control for ERC-721 bindings: a delegated hot wallet can drive an ERC-721-bound agent while the NFT stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
+- `counterfactualRegisterWithSig(...)`: a signature-authorized counterfactual registration so a mint function or relayer can register on the token owner's behalf in one owner signature (full URI + metadata + optional agent wallet). ERC-721 only. Solves register-at-mint.
 
 ## What The Adapter Does
 
@@ -364,7 +365,7 @@ Functions:
 - `counterfactualSetAgentURI(standard, tokenContract, tokenId, newURI)`
 - `counterfactualSetMetadata(standard, tokenContract, tokenId, key, value)`
 - `counterfactualSetMetadataBatch(standard, tokenContract, tokenId, entries)`
-- `counterfactualSetAgentWallet(standard, tokenContract, tokenId, newWallet)` (no signature, no deadline, because no ERC-8004 wallet binding is created)
+- `counterfactualSetAgentWallet(standard, tokenContract, tokenId, newWallet)` (no signature, no expiration, because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, tokenContract, tokenId)`
 - `registrationHash(standard, tokenContract, tokenId)` (view)
 - `counterfactualPayloadVersion()` (pure)
