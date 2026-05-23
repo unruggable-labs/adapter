@@ -1,0 +1,20 @@
+[package]
+name = "vanity"
+version = "0.1.0"
+edition = "2021"
+description = "CREATE2 leading-zeros vanity address miner for Adapter8004"
+
+[[bin]]
+name = "vanity"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tiny-keccak = { version = "2", features = ["keccak"] }
+hex = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
