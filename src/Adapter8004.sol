@@ -9,6 +9,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
@@ -16,7 +18,7 @@ import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistrat
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "./interfaces/IERC8004IdentityRegistry.sol";
 
-/// @custom:version 0.0.6
+/// @custom:version 0.0.7
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -58,6 +60,30 @@ contract Adapter8004 is
     /// downstream indexer to subscribe to the new topics from that block forward.
     uint8 private constant COUNTERFACTUAL_PAYLOAD_VERSION = 1;
 
+    /// @notice Upper bound on how far in the future a signed counterfactual `expiration` may sit. Caps
+    /// the window during which a superseded-but-unexpired owner signature can be replayed.
+    uint256 private constant MAX_EXPIRATION_DELAY = 30 minutes;
+
+    /// @notice Stateless EIP-712 domain for the signed counterfactual surface. The domain name
+    /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
+    /// inline from `block.chainid` and `address(this)` so no storage slot or cached separator is
+    /// introduced and the contract stays storage-layout neutral across upgrades.
+    bytes32 private constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    string private constant EIP712_NAME = "Adapter8004";
+    string private constant EIP712_VERSION = "1";
+
+    /// @notice EIP-712 typehash for the signed counterfactual registration payload. `agentURIHash`
+    /// and `metadataHash` keep dynamic data out of the primary type while still binding the full
+    /// payload to the owner signature.
+    bytes32 private constant COUNTERFACTUAL_REGISTER_TYPEHASH = keccak256(
+        "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,bytes32 agentURIHash,bytes32 metadataHash,address agentWallet,address owner,uint256 expiration)"
+    );
+
+    /// @notice EIP-712 typehash for a single metadata entry, hashed per the EIP-712 array rule.
+    bytes32 private constant METADATA_ENTRY_TYPEHASH =
+        keccak256("MetadataEntry(string metadataKey,bytes metadataValue)");
+
     error InvalidTokenContract();
     /// @notice Thrown when a binding attempts to set `tokenContract` to the ERC-8004 identity registry
     /// itself. Permitted-and-then-bound, the agent would be permanently uncontrollable because
@@ -70,6 +96,14 @@ contract Adapter8004 is
     error AlreadyBound(uint256 agentId);
     error NotAgentOwner(uint256 agentId, address owner);
     error AgentTransferNotApproved(uint256 agentId);
+
+    /// @notice Thrown when a signed counterfactual registration's `expiration` is more than
+    /// `MAX_EXPIRATION_DELAY` seconds in the future. Bounds the replay window of a signed payload.
+    error ExpirationTooFar(uint256 expiration);
+    /// @notice Thrown when the current block timestamp is past the signed `expiration`.
+    error SignatureExpired(uint256 expiration);
+    /// @notice Thrown when the owner signature fails EOA and ERC-1271 verification for the digest.
+    error InvalidSignature();
 
     event AgentBound(
         uint256 indexed agentId,
@@ -455,6 +489,78 @@ contract Adapter8004 is
         );
     }
 
+    /// @notice Signature-authorized counterfactual registration for a token-bound agent. Solves the
+    /// register-at-mint problem: the token owner signs one EIP-712 payload (URI + full metadata +
+    /// optional bundled wallet + bounded expiration) and ANY caller (a minting contract, router, or
+    /// relayer) can submit it. The adapter remains the single counterfactual event emitter, with
+    /// `emitter = owner` (never the relayer). No registry call, no adapter SSTORE, no nonce.
+    ///
+    /// Intentionally narrower than the unsigned surface: strict direct-holder signer only (no
+    /// delegate.xyz), one full registration per call, no wallet-consent signature. See
+    /// `docs/proposals/counterfactual-register-with-sig.md`.
+    function counterfactualRegisterWithSig(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
+        address agentWallet,
+        address owner,
+        uint256 expiration,
+        bytes calldata signature
+    ) external nonReentrant returns (bytes32 computedHash) {
+        // 1. Bound the signature's lifetime: cap how far ahead the expiration may be, then reject expiry.
+        if (expiration > block.timestamp + MAX_EXPIRATION_DELAY) revert ExpirationTooFar(expiration);
+        if (block.timestamp > expiration) revert SignatureExpired(expiration);
+
+        // 2. Reject an unusable external token contract address and the registry itself.
+        _requireValidTokenContract(tokenContract);
+
+        // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
+        _requireNoReservedCounterfactualKeys(metadata);
+
+        // 4. The signer MUST directly control the bound token. Not `_requireBindingControl`: the
+        //    signed path is direct-holder-only and must not accept delegate.xyz signers.
+        _requireDirectControl(standard, tokenContract, tokenId, owner);
+
+        // 5/6. Build the EIP-712 digest binding the full payload and verify the owner signature (EOA or
+        //      ERC-1271). Done in a helper to keep this frame within stack limits.
+        _verifyCounterfactualRegisterSig(
+            standard, tokenContract, tokenId, agentURI, metadata, agentWallet, owner, expiration, signature
+        );
+
+        // 7/8/9/10. Compute the registration hash and emit the claim (plus the optional bundled wallet)
+        //            with `emitter = owner`. Done in a helper to keep this frame within stack limits.
+        computedHash =
+            _emitCounterfactualRegister(standard, tokenContract, tokenId, agentURI, metadata, agentWallet, owner);
+        return computedHash;
+    }
+
+    /// @dev Computes the registration hash and emits `CounterfactualAgentRegistered` (and, when
+    /// `agentWallet != address(0)`, `CounterfactualAgentWalletSet`) with `emitter = owner`. Extracted
+    /// from the entry point purely to keep that function within the stack limit.
+    function _emitCounterfactualRegister(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
+        address agentWallet,
+        address owner
+    ) private returns (bytes32 computedHash) {
+        computedHash = _registrationHash(standard, tokenContract, tokenId);
+
+        emit CounterfactualAgentRegistered(
+            computedHash, tokenContract, tokenId, COUNTERFACTUAL_PAYLOAD_VERSION, standard, agentURI, metadata, owner
+        );
+
+        if (agentWallet != address(0)) {
+            emit CounterfactualAgentWalletSet(
+                computedHash, tokenContract, tokenId, COUNTERFACTUAL_PAYLOAD_VERSION, agentWallet, owner
+            );
+        }
+    }
+
     /// @notice Counterfactual agent URI update. No registry write, no SSTORE. The emitted event is the
     /// single source of truth; indexers MUST treat the latest event per token as authoritative.
     function counterfactualSetAgentURI(
@@ -544,7 +650,7 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual agent-wallet assignment. Deliberately accepts no signature / deadline because
+    /// @notice Counterfactual agent-wallet assignment. Deliberately accepts no signature / expiration because
     /// no ERC-8004 wallet binding is being created — the event is purely an off-chain claim, gated only by
     /// current bound-token control.
     function counterfactualSetAgentWallet(
@@ -643,6 +749,24 @@ contract Adapter8004 is
     {
         // 1. Reuse the token-standard-specific control check before first registration.
         if (!_hasBindingControl(standard, tokenContract, tokenId, account)) {
+            revert NotController(account, type(uint256).max);
+        }
+    }
+
+    function _requireDirectControl(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
+        internal
+        view
+    {
+        bool controls;
+        if (standard == TokenStandard.ERC721) {
+            controls = IERC721(tokenContract).ownerOf(tokenId) == account;
+        } else if (standard == TokenStandard.ERC1155) {
+            controls = IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
+        } else {
+            controls = IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
+        }
+
+        if (!controls) {
             revert NotController(account, type(uint256).max);
         }
     }
@@ -746,5 +870,72 @@ contract Adapter8004 is
         //    coordinates so counterfactual claims cannot be replayed across chains, adapters, standards,
         //    or token identities.
         return keccak256(abi.encode(block.chainid, address(this), standard, tokenContract, tokenId));
+    }
+
+    /// @dev Builds the EIP-712 digest for `counterfactualRegisterWithSig` and verifies the owner
+    /// signature (EOA or ERC-1271 via OpenZeppelin `SignatureChecker`). Reverts `InvalidSignature` on
+    /// failure. Extracted from the entry point purely to keep that function within the stack limit.
+    function _verifyCounterfactualRegisterSig(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
+        address agentWallet,
+        address owner,
+        uint256 expiration,
+        bytes calldata signature
+    ) private view {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                COUNTERFACTUAL_REGISTER_TYPEHASH,
+                uint8(standard),
+                tokenContract,
+                tokenId,
+                keccak256(bytes(agentURI)),
+                _hashMetadata(metadata),
+                agentWallet,
+                owner,
+                expiration
+            )
+        );
+        if (
+            !SignatureChecker.isValidSignatureNow(
+                owner, MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash), signature
+            )
+        ) {
+            revert InvalidSignature();
+        }
+    }
+
+    /// @dev Stateless EIP-712 domain separator for the signed counterfactual surface. Computed inline
+    /// from constants, `block.chainid`, and `address(this)`; never cached, so no storage is added and
+    /// cross-chain / cross-adapter replay is blocked by `chainId` and `verifyingContract`.
+    function _domainSeparator() internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes(EIP712_NAME)),
+                keccak256(bytes(EIP712_VERSION)),
+                block.chainid,
+                address(this)
+            )
+        );
+    }
+
+    /// @dev EIP-712 hash of the metadata array: hash each encoded entry, concatenate the entry hashes,
+    /// then hash the concatenation. An empty array hashes to `keccak256("")`.
+    function _hashMetadata(IERC8004IdentityRegistry.MetadataEntry[] calldata entries) internal pure returns (bytes32) {
+        bytes32[] memory hashes = new bytes32[](entries.length);
+        for (uint256 i; i < entries.length; ++i) {
+            hashes[i] = keccak256(
+                abi.encode(
+                    METADATA_ENTRY_TYPEHASH,
+                    keccak256(bytes(entries[i].metadataKey)),
+                    keccak256(entries[i].metadataValue)
+                )
+            );
+        }
+        return keccak256(abi.encodePacked(hashes));
     }
 }

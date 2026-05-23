@@ -19,6 +19,25 @@ interface IERC8004AdapterCounterfactual {
         view
         returns (bytes32);
 
+    /// @notice Signature-authorized counterfactual registration for a token-bound agent.
+    /// The direct token holder signs one EIP-712 payload (URI + full metadata + optional bundled
+    /// wallet + bounded expiration) and any caller may submit it, solving the register-at-mint sender
+    /// mismatch. Supports ERC-721, ERC-1155, and ERC-6909 through direct-holder control only; no
+    /// delegate.xyz signer, no nonce, no wallet consent. Emits `CounterfactualAgentRegistered` (and
+    /// `CounterfactualAgentWalletSet` when `agentWallet != address(0)`) with `emitter = owner`.
+    /// Returns the canonical registration hash.
+    function counterfactualRegisterWithSig(
+        IERCAgentBindings.TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
+        address agentWallet,
+        address owner,
+        uint256 expiration,
+        bytes calldata signature
+    ) external returns (bytes32 computedHash);
+
     /// @notice Counterfactual registration claim. No registry write, no SSTORE.
     /// Indexers MUST treat the latest event per (tokenContract, tokenId) as authoritative.
     event CounterfactualAgentRegistered(
