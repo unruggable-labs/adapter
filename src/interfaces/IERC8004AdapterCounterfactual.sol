@@ -22,8 +22,9 @@ interface IERC8004AdapterCounterfactual {
     /// @notice Signature-authorized counterfactual registration for a token-bound agent.
     /// The direct token holder signs one EIP-712 payload (URI + full metadata + optional bundled
     /// wallet + bounded expiration) and any caller may submit it, solving the register-at-mint sender
-    /// mismatch. Supports ERC-721, ERC-1155, and ERC-6909 through direct-holder control only; no
-    /// delegate.xyz signer, no nonce, no wallet consent. Emits `CounterfactualAgentRegistered` (and
+    /// mismatch. Supports ERC-721, ERC-1155, ERC-6909, ERC-1155F, and ERC-6909F through
+    /// direct-holder control only; no delegate.xyz signer, no nonce, no wallet consent. Emits
+    /// `CounterfactualAgentRegistered` (and
     /// `CounterfactualAgentWalletSet` when `agentWallet != address(0)`) with `emitter = owner`.
     /// Returns the canonical registration hash.
     function counterfactualRegisterWithSig(

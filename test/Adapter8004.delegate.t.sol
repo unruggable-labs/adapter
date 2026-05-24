@@ -9,7 +9,9 @@ import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegist
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 import {MockERC1155} from "./mocks/MockERC1155.sol";
+import {MockERC1155F} from "./mocks/MockERC1155F.sol";
 import {MockERC6909} from "./mocks/MockERC6909.sol";
+import {MockERC6909F} from "./mocks/MockERC6909F.sol";
 import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 
 /// @notice delegate.xyz v2 integration tests for the ERC-721 control path. A cold wallet holds the
@@ -26,7 +28,9 @@ contract Adapter8004DelegateTest is Test {
     Adapter8004 internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
+    MockERC1155F internal token1155F;
     MockERC6909 internal token6909;
+    MockERC6909F internal token6909F;
     MockDelegateRegistry internal delegateRegistry;
 
     address internal cold = makeAddr("cold");
@@ -52,11 +56,15 @@ contract Adapter8004DelegateTest is Test {
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
+        token1155F = new MockERC1155F();
         token6909 = new MockERC6909();
+        token6909F = new MockERC6909F();
 
         token721.mint(cold, 1);
         token1155.mint(cold, 10, 5);
+        token1155F.mint(cold, 50);
         token6909.mint(cold, 42, 3);
+        token6909F.mint(cold, 60);
 
         // Place the mock delegate registry at the canonical hardcoded v2 address so the adapter's
         // `DELEGATE_REGISTRY` constant resolves to it under test.
@@ -292,6 +300,50 @@ contract Adapter8004DelegateTest is Test {
         vm.prank(cold);
         adapter.setAgentURI(agentId, "ipfs://cold6909");
         assertEq(registry.tokenURI(agentId), "ipfs://cold6909");
+    }
+
+    function testERC1155FDelegateCanRegisterAndManage() external {
+        delegateRegistry.delegateERC721(hot, cold, address(token1155F), 50, rights, true);
+
+        vm.prank(hot);
+        uint256 agentId = adapter.register(
+            IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50, "ipfs://hot1155f", _emptyMetadata()
+        );
+
+        assertTrue(adapter.isController(agentId, hot));
+
+        vm.prank(hot);
+        adapter.setAgentURI(agentId, "ipfs://hot1155f-updated");
+        assertEq(registry.tokenURI(agentId), "ipfs://hot1155f-updated");
+    }
+
+    function testERC6909FDelegateCanRegisterAndManage() external {
+        delegateRegistry.delegateERC721(hot, cold, address(token6909F), 60, rights, true);
+
+        vm.prank(hot);
+        uint256 agentId = adapter.register(
+            IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60, "ipfs://hot6909f", _emptyMetadata()
+        );
+
+        assertTrue(adapter.isController(agentId, hot));
+
+        vm.prank(hot);
+        adapter.setAgentURI(agentId, "ipfs://hot6909f-updated");
+        assertEq(registry.tokenURI(agentId), "ipfs://hot6909f-updated");
+    }
+
+    function testCounterfactualFTypeDelegateCanEmit() external {
+        delegateRegistry.delegateERC721(hot, cold, address(token1155F), 50, rights, true);
+        delegateRegistry.delegateERC721(hot, cold, address(token6909F), 60, rights, true);
+
+        vm.startPrank(hot);
+        adapter.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50, "ipfs://cf1155f"
+        );
+        adapter.counterfactualSetAgentURI(
+            IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60, "ipfs://cf6909f"
+        );
+        vm.stopPrank();
     }
 
     // -----------------------------------------------------------------

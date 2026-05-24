@@ -37,6 +37,14 @@ contract Adapter8004InterfacesTest is Test {
         token721.mint(alice, 1);
     }
 
+    function testTokenStandardValuesAreAdditive() external pure {
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC721), 0);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC1155), 1);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909), 2);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC1155F), 3);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909F), 4);
+    }
+
     // ---------------------------------------------------------------------
     // (a) IERC8004IdentityRecord interface-cast: read forwarders
     // ---------------------------------------------------------------------

@@ -12,7 +12,9 @@ import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegist
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 import {MockERC1155} from "./mocks/MockERC1155.sol";
+import {MockERC1155F} from "./mocks/MockERC1155F.sol";
 import {MockERC6909} from "./mocks/MockERC6909.sol";
+import {MockERC6909F} from "./mocks/MockERC6909F.sol";
 
 contract Adapter8004Test is Test {
     bytes32 internal constant DOMAIN_TYPEHASH =
@@ -25,7 +27,9 @@ contract Adapter8004Test is Test {
     Adapter8004 internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
+    MockERC1155F internal token1155F;
     MockERC6909 internal token6909;
+    MockERC6909F internal token6909F;
 
     uint256 internal alicePk = 0xA11CE;
     uint256 internal bobPk = 0xB0B;
@@ -56,12 +60,16 @@ contract Adapter8004Test is Test {
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
+        token1155F = new MockERC1155F();
         token6909 = new MockERC6909();
+        token6909F = new MockERC6909F();
 
         token721.mint(alice, 1);
         token721.mint(bob, 2);
         token1155.mint(alice, 10, 5);
+        token1155F.mint(alice, 50);
         token6909.mint(alice, 42, 3);
+        token6909F.mint(alice, 60);
     }
 
     function testInitializeSetsAdminAndRegistry() external view {
@@ -138,6 +146,41 @@ contract Adapter8004Test is Test {
 
         vm.prank(alice);
         token6909.transfer(bob, 42, 1);
+
+        vm.prank(bob);
+        adapter.setMetadata(agentId, "holder", bytes("bob"));
+
+        assertEq(string(registry.getMetadata(agentId, "holder")), "bob");
+    }
+
+    function test1155FControlUsesOwnerOfAndFollowsTransfer() external {
+        uint256 agentId = _register1155F(alice, 50);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, agentId));
+        adapter.setMetadata(agentId, "holder", bytes("bob"));
+
+        vm.prank(alice);
+        token1155F.transferOwner(alice, bob, 50);
+
+        assertFalse(adapter.isController(agentId, alice));
+        assertTrue(adapter.isController(agentId, bob));
+
+        vm.prank(bob);
+        adapter.setMetadata(agentId, "holder", bytes("bob"));
+
+        assertEq(string(registry.getMetadata(agentId, "holder")), "bob");
+    }
+
+    function test6909FControlUsesOwnerOfAndFollowsTransfer() external {
+        uint256 agentId = _register6909F(alice, 60);
+
+        vm.prank(alice);
+        token6909F.transferOwner(alice, bob, 60);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, agentId));
+        adapter.setMetadata(agentId, "holder", bytes("alice"));
 
         vm.prank(bob);
         adapter.setMetadata(agentId, "holder", bytes("bob"));
@@ -1201,6 +1244,40 @@ contract Adapter8004Test is Test {
         assertTrue(adapter.isController(agentId, alice));
     }
 
+    function testBindExistingBindsERC1155FOwner() external {
+        vm.prank(alice);
+        uint256 agentId = registry.register("");
+
+        vm.prank(alice);
+        IERC721(address(registry)).approve(address(adapter), agentId);
+
+        vm.prank(alice);
+        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50);
+
+        IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
+        assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC1155F));
+        assertEq(b.tokenContract, address(token1155F));
+        assertEq(b.tokenId, 50);
+        assertTrue(adapter.isController(agentId, alice));
+    }
+
+    function testBindExistingBindsERC6909FOwner() external {
+        vm.prank(alice);
+        uint256 agentId = registry.register("");
+
+        vm.prank(alice);
+        IERC721(address(registry)).approve(address(adapter), agentId);
+
+        vm.prank(alice);
+        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60);
+
+        IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
+        assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC6909F));
+        assertEq(b.tokenContract, address(token6909F));
+        assertEq(b.tokenId, 60);
+        assertTrue(adapter.isController(agentId, alice));
+    }
+
     function testBindExistingAllowsSameExternalTokenAcrossMultipleAgents() external {
         // First, register an agent through the adapter for token721 tokenId 1.
         uint256 firstAgentId = _register721(alice, 1);
@@ -1244,6 +1321,20 @@ contract Adapter8004Test is Test {
         vm.prank(caller);
         return
             adapter.register(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
+    }
+
+    function _register1155F(address caller, uint256 tokenId) internal returns (uint256) {
+        vm.prank(caller);
+        return adapter.register(
+            IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), tokenId, "", _emptyMetadata()
+        );
+    }
+
+    function _register6909F(address caller, uint256 tokenId) internal returns (uint256) {
+        vm.prank(caller);
+        return adapter.register(
+            IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), tokenId, "", _emptyMetadata()
+        );
     }
 
     function _emptyMetadata() internal pure returns (IERC8004IdentityRegistry.MetadataEntry[] memory metadata) {

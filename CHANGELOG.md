@@ -34,7 +34,8 @@ before any multisig deploy.
 
 ### Added
 - `counterfactualRegisterWithSig`: signature-authorized counterfactual
-  registration for ERC-721-bound agents. The token owner signs one EIP-712
+  registration for ERC-721-, ERC-1155-, ERC-6909-, ERC-1155F-, and
+  ERC-6909F-bound agents. The token owner signs one EIP-712
   payload (`agentURI` + full `metadata` + optional `agentWallet` + bounded
   `expiration`) and any caller (an NFT mint function, router, or relayer) can
   submit it, so a counterfactual registration can be folded into a mint
@@ -44,8 +45,12 @@ before any multisig deploy.
   of 30 minutes, no nonce, no new storage (stateless EIP-712 domain). Solves the
   register-at-mint problem; updates afterward use the existing controller-gated
   unsigned setters. See [`docs/proposals/counterfactual-register-with-sig.md`](./docs/proposals/counterfactual-register-with-sig.md).
-- Errors: `ExpirationTooFar`, `SignatureExpired`, `InvalidSignature`,
-  `UnsupportedSignedStandard`.
+- Token standard enum values `ERC1155F` (`0x03`) and `ERC6909F` (`0x04`) for
+  non-fungible ERC-1155/ERC-6909 tokens that expose `ownerOf(uint256)` per the
+  profile proposed in Ethereum/ERCs PR #1767. These standards use single-owner
+  control (`ownerOf` plus delegate.xyz on unsigned/controller-gated paths);
+  plain ERC-1155/ERC-6909 remain balance-based.
+- Errors: `ExpirationTooFar`, `SignatureExpired`, `InvalidSignature`.
 
 ## [0.0.6] - Unreleased
 

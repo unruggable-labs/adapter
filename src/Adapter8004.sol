@@ -18,6 +18,10 @@ import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistrat
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "./interfaces/IERC8004IdentityRegistry.sol";
 
+interface ISingleOwnerToken {
+    function ownerOf(uint256 tokenId) external view returns (address);
+}
+
 /// @custom:version 0.0.7
 contract Adapter8004 is
     Initializable,
@@ -40,8 +44,9 @@ contract Adapter8004 is
     bytes32 private constant CF_REGISTRATION_KEY_HASH = keccak256(bytes(CF_REGISTRATION_KEY));
 
     /// @notice Canonical immutable delegate.xyz v2 registry, identical on Ethereum, Base, and Sepolia.
-    /// A delegated hot wallet authorized here can drive ERC-721-bound agents while the NFT stays in
-    /// cold storage. Authorization fails closed to direct ownership when the registry has no code.
+    /// A delegated hot wallet authorized here can drive single-owner ERC-721/ERC-1155F/ERC-6909F
+    /// bound agents while the token stays in cold storage. Authorization fails closed to direct
+    /// ownership when the registry has no code.
     address public constant DELEGATE_REGISTRY = 0x00000000000000447e69651d841bD8D104Bed493;
 
     /// @notice Rights identifier a cold wallet delegates to scope a hot wallet to Adapter8004 management
@@ -202,8 +207,8 @@ contract Adapter8004 is
             revert NotAgentOwner(agentId, owner);
         }
 
-        // 4. Require external-token binding control under the existing authority model
-        //    (direct ownership for ERC-721/1155/6909, plus delegate.xyz v2 for ERC-721).
+        // 4. Require external-token binding control under the existing authority model: single-owner
+        //    standards use ownerOf plus delegate.xyz, and plain ERC-1155/ERC-6909 use balance.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
         // 5. Require the adapter to have prior ERC-721 transfer approval for `agentId` —
@@ -758,8 +763,8 @@ contract Adapter8004 is
         view
     {
         bool controls;
-        if (standard == TokenStandard.ERC721) {
-            controls = IERC721(tokenContract).ownerOf(tokenId) == account;
+        if (_isSingleOwnerStandard(standard)) {
+            controls = ISingleOwnerToken(tokenContract).ownerOf(tokenId) == account;
         } else if (standard == TokenStandard.ERC1155) {
             controls = IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
         } else {
@@ -780,10 +785,11 @@ contract Adapter8004 is
         view
         returns (bool)
     {
-        // 1. ERC-721 control means current NFT ownership, or a valid delegate.xyz delegation from the
-        //    current owner. Direct ownership is checked first so current owners never pay a registry call.
-        if (standard == TokenStandard.ERC721) {
-            address owner = IERC721(tokenContract).ownerOf(tokenId);
+        // 1. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
+        //    delegation from the current owner. Direct ownership is checked first so current owners
+        //    never pay a registry call.
+        if (_isSingleOwnerStandard(standard)) {
+            address owner = ISingleOwnerToken(tokenContract).ownerOf(tokenId);
             if (account == owner) {
                 return true;
             }
@@ -799,6 +805,11 @@ contract Adapter8004 is
         // 3. ERC-6909 control also means any positive balance for the bound id.
         //    No delegate.xyz check: v2 has no ERC-6909 token-id delegation primitive.
         return IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
+    }
+
+    function _isSingleOwnerStandard(TokenStandard standard) internal pure returns (bool) {
+        return
+            standard == TokenStandard.ERC721 || standard == TokenStandard.ERC1155F || standard == TokenStandard.ERC6909F;
     }
 
     /// @dev Consults the immutable delegate.xyz v2 registry for an ERC-721 delegation from the current

@@ -13,7 +13,9 @@ import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityReg
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "../mocks/MockERC721.sol";
 import {MockERC1155} from "../mocks/MockERC1155.sol";
+import {MockERC1155F} from "../mocks/MockERC1155F.sol";
 import {MockERC6909} from "../mocks/MockERC6909.sol";
+import {MockERC6909F} from "../mocks/MockERC6909F.sol";
 import {MockDelegateRegistry} from "../mocks/MockDelegateRegistry.sol";
 import {ReentrantERC721} from "./mocks/ReentrantERC721.sol";
 
@@ -35,7 +37,9 @@ contract CounterfactualWithSigSecurityTest is Test {
     Adapter8004 internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
+    MockERC1155F internal token1155F;
     MockERC6909 internal token6909;
+    MockERC6909F internal token6909F;
 
     uint256 internal alicePk = 0xA11CE;
     uint256 internal bobPk = 0xB0B;
@@ -61,13 +65,17 @@ contract CounterfactualWithSigSecurityTest is Test {
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
+        token1155F = new MockERC1155F();
         token6909 = new MockERC6909();
+        token6909F = new MockERC6909F();
 
         token721.mint(alice, 1);
         token721.mint(alice, 2);
         token721.mint(bob, 3);
         token1155.mint(alice, 10, 1);
+        token1155F.mint(alice, 50);
         token6909.mint(alice, 42, 1);
+        token6909F.mint(alice, 60);
     }
 
     function testCounterfactualRegisterWithSigEOAHappyPathRelayer() external {
@@ -844,6 +852,172 @@ contract CounterfactualWithSigSecurityTest is Test {
             metadata,
             address(0),
             hot,
+            expiration,
+            signature
+        );
+    }
+
+    function testCounterfactualRegisterWithSigERC1155FHappyPathUsesOwnerOf() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _emptyMetadata();
+        uint256 expiration = block.timestamp + 10 minutes;
+        bytes memory signature = _signForStandard(
+            alicePk,
+            address(adapter),
+            block.chainid,
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            address(token1155F),
+            50,
+            "ipfs://agent-1155f",
+            metadata,
+            address(0),
+            alice,
+            expiration
+        );
+
+        bytes32 actual = adapter.counterfactualRegisterWithSig(
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            address(token1155F),
+            50,
+            "ipfs://agent-1155f",
+            metadata,
+            address(0),
+            alice,
+            expiration,
+            signature
+        );
+
+        assertEq(actual, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50));
+    }
+
+    function testCounterfactualRegisterWithSigERC6909FHappyPathUsesOwnerOf() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _emptyMetadata();
+        uint256 expiration = block.timestamp + 10 minutes;
+        bytes memory signature = _signForStandard(
+            alicePk,
+            address(adapter),
+            block.chainid,
+            IERCAgentBindings.TokenStandard.ERC6909F,
+            address(token6909F),
+            60,
+            "ipfs://agent-6909f",
+            metadata,
+            address(0),
+            alice,
+            expiration
+        );
+
+        bytes32 actual = adapter.counterfactualRegisterWithSig(
+            IERCAgentBindings.TokenStandard.ERC6909F,
+            address(token6909F),
+            60,
+            "ipfs://agent-6909f",
+            metadata,
+            address(0),
+            alice,
+            expiration,
+            signature
+        );
+
+        assertEq(actual, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60));
+    }
+
+    function testCounterfactualRegisterWithSigFTypeRejectsDelegateSigner() external {
+        MockDelegateRegistry mockImpl = new MockDelegateRegistry();
+        vm.etch(adapter.DELEGATE_REGISTRY(), address(mockImpl).code);
+        MockDelegateRegistry(adapter.DELEGATE_REGISTRY()).delegateERC721(
+            hot, alice, address(token1155F), 50, adapter.DELEGATE_RIGHTS(), true
+        );
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _emptyMetadata();
+        uint256 expiration = block.timestamp + 10 minutes;
+        bytes memory signature = _signForStandard(
+            hotPk,
+            address(adapter),
+            block.chainid,
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            address(token1155F),
+            50,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            hot,
+            expiration
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
+        adapter.counterfactualRegisterWithSig(
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            address(token1155F),
+            50,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            hot,
+            expiration,
+            signature
+        );
+    }
+
+    function testCounterfactualRegisterWithSigERC1155FOldSignatureFailsAfterTransfer() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _emptyMetadata();
+        uint256 expiration = block.timestamp + 10 minutes;
+        bytes memory signature = _signForStandard(
+            alicePk,
+            address(adapter),
+            block.chainid,
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            address(token1155F),
+            50,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            alice,
+            expiration
+        );
+        vm.prank(alice);
+        token1155F.transferOwner(alice, bob, 50);
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, type(uint256).max));
+        adapter.counterfactualRegisterWithSig(
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            address(token1155F),
+            50,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            alice,
+            expiration,
+            signature
+        );
+    }
+
+    function testCounterfactualRegisterWithSigERC6909FOldSignatureFailsAfterTransfer() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _emptyMetadata();
+        uint256 expiration = block.timestamp + 10 minutes;
+        bytes memory signature = _signForStandard(
+            alicePk,
+            address(adapter),
+            block.chainid,
+            IERCAgentBindings.TokenStandard.ERC6909F,
+            address(token6909F),
+            60,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            alice,
+            expiration
+        );
+        vm.prank(alice);
+        token6909F.transferOwner(alice, bob, 60);
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, type(uint256).max));
+        adapter.counterfactualRegisterWithSig(
+            IERCAgentBindings.TokenStandard.ERC6909F,
+            address(token6909F),
+            60,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            alice,
             expiration,
             signature
         );

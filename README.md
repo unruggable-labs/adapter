@@ -68,13 +68,15 @@ Supported binding standards:
 - ERC-721
 - ERC-1155
 - ERC-6909
+- ERC-1155F
+- ERC-6909F
 
 What `0.0.7` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting` + the signed register are not yet deployed anywhere):
 
 - `bindExisting(...)`: pull an already-minted ERC-8004 agent into adapter management against an external token, using a two-transaction approval model.
-- delegate.xyz v2 hot/cold control for ERC-721 bindings: a delegated hot wallet can drive an ERC-721-bound agent while the NFT stays in cold storage.
+- delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
-- `counterfactualRegisterWithSig(...)`: a signature-authorized counterfactual registration so a mint function or relayer can register on the token owner's behalf in one owner signature (full URI + metadata + optional agent wallet). ERC-721 only. Solves register-at-mint.
+- `counterfactualRegisterWithSig(...)`: a signature-authorized counterfactual registration so a mint function or relayer can register on the token owner's behalf in one owner signature (full URI + metadata + optional agent wallet). Supports all binding standards. Solves register-at-mint.
 
 ## What The Adapter Does
 
@@ -95,6 +97,8 @@ Each ERC-8004 `agentId` is bound once to exactly one external token:
 - ERC-721: controller is `ownerOf(tokenId)`, or a hot wallet that holds a delegate.xyz v2 delegation from the current owner
 - ERC-1155: controller is any account with `balanceOf(account, tokenId) > 0`
 - ERC-6909: controller is any account with `balanceOf(account, tokenId) > 0`
+- ERC-1155F: controller is `ownerOf(tokenId)`, or a hot wallet that holds a delegate.xyz v2 ERC-721-style delegation from the current owner
+- ERC-6909F: controller is `ownerOf(tokenId)`, or a hot wallet that holds a delegate.xyz v2 ERC-721-style delegation from the current owner
 
 The binding is immutable at the agent level:
 
@@ -104,21 +108,22 @@ The binding is immutable at the agent level:
 Important consequence:
 
 - ERC-1155 and ERC-6909 can create shared control if multiple accounts hold balance for the bound token id
+- ERC-1155F and ERC-6909F use the ownerOf profile proposed in Ethereum/ERCs PR [#1767](https://github.com/ethereum/ERCs/pull/1767), so they have single-owner control even though the underlying token family is not ERC-721
 
 That is intentional. The adapter preserves the ownership semantics of the bound standard instead of inventing a synthetic single owner.
 
 This controller model is adapter-specific. The ERC draft standardizes binding discovery and binding verification, not universal controller semantics.
 
-### Hot/Cold Delegation (ERC-721 Only)
+### Hot/Cold Delegation
 
-For ERC-721 bindings, control also passes through the canonical delegate.xyz v2 registry:
+For ERC-721, ERC-1155F, and ERC-6909F bindings, control also passes through the canonical delegate.xyz v2 registry:
 
 - registry: `0x00000000000000447e69651d841bD8D104Bed493` (same address on Ethereum, Base, and Sepolia)
 - rights: `keccak256("adapter8004.manage")`, or an empty/full delegation
 
-A cold wallet that owns the bound NFT can delegate a hot wallet through delegate.xyz, and that hot wallet may then drive the agent without moving the NFT. Direct ownership is checked first, so a current owner never pays the extra registry call. The check fails closed: if the delegate.xyz registry has no code on a given chain, only direct ownership authorizes.
+A cold wallet that owns the bound token can delegate a hot wallet through delegate.xyz, and that hot wallet may then drive the agent without moving the token. Direct ownership is checked first, so a current owner never pays the extra registry call. The check fails closed: if the delegate.xyz registry has no code on a given chain, only direct ownership authorizes.
 
-delegate.xyz control is ERC-721 only. ERC-1155 and ERC-6909 use balance checks alone, because the no-vault delegate.xyz API cannot soundly map a token-id delegation to a balance holder.
+ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path because they expose single-owner `ownerOf(tokenId)` semantics. Plain ERC-1155 and ERC-6909 use balance checks alone, because the no-vault delegate.xyz API cannot soundly map a token-id delegation to a balance holder.
 
 ## Architecture
 
@@ -242,7 +247,7 @@ The adapter does this:
 1. rejects an invalid token contract, and the registry itself, the same way `register` does
 2. rejects an already-bound agent so adapter bindings stay immutable
 3. requires the caller to own the agent in the ERC-8004 registry
-4. requires the caller to control the external token under the binding-control model (direct ownership, or delegate.xyz for ERC-721)
+4. requires the caller to control the external token under the binding-control model (direct ownership, or delegate.xyz for ERC-721/ERC-1155F/ERC-6909F)
 5. requires prior ERC-721 transfer approval for `agentId`
 6. transfers the ERC-8004 identity into the adapter
 7. stores the immutable binding
@@ -269,6 +274,8 @@ Token standard enum values:
 - `0x00`: `ERC721`
 - `0x01`: `ERC1155`
 - `0x02`: `ERC6909`
+- `0x03`: `ERC1155F`
+- `0x04`: `ERC6909F`
 
 The adapter reserves the `agent-binding` key and rejects user attempts to set or batch-set it through the adapter. The counterfactual write surface additionally reserves `cf-registration` (the canonical-promotion key) so an emitter cannot fabricate a promotion back-link before any on-chain mint.
 
@@ -311,6 +318,7 @@ Examples:
 - ERC-721: if token `#1` is transferred, the new owner becomes controller
 - ERC-1155: any holder with positive balance for the bound id is a controller
 - ERC-6909: any holder with positive balance for the bound id is a controller
+- ERC-1155F / ERC-6909F: if `ownerOf(tokenId)` changes, the new owner becomes controller
 
 The ERC-8004 NFT itself is not transferred. It stays owned by the adapter.
 
@@ -390,7 +398,7 @@ The README and contract align on the following points:
 - reserved metadata key: `agent-binding`
 - metadata value: the 20-byte binding-contract address, `abi.encodePacked(address(this))`
 - token coordinates resolved from `bindingOf(agentId)` on the binding contract
-- token standard enum values: `0x00` = `ERC721`, `0x01` = `ERC1155`, `0x02` = `ERC6909`
+- token standard enum values: `0x00` = `ERC721`, `0x01` = `ERC1155`, `0x02` = `ERC6909`, `0x03` = `ERC1155F`, `0x04` = `ERC6909F`
 - required verification surface: `bindingOf(uint256 agentId)`
 
 The adapter intentionally goes beyond the ERC draft by also exposing:
@@ -512,9 +520,9 @@ script/deploy.sh sepolia
 
 The Foundry suite currently covers:
 
-- registration for ERC-721, ERC-1155, and ERC-6909 bindings
+- registration for ERC-721, ERC-1155, ERC-6909, ERC-1155F, and ERC-6909F bindings
 - `bindExisting` for already-minted agents, including the approval and ownership checks
-- delegate.xyz v2 hot/cold control for ERC-721 bindings
+- delegate.xyz v2 hot/cold control for ERC-721, ERC-1155F, and ERC-6909F bindings
 - immutable per-agent bindings
 - repeated registration using the same external token
 - control transfer after external token transfers

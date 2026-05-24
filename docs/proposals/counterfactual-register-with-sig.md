@@ -8,7 +8,7 @@ This method is a new external entry point on a Safe-owned UUPS proxy and extends
 
 ## Summary
 
-Add `counterfactualRegisterWithSig`, a signature-authorized counterfactual registration method for token-bound agents across ERC-721, ERC-1155, and ERC-6909. The token holder signs one EIP-712 payload authorizing:
+Add `counterfactualRegisterWithSig`, a signature-authorized counterfactual registration method for token-bound agents across ERC-721, ERC-1155, ERC-6909, ERC-1155F, and ERC-6909F. The token holder signs one EIP-712 payload authorizing:
 
 - the counterfactual registration claim;
 - the full initial URI and metadata payload;
@@ -29,7 +29,7 @@ The signed path is intentionally narrower than the existing unsigned counterfact
 
 This method exists for one reason: to solve the register-at-mint problem. During an NFT mint (or any router/relayer flow), `msg.sender` is the minting contract or relayer, not the token owner, so the owner-gated unsigned `counterfactualRegister` cannot be called. The owner signature decouples the authorizer from the caller, letting the registration be folded into the mint transaction. It is a one-time bootstrap, not the update mechanism.
 
-After registration, individual records are updated through the existing unsigned counterfactual setters, gated by `_requireBindingControl`, which allows the current owner or an ERC-721 delegate.xyz hot wallet to act as `msg.sender`:
+After registration, individual records are updated through the existing unsigned counterfactual setters, gated by `_requireBindingControl`, which allows the current owner or an ERC-721/ERC-1155F/ERC-6909F delegate.xyz hot wallet to act as `msg.sender`:
 
 - `counterfactualSetAgentURI`
 - `counterfactualSetMetadata` / `counterfactualSetMetadataBatch`
@@ -41,17 +41,17 @@ Because counterfactual claims are latest-event-wins per `(tokenContract, tokenId
 
 1. **Delegate.xyz v2 hot-wallet signatures are out of scope for v1.**
 
-   The signer MUST directly control the token: ERC-721 requires `ownerOf(tokenId) == owner`; ERC-1155 and ERC-6909 require `balanceOf(owner, tokenId) > 0`. Allowing a delegate.xyz hot wallet to sign would introduce a second revocation domain: a delegation can be revoked without a token transfer, but previously signed payloads would still replay until expiration unless nonce or delegation-state binding were added. Direct-holder-only is the right v1 surface.
+   The signer MUST directly control the token: ERC-721, ERC-1155F, and ERC-6909F require `ownerOf(tokenId) == owner`; ERC-1155 and ERC-6909 require `balanceOf(owner, tokenId) > 0`. Allowing a delegate.xyz hot wallet to sign would introduce a second revocation domain: a delegation can be revoked without a token transfer, but previously signed payloads would still replay until expiration unless nonce or delegation-state binding were added. Direct-holder-only is the right v1 surface.
 
    Existing unsigned counterfactual methods still use `_requireBindingControl`, so delegate.xyz remains supported there.
 
 2. **No standalone signed URI or metadata setters in v1.**
 
-   `counterfactualRegisterWithSig` performs a full initial registration in one owner signature: `agentURI`, the complete `metadata` array, and the optional `agentWallet`. Metadata is in scope and bound by the signature; the only thing deferred is *signature-authorized per-field setters for later updates* (`counterfactualSetAgentURIWithSig`, `counterfactualSetMetadataWithSig`, `counterfactualSetMetadataBatchWithSig`). Those are unnecessary because, after registration, the owner or an ERC-721 delegate updates individual records directly through the existing unsigned setters (see "Purpose and Update Path"), and the signature only ever solved the mint-time sender mismatch. They can be added later as separate specs if a relayed-update need appears.
+   `counterfactualRegisterWithSig` performs a full initial registration in one owner signature: `agentURI`, the complete `metadata` array, and the optional `agentWallet`. Metadata is in scope and bound by the signature; the only thing deferred is *signature-authorized per-field setters for later updates* (`counterfactualSetAgentURIWithSig`, `counterfactualSetMetadataWithSig`, `counterfactualSetMetadataBatchWithSig`). Those are unnecessary because, after registration, the owner or a single-owner-standard delegate updates individual records directly through the existing unsigned setters (see "Purpose and Update Path"), and the signature only ever solved the mint-time sender mismatch. They can be added later as separate specs if a relayed-update need appears.
 
-3. **ERC-721, ERC-1155, and ERC-6909 are supported through direct-holder control.**
+3. **All five standards are supported through direct-holder control.**
 
-   The signature authenticates which holder authorized the event, and the adapter checks that holder's direct token control at submission time. ERC-721 uses current ownership; ERC-1155 and ERC-6909 use positive balance. The signed path still does not call `_requireBindingControl`, because that helper allows delegate.xyz for ERC-721 and the signed path must remain direct-holder-only.
+   The signature authenticates which holder authorized the event, and the adapter checks that holder's direct token control at submission time. ERC-721, ERC-1155F, and ERC-6909F use current `ownerOf(tokenId)` ownership; ERC-1155 and ERC-6909 use positive balance. The signed path still does not call `_requireBindingControl`, because that helper allows delegate.xyz for single-owner standards and the signed path must remain direct-holder-only.
 
 4. **EIP-712 domain is `name = "Adapter8004"`, `version = "1"`.**
 
@@ -77,7 +77,7 @@ function counterfactualRegisterWithSig(
 
 Parameter semantics:
 
-- `standard`: token standard being claimed. Supported values are `TokenStandard.ERC721`, `TokenStandard.ERC1155`, and `TokenStandard.ERC6909`.
+- `standard`: token standard being claimed. Supported values are `TokenStandard.ERC721`, `TokenStandard.ERC1155`, `TokenStandard.ERC6909`, `TokenStandard.ERC1155F`, and `TokenStandard.ERC6909F`.
 - `tokenContract`: token contract being claimed. Reuses the existing counterfactual token-contract validation.
 - `tokenId`: token id being claimed.
 - `agentURI`: initial counterfactual agent URI.
@@ -310,7 +310,7 @@ The exact check order below defines which error wins when multiple inputs are in
    _requireDirectControl(standard, tokenContract, tokenId, owner);
    ```
 
-   `_requireDirectControl` checks `IERC721(tokenContract).ownerOf(tokenId) == owner` for ERC-721, `IERC1155(tokenContract).balanceOf(owner, tokenId) > 0` for ERC-1155, and `IERC6909(tokenContract).balanceOf(owner, tokenId) > 0` for ERC-6909. Do not call `_requireBindingControl` here. That helper would allow delegate.xyz for ERC-721, and the signed path is intentionally direct-holder-only.
+   `_requireDirectControl` checks `ownerOf(tokenId) == owner` for ERC-721, ERC-1155F, and ERC-6909F, `IERC1155(tokenContract).balanceOf(owner, tokenId) > 0` for ERC-1155, and `IERC6909(tokenContract).balanceOf(owner, tokenId) > 0` for ERC-6909. Do not call `_requireBindingControl` here. That helper would allow delegate.xyz for single-owner standards, and the signed path is intentionally direct-holder-only.
 
 5. Build the EIP-712 digest using the domain and struct hashes specified above.
 

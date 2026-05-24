@@ -5,7 +5,9 @@ interface IERCAgentBindings {
     enum TokenStandard {
         ERC721,
         ERC1155,
-        ERC6909
+        ERC6909,
+        ERC1155F,
+        ERC6909F
     }
 
     struct Binding {
