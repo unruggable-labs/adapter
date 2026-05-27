@@ -5,8 +5,3 @@ out/
 broadcast/
 .env
 .env.local
-
-
-playground/
-src/DummyAgentCollection.sol
-test/DummyAgentCollection.t.sol
