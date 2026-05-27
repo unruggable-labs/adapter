@@ -175,11 +175,11 @@ Adapter proxy addresses:
 - Base: `0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27`
 - Sepolia: `0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92`
 
-Adapter implementation addresses (initial release):
+Adapter implementation addresses (Ethereum mainnet and Base are initial-release; Sepolia is the current live implementation):
 
 - Ethereum mainnet: `0xA54a604448A5Ab0AfFccdDa6228EC4F2ac12a586`
 - Base: `0x9DB9d78E1BB45604Fbfe30FaE123B152FA10de2d`
-- Sepolia: `0x5Ced539aE5Fe67183a2bA4E984F92D57dFB3bd49`
+- Sepolia: `0x31a68e5bc0224ad081d6ec20229b05f558609257` (current live implementation, verified via the EIP-1967 slot; the Sepolia proxy was upgraded past its initial-release implementation `0x5Ced539aE5Fe67183a2bA4E984F92D57dFB3bd49`)
 
 Admin (Safe v1.4.1 multisig, same address on all three chains):
 
