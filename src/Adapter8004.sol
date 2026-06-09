@@ -246,8 +246,9 @@ contract Adapter8004 is
         // 2. Confirm the caller currently controls the token being bound.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Reject user-supplied metadata entries that try to override the canonical binding record.
-        _requireNoReservedBindingKey(metadata);
+        // 3. Reject user-supplied metadata entries that target reserved keys: the canonical
+        //    binding record (agent-binding) and cf-registration, which no register path writes.
+        _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Register the ERC-8004 identity so the adapter becomes the registry owner.
         //    Skip the metadata-array overload when there is nothing to write — saves the
@@ -305,8 +306,11 @@ contract Adapter8004 is
         // 1. Confirm the caller currently controls the bound token.
         _requireController(agentId, msg.sender);
 
-        // 2. Prevent callers from overwriting the canonical binding metadata.
-        if (keccak256(bytes(metadataKey)) == BINDING_METADATA_KEY_HASH) {
+        // 2. Prevent callers from writing reserved metadata: the canonical binding record
+        //    (agent-binding) and the canonical-promotion key (cf-registration). No adapter
+        //    code path writes either legitimately, so neither is a valid controller write.
+        bytes32 keyHash = keccak256(bytes(metadataKey));
+        if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
             revert ReservedMetadataKey(metadataKey);
         }
 
@@ -324,8 +328,8 @@ contract Adapter8004 is
         // 1. Confirm the caller currently controls the bound token.
         _requireController(agentId, msg.sender);
 
-        // 2. Prevent callers from overwriting the canonical binding metadata.
-        _requireNoReservedBindingKey(metadata);
+        // 2. Prevent callers from writing reserved metadata (agent-binding and cf-registration).
+        _requireNoReservedCounterfactualKeys(metadata);
 
         // 3. Replay each metadata write through the ERC-8004 registry one by one.
         uint256 length = metadata.length;
@@ -832,33 +836,11 @@ contract Adapter8004 is
         );
     }
 
-    /// @dev NAME HAZARD: `_requireNotReservedBindingKey` (this one) vs `_requireNoReservedBindingKey`
-    /// (below) differ only by "Not"/"No". This singular variant guards ONE key; the plural variant
-    /// guards an array. Picking the wrong one still compiles — confirm the argument type when calling.
-    function _requireNotReservedBindingKey(string calldata metadataKey) internal pure {
-        // 1. Reject writes that target the canonical binding metadata slot.
-        if (keccak256(bytes(metadataKey)) == BINDING_METADATA_KEY_HASH) {
-            revert ReservedMetadataKey(metadataKey);
-        }
-    }
-
-    /// @dev NAME HAZARD: `_requireNoReservedBindingKey` (this one) vs `_requireNotReservedBindingKey`
-    /// (above) differ only by "No"/"Not". This plural variant guards an ARRAY; the singular variant
-    /// guards one key. Picking the wrong one still compiles — confirm the argument type when calling.
-    function _requireNoReservedBindingKey(IERC8004IdentityRegistry.MetadataEntry[] memory metadata) internal pure {
-        // 1. Scan user-supplied metadata and reject any entry that targets the canonical binding metadata slot.
-        uint256 length = metadata.length;
-        for (uint256 i; i < length; ++i) {
-            if (keccak256(bytes(metadata[i].metadataKey)) == BINDING_METADATA_KEY_HASH) {
-                revert ReservedMetadataKey(metadata[i].metadataKey);
-            }
-        }
-    }
-
-    /// @dev Plural counterfactual-write variant: rejects any entry that targets either the canonical
-    /// binding metadata key (`agent-binding`) OR the canonical-promotion key (`cf-registration`). The
-    /// promotion key is reserved only on the counterfactual surface so an emitter cannot fabricate a
-    /// promotion back-link before any canonical ERC-8004 mint has occurred.
+    /// @dev Rejects any metadata entry that targets a reserved key: the canonical binding record
+    /// (`agent-binding`) or the canonical-promotion key (`cf-registration`). Used on every adapter
+    /// write path that accepts a metadata array (register and the counterfactual surface). No adapter
+    /// path writes either key legitimately, so an emitter cannot fabricate a binding record or a
+    /// promotion back-link.
     function _requireNoReservedCounterfactualKeys(IERC8004IdentityRegistry.MetadataEntry[] memory metadata)
         internal
         pure

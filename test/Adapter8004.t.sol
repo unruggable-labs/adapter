@@ -338,6 +338,71 @@ contract Adapter8004Test is Test {
         adapter.setMetadataBatch(agentId, metadata);
     }
 
+    // --- Audit fixes: cf-registration reserved on the canonical surface (L-1) ---
+
+    function testRegisterRejectsCfRegistrationKey() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
+        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
+            metadataKey: adapter.CF_REGISTRATION_KEY(),
+            metadataValue: bytes("bad")
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.CF_REGISTRATION_KEY()));
+        vm.prank(alice);
+        adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", metadata);
+    }
+
+    function testSetMetadataRejectsCfRegistrationKey() external {
+        uint256 agentId = _register721(alice, 1);
+        string memory key = adapter.CF_REGISTRATION_KEY();
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, key));
+        vm.prank(alice);
+        adapter.setMetadata(agentId, key, bytes("bad"));
+    }
+
+    function testSetMetadataBatchRejectsCfRegistrationKey() external {
+        uint256 agentId = _register721(alice, 1);
+
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
+        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
+            metadataKey: adapter.CF_REGISTRATION_KEY(),
+            metadataValue: bytes("bad")
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.CF_REGISTRATION_KEY()));
+        vm.prank(alice);
+        adapter.setMetadataBatch(agentId, metadata);
+    }
+
+    // --- Audit fixes: I-5 test gaps ---
+
+    function testRewriteBindingMetadataRevertsForUnknownAgent() external {
+        uint256 unknownAgentId = 999;
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, unknownAgentId));
+        vm.prank(admin);
+        adapter.rewriteBindingMetadata(unknownAgentId);
+    }
+
+    function testRegisterArrayOverloadWithEmptyMetadata() external {
+        // Explicitly exercise the metadata.length == 0 branch of the array overload.
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](0);
+
+        vm.prank(alice);
+        uint256 agentId = adapter.register(
+            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/empty", metadata
+        );
+
+        assertEq(registry.ownerOf(agentId), address(adapter));
+        assertEq(registry.tokenURI(agentId), "ipfs://agent/empty");
+        assertEq(registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY()), abi.encodePacked(address(adapter)));
+
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
+        assertEq(binding.tokenContract, address(token721));
+        assertEq(binding.tokenId, 1);
+    }
+
     function testSetAgentURIEmitsAdapterEvent() external {
         uint256 agentId = _register721(alice, 1);
 
