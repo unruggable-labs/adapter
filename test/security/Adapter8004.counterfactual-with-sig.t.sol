@@ -27,7 +27,7 @@ contract CounterfactualWithSigSecurityTest is Test {
     bytes32 internal constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 internal constant COUNTERFACTUAL_REGISTER_TYPEHASH = keccak256(
-        "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,bytes32 agentURIHash,bytes32 metadataHash,address agentWallet,address owner,uint256 expiration)"
+        "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address owner,uint256 expiration)MetadataEntry(string metadataKey,bytes metadataValue)"
     );
     bytes32 internal constant METADATA_ENTRY_TYPEHASH =
         keccak256("MetadataEntry(string metadataKey,bytes metadataValue)");
@@ -1142,10 +1142,58 @@ contract CounterfactualWithSigSecurityTest is Test {
         assertEq(
             COUNTERFACTUAL_REGISTER_TYPEHASH,
             keccak256(
-                "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,bytes32 agentURIHash,bytes32 metadataHash,address agentWallet,address owner,uint256 expiration)"
+                "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address owner,uint256 expiration)MetadataEntry(string metadataKey,bytes metadataValue)"
             )
         );
         assertEq(METADATA_ENTRY_TYPEHASH, keccak256("MetadataEntry(string metadataKey,bytes metadataValue)"));
+    }
+
+    /// @dev I-1 lock: build the struct hash from the *literal* EIP-712 encodeType string (not the
+    /// mirrored constant) and verify a signature over it on-chain. Success proves the contract's
+    /// private COUNTERFACTUAL_REGISTER_TYPEHASH equals keccak256(encodeType); a drift would revert
+    /// InvalidSignature.
+    function testCounterfactualRegisterWithSigContractTypehashEqualsLiteralEncodeType() external {
+        string memory encodeType =
+            "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address owner,uint256 expiration)MetadataEntry(string metadataKey,bytes metadataValue)";
+        bytes32 literalTypehash = keccak256(bytes(encodeType));
+
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("name", bytes("alpha"));
+        uint256 expiration = block.timestamp + 10 minutes;
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                literalTypehash,
+                uint8(IERCAgentBindings.TokenStandard.ERC721),
+                address(token721),
+                uint256(1),
+                keccak256(bytes("ipfs://agent")),
+                _hashMetadata(metadata),
+                address(0),
+                alice,
+                expiration
+            )
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                hex"1901", _domainSeparator(address(adapter), block.chainid, "Adapter8004", "1"), structHash
+            )
+        );
+        bytes memory signature = _signDigest(alicePk, digest);
+
+        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        vm.prank(relayer);
+        bytes32 actual = adapter.counterfactualRegisterWithSig(
+            IERCAgentBindings.TokenStandard.ERC721,
+            address(token721),
+            1,
+            "ipfs://agent",
+            metadata,
+            address(0),
+            alice,
+            expiration,
+            signature
+        );
+        assertEq(actual, expectedHash);
     }
 
     function testCounterfactualRegisterWithSigReentrancyGuardCoversOwnerOf() external {

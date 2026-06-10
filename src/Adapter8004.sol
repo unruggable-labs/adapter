@@ -78,11 +78,10 @@ contract Adapter8004 is
     string private constant EIP712_NAME = "Adapter8004";
     string private constant EIP712_VERSION = "1";
 
-    /// @notice EIP-712 typehash for the signed counterfactual registration payload. `agentURIHash`
-    /// and `metadataHash` keep dynamic data out of the primary type while still binding the full
-    /// payload to the owner signature.
+    /// @notice EIP-712 typehash for the signed counterfactual registration payload. Dynamic fields
+    /// are declared with their wallet-renderable types; hashing still follows the EIP-712 rules.
     bytes32 private constant COUNTERFACTUAL_REGISTER_TYPEHASH = keccak256(
-        "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,bytes32 agentURIHash,bytes32 metadataHash,address agentWallet,address owner,uint256 expiration)"
+        "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address owner,uint256 expiration)MetadataEntry(string metadataKey,bytes metadataValue)"
     );
 
     /// @notice EIP-712 typehash for a single metadata entry, hashed per the EIP-712 array rule.
