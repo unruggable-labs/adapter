@@ -277,7 +277,7 @@ Token standard enum values:
 - `0x03`: `ERC1155F`
 - `0x04`: `ERC6909F`
 
-The adapter reserves the `agent-binding` key and rejects user attempts to set or batch-set it through the adapter. The counterfactual write surface additionally reserves `cf-registration` (the canonical-promotion key) so an emitter cannot fabricate a promotion back-link before any on-chain mint.
+The adapter reserves the `agent-binding` key and rejects user attempts to set or batch-set it through the adapter. The `cf-registration` (canonical-promotion) key is reserved on both surfaces: every counterfactual write rejects it, and the canonical writes (`register`, `setMetadata`, `setMetadataBatch`) reject it too, so a controller cannot fabricate a promotion back-link on either surface before a genuine on-chain mint.
 
 Note:
 

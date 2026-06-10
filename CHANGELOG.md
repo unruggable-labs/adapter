@@ -52,6 +52,24 @@ before any multisig deploy.
   plain ERC-1155/ERC-6909 remain balance-based.
 - Errors: `ExpirationTooFar`, `SignatureExpired`, `InvalidSignature`.
 
+### Changed (security review)
+- Reserved the `cf-registration` key on the **canonical** write surface as well:
+  `register`, `setMetadata`, and `setMetadataBatch` now reject it, matching the
+  counterfactual surface. Previously the key was reserved only on counterfactual
+  writes, so a controller could fabricate a promotion back-link on the canonical
+  surface. The key has no legitimate on-chain writer.
+- `counterfactualRegisterWithSig` EIP-712 type now declares the dynamic fields
+  with their wallet-renderable types: `string agentURI` and
+  `MetadataEntry[] metadata` (with the nested `MetadataEntry` type appended),
+  replacing the opaque `bytes32 agentURIHash` / `bytes32 metadataHash`. Wallets
+  now display the actual URI and metadata being signed instead of two hashes.
+  On-chain digest hashing is unchanged in form; only the type string (and thus
+  the typehash) changed. Safe to do now because the signed surface has never
+  been deployed, so no signatures or integrators exist against the old type.
+- Removed an unreachable internal helper (`_requireNotReservedBindingKey`) whose
+  name was one character from a live helper; canonical writes now route through
+  the shared counterfactual-key guard.
+
 ## [0.0.6] - Unreleased
 
 Source version. Safe TX payloads prepared 2026-05-20
