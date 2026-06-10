@@ -37,9 +37,10 @@ contract Adapter8004 is
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
-    /// @notice Reserved canonical-promotion metadata key. A counterfactual write that targets this
-    /// key would let a caller fabricate a promotion back-link before any canonical ERC-8004 mint has
-    /// occurred. The reservation is therefore enforced on every counterfactual write path.
+    /// @notice Reserved canonical-promotion metadata key. A write that targets this key would let a
+    /// caller fabricate a promotion back-link, so it has no legitimate caller-supplied writer. The
+    /// reservation is enforced on every write path that accepts caller metadata: all counterfactual
+    /// writes, and the canonical setters `register`, `setMetadata`, and `setMetadataBatch`.
     string public constant CF_REGISTRATION_KEY = "cf-registration";
     bytes32 private constant CF_REGISTRATION_KEY_HASH = keccak256(bytes(CF_REGISTRATION_KEY));
 
