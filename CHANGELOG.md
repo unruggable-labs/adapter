@@ -47,9 +47,10 @@ before any multisig deploy.
   unsigned setters. See [`docs/proposals/counterfactual-register-with-sig.md`](./docs/proposals/counterfactual-register-with-sig.md).
 - Token standard enum values `ERC1155F` (`0x03`) and `ERC6909F` (`0x04`) for
   non-fungible ERC-1155/ERC-6909 tokens that expose `ownerOf(uint256)` per the
-  profile proposed in Ethereum/ERCs PR #1767. These standards use single-owner
-  control (`ownerOf` plus delegate.xyz on unsigned/controller-gated paths);
-  plain ERC-1155/ERC-6909 remain balance-based.
+  ERC-8276 (Non-Fungible Multi-Token `ownerOf`) profile, in review as
+  Ethereum/ERCs PR #1767. These standards use single-owner control (`ownerOf`
+  plus delegate.xyz on unsigned/controller-gated paths); plain
+  ERC-1155/ERC-6909 remain balance-based.
 - Errors: `ExpirationTooFar`, `SignatureExpired`, `InvalidSignature`.
 
 ### Changed (security review)

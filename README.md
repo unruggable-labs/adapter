@@ -108,7 +108,7 @@ The binding is immutable at the agent level:
 Important consequence:
 
 - ERC-1155 and ERC-6909 can create shared control if multiple accounts hold balance for the bound token id
-- ERC-1155F and ERC-6909F use the ownerOf profile proposed in Ethereum/ERCs PR [#1767](https://github.com/ethereum/ERCs/pull/1767), so they have single-owner control even though the underlying token family is not ERC-721
+- ERC-1155F and ERC-6909F use the `ownerOf` profile defined by ERC-8276 (Non-Fungible Multi-Token `ownerOf`), in review as Ethereum/ERCs PR [#1767](https://github.com/ethereum/ERCs/pull/1767), so they have single-owner control even though the underlying token family is not ERC-721
 
 That is intentional. The adapter preserves the ownership semantics of the bound standard instead of inventing a synthetic single owner.
 
