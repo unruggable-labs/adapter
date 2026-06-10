@@ -59,7 +59,7 @@ The ERC-8004 agent NFT never moves; it stays owned by the adapter. Either party 
 
 ## Details
 
-The adapter writes canonical ERC-8004 binding metadata in the format proposed by ERC-8217, the agent-binding discovery draft. ERC-8217 is still a draft, open in Ethereum/ERCs PR [#1648](https://github.com/ethereum/ERCs/pull/1648) and not finalized, so the format may change. The reserved `agent-binding` key holds the 20-byte binding-contract address (this adapter proxy), and a verifier reads the full token coordinates from `bindingOf(agentId)`.
+The adapter writes canonical ERC-8004 binding metadata in the format defined by [ERC-8217: Agent NFT Identity Bindings](https://eips.ethereum.org/EIPS/eip-8217), the agent-binding discovery standard (merged into Ethereum/ERCs, originally PR [#1648](https://github.com/ethereum/ERCs/pull/1648)). ERC-8217 is a Draft, so it is not yet finalized and the format may still change. The reserved `agent-binding` key holds the 20-byte binding-contract address (this adapter proxy), and a verifier reads the full token coordinates from `bindingOf(agentId)`.
 
 The binding contract and the bound token contract can be different contracts or the same contract. This repo uses a separate adapter contract, but the metadata format and ERC flow also support token contracts that implement the binding interface themselves.
 
@@ -391,7 +391,7 @@ Reserved keys on the counterfactual write surface: `agent-binding` and `cf-regis
 
 ## ERC Alignment
 
-This repo targets the agent-binding discovery format proposed by ERC-8217. ERC-8217 is a draft, not a finalized standard: it is the number assigned to the agent-binding proposal in Ethereum/ERCs PR [#1648](https://github.com/ethereum/ERCs/pull/1648), which is still open. The format may change before the ERC is finalized.
+This repo targets the agent-binding discovery format defined by [ERC-8217: Agent NFT Identity Bindings](https://eips.ethereum.org/EIPS/eip-8217). ERC-8217 has been merged into Ethereum/ERCs (originally PR [#1648](https://github.com/ethereum/ERCs/pull/1648)) but is still a Draft, not a finalized standard, so the format may change before the ERC is finalized.
 
 The README and contract align on the following points:
 
