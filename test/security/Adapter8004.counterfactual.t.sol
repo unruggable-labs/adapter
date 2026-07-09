@@ -151,7 +151,7 @@ contract CounterfactualSecurityTest is Test {
         bytes32 topic = keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)");
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
         bytes32 expectedTokenContract = bytes32(uint256(uint160(address(token721))));

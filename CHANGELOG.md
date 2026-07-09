@@ -27,6 +27,34 @@ the live implementation on a block explorer before relying on a version.
 `0.0.6` and `0.0.7` are not live on any chain. Re-verify the EIP-1967
 implementation slot on a block explorer before relying on this.
 
+## [0.0.8] - Unreleased
+
+Source version. Not deployed.
+
+### Changed
+- **`registrationHash` no longer includes the token standard**, reverting the
+  unreleased `0.0.6` change below and restoring the hash to the form that is live
+  on Ethereum mainnet, Base, and Sepolia. The counterfactual identity is
+  `keccak256(chainId, adapter, tokenContract, tokenId)`; the `TokenStandard` is
+  dropped from the hash preimage and from the `registrationHash(tokenContract,
+  tokenId)` / internal `_registrationHash` signatures (and the
+  `IERC8004AdapterCounterfactual` interface).
+
+  The deployed counterfactual implementation (commit `a20035c`) never bound the
+  standard. It was added only in the unreleased `0.0.6` source (`3bcef29`) and
+  carried into `0.0.7`; neither is deployed. Verified: the no-standard preimage
+  reproduces the live Base smoke value `registrationHash(0xdEaD, 0) ==
+  0x723bd0…875a3faa`, so **no on-chain `registrationHash` value changes** — this
+  only re-aligns the source with production.
+
+  A token therefore has one identity regardless of which token interface it is
+  registered through. The standard is still validated at registration via the
+  ownership check, bound into the signed EIP-712 payload, and carried in every
+  counterfactual event, so authorization and indexing are unaffected. Event ABIs
+  are unchanged (`topic[0]` and `COUNTERFACTUAL_PAYLOAD_VERSION` stay `1`).
+- Trade-off: a contract exposing the same `tokenId` as distinct assets under two
+  different standards resolves to one identity. Such contracts are out of scope.
+
 ## [0.0.7] - Unreleased
 
 Source version. Not deployed. Requires a fresh security review and audit pass
@@ -44,7 +72,7 @@ before any multisig deploy.
   `emitter = owner`. Owner-only signer (`ownerOf(tokenId)`), `MAX_EXPIRATION_DELAY`
   of 30 minutes, no nonce, no new storage (stateless EIP-712 domain). Solves the
   register-at-mint problem; updates afterward use the existing controller-gated
-  unsigned setters. See [`docs/proposals/counterfactual-register-with-sig.md`](./docs/proposals/counterfactual-register-with-sig.md).
+  unsigned setters.
 - Token standard enum values `ERC1155F` (`0x03`) and `ERC6909F` (`0x04`) for
   non-fungible ERC-1155/ERC-6909 tokens that expose `ownerOf(uint256)` per the
   ERC-8276 (Non-Fungible Multi-Token `ownerOf`) profile, in review as
@@ -90,6 +118,8 @@ Source version. Safe TX payloads prepared 2026-05-20
 ### Changed
 - `registrationHash` now binds the token `standard` in addition to chain id,
   adapter address, token contract, and token id.
+  **Reverted in `0.0.8`; never deployed. The live implementations keep the
+  original standard-free hash `keccak256(chainId, adapter, tokenContract, tokenId)`.**
 
 ### Errors
 - `AlreadyBound`, `NotAgentOwner`, `AgentTransferNotApproved`,

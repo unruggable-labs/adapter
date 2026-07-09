@@ -22,7 +22,7 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
-/// @custom:version 0.0.7
+/// @custom:version 0.0.8
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -426,12 +426,8 @@ contract Adapter8004 is
     /// scoped to this chain and this adapter proxy. Mirrors the internal `_registrationHash`
     /// used by every counterfactual emitter. Useful for off-chain consumers that need to
     /// derive the hash without reimplementing the encoding rules.
-    function registrationHash(TokenStandard standard, address tokenContract, uint256 tokenId)
-        external
-        view
-        returns (bytes32)
-    {
-        return _registrationHash(standard, tokenContract, tokenId);
+    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32) {
+        return _registrationHash(tokenContract, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -483,7 +479,7 @@ contract Adapter8004 is
         _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Compute the deterministic registration hash used as the indexer key for this claim.
-        computedHash = _registrationHash(standard, tokenContract, tokenId);
+        computedHash = _registrationHash(tokenContract, tokenId);
 
         // 5. Emit the counterfactual claim — the only on-chain record produced by this function.
         emit CounterfactualAgentRegistered(
@@ -505,8 +501,7 @@ contract Adapter8004 is
     /// `emitter = owner` (never the relayer). No registry call, no adapter SSTORE, no nonce.
     ///
     /// Intentionally narrower than the unsigned surface: strict direct-holder signer only (no
-    /// delegate.xyz), one full registration per call, no wallet-consent signature. See
-    /// `docs/proposals/counterfactual-register-with-sig.md`.
+    /// delegate.xyz), one full registration per call, no wallet-consent signature.
     function counterfactualRegisterWithSig(
         TokenStandard standard,
         address tokenContract,
@@ -557,7 +552,7 @@ contract Adapter8004 is
         address agentWallet,
         address owner
     ) private returns (bytes32 computedHash) {
-        computedHash = _registrationHash(standard, tokenContract, tokenId);
+        computedHash = _registrationHash(tokenContract, tokenId);
 
         emit CounterfactualAgentRegistered(
             computedHash, tokenContract, tokenId, COUNTERFACTUAL_PAYLOAD_VERSION, standard, agentURI, metadata, owner
@@ -587,7 +582,7 @@ contract Adapter8004 is
 
         // 3. Emit the counterfactual URI update — the only on-chain record produced by this function.
         emit CounterfactualAgentURISet(
-            _registrationHash(standard, tokenContract, tokenId),
+            _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
             COUNTERFACTUAL_PAYLOAD_VERSION,
@@ -621,7 +616,7 @@ contract Adapter8004 is
 
         // 4. Emit the counterfactual metadata write — the only on-chain record produced by this function.
         emit CounterfactualMetadataSet(
-            _registrationHash(standard, tokenContract, tokenId),
+            _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
             COUNTERFACTUAL_PAYLOAD_VERSION,
@@ -650,7 +645,7 @@ contract Adapter8004 is
 
         // 4. Emit the counterfactual batch — the only on-chain record produced by this function.
         emit CounterfactualMetadataBatchSet(
-            _registrationHash(standard, tokenContract, tokenId),
+            _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
             COUNTERFACTUAL_PAYLOAD_VERSION,
@@ -677,7 +672,7 @@ contract Adapter8004 is
 
         // 3. Emit the counterfactual wallet assignment — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletSet(
-            _registrationHash(standard, tokenContract, tokenId),
+            _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
             COUNTERFACTUAL_PAYLOAD_VERSION,
@@ -700,7 +695,7 @@ contract Adapter8004 is
 
         // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(standard, tokenContract, tokenId),
+            _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
             COUNTERFACTUAL_PAYLOAD_VERSION,
@@ -854,15 +849,13 @@ contract Adapter8004 is
         }
     }
 
-    function _registrationHash(TokenStandard standard, address tokenContract, uint256 tokenId)
-        internal
-        view
-        returns (bytes32)
-    {
-        // 1. Bind the hash to the current chain, proxy address, declared standard, and external token
-        //    coordinates so counterfactual claims cannot be replayed across chains, adapters, standards,
-        //    or token identities.
-        return keccak256(abi.encode(block.chainid, address(this), standard, tokenContract, tokenId));
+    function _registrationHash(address tokenContract, uint256 tokenId) internal view returns (bytes32) {
+        // 1. Bind the hash to the current chain, proxy address, and external token coordinates so
+        //    counterfactual claims cannot be replayed across chains, adapters, or token identities.
+        //    The token standard is deliberately excluded: an NFT has one identity regardless of which
+        //    token interface it is registered through. The standard is still validated at registration
+        //    time via the ownership check, bound into the signed EIP-712 payload, and carried in events.
+        return keccak256(abi.encode(block.chainid, address(this), tokenContract, tokenId));
     }
 
     /// @dev Builds the EIP-712 digest for `counterfactualRegisterWithSig` and verifies the owner

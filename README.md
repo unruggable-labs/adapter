@@ -375,14 +375,14 @@ Functions:
 - `counterfactualSetMetadataBatch(standard, tokenContract, tokenId, entries)`
 - `counterfactualSetAgentWallet(standard, tokenContract, tokenId, newWallet)` (no signature, no expiration, because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, tokenContract, tokenId)`
-- `registrationHash(standard, tokenContract, tokenId)` (view)
+- `registrationHash(tokenContract, tokenId)` (view)
 - `counterfactualPayloadVersion()` (pure)
 
 Indexer rules:
 
 - each event carries `uint8 version` as its first non-indexed field; this baseline emits `version == 1`
 - the three indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`
-- the `registrationHash` is `keccak256(abi.encode(block.chainid, adapterProxy, standard, tokenContract, tokenId))`, so a claim cannot be replayed across chains, adapters, standards, or token ids
+- the `registrationHash` is `keccak256(abi.encode(block.chainid, adapterProxy, tokenContract, tokenId))`, so a claim cannot be replayed across chains, adapters, or token ids; the token standard is excluded, so a token has one identity regardless of the interface it is registered through
 - indexers MUST treat the latest event per `(tokenContract, tokenId)` as authoritative
 
 Reserved keys on the counterfactual write surface: `agent-binding` and `cf-registration`.
@@ -451,7 +451,7 @@ Counterfactual (emit-only) functions:
 - `counterfactualSetMetadataBatch(TokenStandard standard, address tokenContract, uint256 tokenId, MetadataEntry[] metadata)`
 - `counterfactualSetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId, address newWallet)`
 - `counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)`
-- `registrationHash(TokenStandard standard, address tokenContract, uint256 tokenId)`
+- `registrationHash(address tokenContract, uint256 tokenId)`
 - `counterfactualPayloadVersion()`
 
 ERC-required verification function:

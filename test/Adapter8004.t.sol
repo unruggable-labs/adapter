@@ -542,7 +542,7 @@ contract Adapter8004Test is Test {
 
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -566,10 +566,10 @@ contract Adapter8004Test is Test {
     }
 
     function testRegistrationHashViewMatchesEncodingAndCounterfactualEventTopic() external {
-        bytes32 viewHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 viewHash = adapter.registrationHash(address(token721), 1);
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
         assertEq(viewHash, expectedHash);
@@ -589,7 +589,7 @@ contract Adapter8004Test is Test {
     function testCounterfactualRegisterEmptyMetadataOverload() external {
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -650,7 +650,7 @@ contract Adapter8004Test is Test {
     function testCounterfactualSetAgentURIEmits() external {
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -679,7 +679,7 @@ contract Adapter8004Test is Test {
     function testCounterfactualSetMetadataEmits() external {
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -728,7 +728,7 @@ contract Adapter8004Test is Test {
     function testCounterfactualSetMetadataBatchEmits() external {
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -788,7 +788,7 @@ contract Adapter8004Test is Test {
     function testCounterfactualSetAgentWalletEmits() external {
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -815,7 +815,7 @@ contract Adapter8004Test is Test {
     function testCounterfactualUnsetAgentWalletEmits() external {
         bytes32 expectedHash = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -876,12 +876,12 @@ contract Adapter8004Test is Test {
     function testCounterfactualRegistrationHashChangesWithChainId() external {
         bytes32 atDefaultChain = keccak256(
             abi.encode(
-                block.chainid, address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                block.chainid, address(adapter), address(token721), uint256(1)
             )
         );
         bytes32 atOtherChain = keccak256(
             abi.encode(
-                uint256(424242), address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), uint256(1)
+                uint256(424242), address(adapter), address(token721), uint256(1)
             )
         );
 
@@ -894,26 +894,25 @@ contract Adapter8004Test is Test {
         assertEq(onAltChain, atOtherChain);
     }
 
-    function testRegistrationHashIncludesStandard() external view {
-        bytes32 h721 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
-        bytes32 h1155 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155, address(token721), 1);
-
-        assertNotEq(h721, h1155);
+    function testRegistrationHashExcludesStandard() external view {
+        // Identity is (chain, adapter, tokenContract, tokenId). The standard is neither part of the
+        // hash nor a parameter, so a token resolves to one hash regardless of the interface it is
+        // registered through. The hybrid-contract test covers the cross-standard case directly.
+        assertEq(adapter.registrationHash(address(token721), 1), adapter.registrationHash(address(token721), 1));
     }
 
-    function testHybridTokenContractProducesDistinctHashesPerStandard() external {
+    function testHybridTokenContractHashIsStandardIndependent() external {
+        // A hybrid contract exposes token 77 under BOTH ERC-721 and ERC-1155. Because the standard is
+        // not part of the identity, both resolve to the SAME registration hash: one token, one agent
+        // identity, regardless of which interface it is registered through. The later counterfactual
+        // claim wins under latest-event-wins.
         HybridERC721ERC1155 hybrid = new HybridERC721ERC1155();
         hybrid.mint721(alice, 77);
         hybrid.mint1155(alice, 77, 1);
 
-        bytes32 h721 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 77);
-        bytes32 h1155 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155, address(hybrid), 77);
-        assertNotEq(h721, h1155);
+        bytes32 h = adapter.registrationHash(address(hybrid), 77);
 
         vm.startPrank(alice);
-        uint256 agent721 = adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 77, "ipfs://721");
-        uint256 agent1155 =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(hybrid), 77, "ipfs://1155");
         bytes32 cf721 =
             adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 77, "ipfs://cf721");
         bytes32 cf1155 = adapter.counterfactualRegister(
@@ -921,11 +920,9 @@ contract Adapter8004Test is Test {
         );
         vm.stopPrank();
 
-        assertEq(cf721, h721);
-        assertEq(cf1155, h1155);
-        assertNotEq(agent721, agent1155);
-        assertEq(uint8(adapter.bindingOf(agent721).standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(uint8(adapter.bindingOf(agent1155).standard), uint8(IERCAgentBindings.TokenStandard.ERC1155));
+        assertEq(cf721, h);
+        assertEq(cf1155, h);
+        assertEq(cf721, cf1155);
     }
 
     function testCounterfactualRegistrationHashChangesWithAdapterAddress() external {

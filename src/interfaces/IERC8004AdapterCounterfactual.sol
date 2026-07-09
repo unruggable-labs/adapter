@@ -13,11 +13,10 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// Implementations conforming to this baseline MUST emit `version == 1`. The three
 /// indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`.
 interface IERC8004AdapterCounterfactual {
-    /// @notice Computes the canonical counterfactual registration hash.
-    function registrationHash(IERCAgentBindings.TokenStandard standard, address tokenContract, uint256 tokenId)
-        external
-        view
-        returns (bytes32);
+    /// @notice Computes the canonical counterfactual registration hash. The identity is
+    /// `(chain, adapter, tokenContract, tokenId)`; the token standard is not part of it, so a
+    /// token has one hash regardless of which token interface it is registered through.
+    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32);
 
     /// @notice Signature-authorized counterfactual registration for a token-bound agent.
     /// The direct token holder signs one EIP-712 payload (URI + full metadata + optional bundled

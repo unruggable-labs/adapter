@@ -83,7 +83,7 @@ contract CounterfactualWithSigSecurityTest is Test {
         uint256 expiration = block.timestamp + 10 minutes;
         bytes memory signature =
             _sign(alicePk, address(adapter), block.chainid, 1, "ipfs://agent", metadata, address(0), alice, expiration);
-        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expectedHash = adapter.registrationHash(address(token721), 1);
 
         vm.prank(relayer);
         vm.expectEmit(true, true, true, true, address(adapter));
@@ -117,7 +117,7 @@ contract CounterfactualWithSigSecurityTest is Test {
         uint256 expiration = block.timestamp + 10 minutes;
         bytes memory signature =
             _sign(alicePk, address(adapter), block.chainid, 1, "ipfs://agent", metadata, wallet, alice, expiration);
-        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expectedHash = adapter.registrationHash(address(token721), 1);
 
         vm.prank(relayer);
         vm.expectEmit(true, true, true, true, address(adapter));
@@ -196,7 +196,7 @@ contract CounterfactualWithSigSecurityTest is Test {
             hex"1234"
         );
 
-        assertEq(actual, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 99));
+        assertEq(actual, adapter.registrationHash(address(token721), 99));
     }
 
     function testCounterfactualRegisterWithSigRejectsBadERC1271Signature() external {
@@ -626,7 +626,7 @@ contract CounterfactualWithSigSecurityTest is Test {
             alice,
             expiration
         );
-        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), 10);
+        bytes32 expectedHash = adapter.registrationHash(address(token1155), 10);
 
         vm.prank(relayer);
         vm.expectEmit(true, true, true, true, address(adapter));
@@ -675,7 +675,7 @@ contract CounterfactualWithSigSecurityTest is Test {
             alice,
             expiration
         );
-        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), 42);
+        bytes32 expectedHash = adapter.registrationHash(address(token6909), 42);
 
         vm.prank(relayer);
         vm.expectEmit(true, true, true, true, address(adapter));
@@ -886,7 +886,7 @@ contract CounterfactualWithSigSecurityTest is Test {
             signature
         );
 
-        assertEq(actual, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50));
+        assertEq(actual, adapter.registrationHash(address(token1155F), 50));
     }
 
     function testCounterfactualRegisterWithSigERC6909FHappyPathUsesOwnerOf() external {
@@ -918,7 +918,7 @@ contract CounterfactualWithSigSecurityTest is Test {
             signature
         );
 
-        assertEq(actual, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60));
+        assertEq(actual, adapter.registrationHash(address(token6909F), 60));
     }
 
     function testCounterfactualRegisterWithSigFTypeRejectsDelegateSigner() external {
@@ -1180,7 +1180,7 @@ contract CounterfactualWithSigSecurityTest is Test {
         );
         bytes memory signature = _signDigest(alicePk, digest);
 
-        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expectedHash = adapter.registrationHash(address(token721), 1);
         vm.prank(relayer);
         bytes32 actual = adapter.counterfactualRegisterWithSig(
             IERCAgentBindings.TokenStandard.ERC721,
@@ -1292,7 +1292,7 @@ contract CounterfactualWithSigSecurityTest is Test {
         uint256 expiration = block.timestamp + 10 minutes;
         bytes memory signature =
             _sign(alicePk, address(adapter), block.chainid, 1, "ipfs://agent", metadata, address(0), alice, expiration);
-        bytes32 expected = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expected = adapter.registrationHash(address(token721), 1);
 
         bytes32 actual = adapter.counterfactualRegisterWithSig(
             IERCAgentBindings.TokenStandard.ERC721,
