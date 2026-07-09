@@ -1,8 +1,8 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.7`
+## Version `0.0.9`
 
-![version](https://img.shields.io/badge/version-0.0.7-blue)
+![version](https://img.shields.io/badge/version-0.0.9-blue)
 
 The current contract version is **`0.0.9`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.9` implementation is not yet live on-chain (see [Deployments](#deployments)).
 
@@ -71,12 +71,13 @@ Supported binding standards:
 - ERC-1155F
 - ERC-6909F
 
-What `0.0.7` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting` + the signed register are not yet deployed anywhere):
+What `0.0.9` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting`, the signed register, and the primary-agent surface are not yet deployed anywhere):
 
 - `bindExisting(...)`: pull an already-minted ERC-8004 agent into adapter management against an external token, using a two-transaction approval model.
 - delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
 - `counterfactualRegisterWithSig(...)`: a signature-authorized counterfactual registration so a mint function or relayer can register on the token owner's behalf in one owner signature (full URI + metadata + optional agent wallet). Supports all binding standards. Solves register-at-mint.
+- Primary-agent reverse resolution: an `address => agent id` mapping so any consumer can go from a wallet address (or any address recorded in agent metadata) to the agent it claims to belong to, on this chain.
 
 ## What The Adapter Does
 
