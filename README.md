@@ -1,10 +1,10 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.9`
+## Version `0.0.10`
 
-![version](https://img.shields.io/badge/version-0.0.9-blue)
+![version](https://img.shields.io/badge/version-0.0.10-blue)
 
-The current contract version is **`0.0.9`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.9` implementation is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.10`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.10` implementation is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -71,7 +71,7 @@ Supported binding standards:
 - ERC-1155F
 - ERC-6909F
 
-What `0.0.9` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting`, the signed register, and the primary-agent surface are not yet deployed anywhere):
+What `0.0.10` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting`, the signed register, and the primary-agent surface are not yet deployed anywhere):
 
 - `bindExisting(...)`: pull an already-minted ERC-8004 agent into adapter management against an external token, using a two-transaction approval model.
 - delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
@@ -396,13 +396,17 @@ The adapter maps an address to the agent it claims to belong to, so any consumer
 
 The mapping records only the address's own claim. A verified link also requires reading the agent's own wallet claim (the ERC-8004 `agentWallet`, or the counterfactual `CounterfactualAgentWalletSet` event) and checking that the wallet and the agent point at each other.
 
+The stored value is the bitwise complement of the id, so an unwritten slot reads back as the reserved all-ones sentinel `PRIMARY_AGENT_UNSET` — which means "unset" is distinct from every real id, including agent id `0` (a real, settable id). Clearing is an explicit call, never `setPrimaryAgent(0)`. This design keeps the storage layout unchanged (same slot 2, same `mapping(address => bytes32)`).
+
 Functions:
 
-- `setPrimaryAgent(bytes32 agentId)` — set (or clear, with `0`) the caller's own id
+- `setPrimaryAgent(bytes32 agentId)` — set the caller's own id; reverts `PrimaryAgentIdReserved` for the all-ones sentinel
 - `setPrimaryAgentFor(address account, bytes32 agentId)` — set an account's id; authorized when the caller is the account, its `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`
-- `primaryAgentOf(address account)` (view) — reverse-resolve to the id, `0` if unset
+- `clearPrimaryAgent()` — clear the caller's own id (reads back as `PRIMARY_AGENT_UNSET`)
+- `clearPrimaryAgentFor(address account)` — clear an account's id, under the same authorization as `setPrimaryAgentFor`
+- `primaryAgentOf(address account)` (view) — reverse-resolve to the id; returns the all-ones `PRIMARY_AGENT_UNSET` sentinel if unset
 
-Emits `PrimaryAgentSet(account, agentId, setBy)`.
+Emits `PrimaryAgentSet(account, agentId, setBy)` on set, `PrimaryAgentCleared(account, clearedBy)` on clear.
 
 ## ERC Alignment
 
@@ -470,6 +474,8 @@ Counterfactual (emit-only) functions:
 - `counterfactualPayloadVersion()`
 - `setPrimaryAgent(bytes32 agentId)`
 - `setPrimaryAgentFor(address account, bytes32 agentId)`
+- `clearPrimaryAgent()`
+- `clearPrimaryAgentFor(address account)`
 - `primaryAgentOf(address account)`
 
 ERC-required verification function:

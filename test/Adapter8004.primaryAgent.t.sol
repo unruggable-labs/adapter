@@ -72,6 +72,7 @@ contract GarbageOwnerAccount {
 
 contract Adapter8004PrimaryAgentTest is Test {
     event PrimaryAgentSet(address indexed account, bytes32 indexed agentId, address indexed setBy);
+    event PrimaryAgentCleared(address indexed account, address indexed clearedBy);
 
     MockIdentityRegistry internal registry;
     Adapter8004 internal adapter;
@@ -82,6 +83,8 @@ contract Adapter8004PrimaryAgentTest is Test {
     address internal admin = makeAddr("admin");
 
     bytes32 internal constant SMALL_ID = bytes32(uint256(42)); // an ERC-8004 registry token id
+    bytes32 internal constant ZERO_ID = bytes32(0); // ERC-8004 id 0 — a real id, NOT "unset"
+    bytes32 internal constant UNSET = bytes32(type(uint256).max); // PRIMARY_AGENT_UNSET sentinel
     bytes32 internal constant HASH_ID = keccak256("counterfactual-registration-hash"); // a 32-byte cf id
 
     function setUp() external {
@@ -108,14 +111,61 @@ contract Adapter8004PrimaryAgentTest is Test {
         adapter.setPrimaryAgent(HASH_ID);
     }
 
-    function testSelfClearWithZero() external {
+    /// Clearing is now an explicit call (not `setPrimaryAgent(0)`), emits `PrimaryAgentCleared`, and
+    /// leaves the account reading back the unset sentinel.
+    function testSelfClear() external {
         vm.startPrank(alice);
         adapter.setPrimaryAgent(SMALL_ID);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit PrimaryAgentSet(alice, bytes32(0), alice);
-        adapter.setPrimaryAgent(bytes32(0));
+        emit PrimaryAgentCleared(alice, alice);
+        adapter.clearPrimaryAgent();
         vm.stopPrank();
-        assertEq(adapter.primaryAgentOf(alice), bytes32(0));
+        assertEq(adapter.primaryAgentOf(alice), UNSET);
+    }
+
+    /// Clearing works even when the prior claim was agent id `0` (whose stored complement is all-ones,
+    /// not zero) — the account still reads back the sentinel after the clear.
+    function testSelfClearAfterZeroClaim() external {
+        vm.startPrank(alice);
+        adapter.setPrimaryAgent(ZERO_ID);
+        assertEq(adapter.primaryAgentOf(alice), ZERO_ID);
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit PrimaryAgentCleared(alice, alice);
+        adapter.clearPrimaryAgent();
+        vm.stopPrank();
+        assertEq(adapter.primaryAgentOf(alice), UNSET);
+    }
+
+    /// The core fix: agent id `0` is a real id under complement storage — it is stored and read back
+    /// as `0`, never confused with "unset" (which is the all-ones sentinel).
+    function testSetAgentIdZeroIsRepresentable() external {
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit PrimaryAgentSet(alice, ZERO_ID, alice);
+        vm.prank(alice);
+        adapter.setPrimaryAgent(ZERO_ID);
+        assertEq(adapter.primaryAgentOf(alice), ZERO_ID);
+        assertTrue(adapter.primaryAgentOf(alice) != UNSET);
+    }
+
+    /// Setting the reserved all-ones sentinel as an id reverts rather than aliasing "unset", and
+    /// leaves any prior claim untouched (max-boundary case).
+    function testSetReservedSentinelReverts() external {
+        vm.startPrank(alice);
+        adapter.setPrimaryAgent(SMALL_ID); // a prior claim that must survive the failed write
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.PrimaryAgentIdReserved.selector, UNSET));
+        adapter.setPrimaryAgent(UNSET);
+        vm.stopPrank();
+        assertEq(adapter.primaryAgentOf(alice), SMALL_ID);
+    }
+
+    /// agent id `0` is settable by a permitted controller too (delegated round trip).
+    function testSetAgentIdZeroDelegatedRoundTrip() external {
+        OwnableAccount account = new OwnableAccount(alice);
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit PrimaryAgentSet(address(account), ZERO_ID, alice);
+        vm.prank(alice);
+        adapter.setPrimaryAgentFor(address(account), ZERO_ID);
+        assertEq(adapter.primaryAgentOf(address(account)), ZERO_ID);
     }
 
     function testOverwriteUpdatesValue() external {
@@ -126,8 +176,9 @@ contract Adapter8004PrimaryAgentTest is Test {
         assertEq(adapter.primaryAgentOf(alice), HASH_ID);
     }
 
-    function testUnsetReturnsZero() external view {
-        assertEq(adapter.primaryAgentOf(bob), bytes32(0));
+    function testUnsetReturnsSentinel() external view {
+        assertEq(adapter.primaryAgentOf(bob), UNSET);
+        assertEq(adapter.PRIMARY_AGENT_UNSET(), UNSET);
     }
 
     /// The whole point: ERC-8004 ids (small) and counterfactual hashes (32B) coexist without colliding.
@@ -183,9 +234,11 @@ contract Adapter8004PrimaryAgentTest is Test {
         OwnableAccount account = new OwnableAccount(alice);
         vm.startPrank(alice);
         adapter.setPrimaryAgentFor(address(account), HASH_ID);
-        adapter.setPrimaryAgentFor(address(account), bytes32(0));
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit PrimaryAgentCleared(address(account), alice);
+        adapter.clearPrimaryAgentFor(address(account));
         vm.stopPrank();
-        assertEq(adapter.primaryAgentOf(address(account)), bytes32(0));
+        assertEq(adapter.primaryAgentOf(address(account)), UNSET);
     }
 
     function testForEmitsSetByOwner() external {
@@ -194,6 +247,55 @@ contract Adapter8004PrimaryAgentTest is Test {
         emit PrimaryAgentSet(address(account), HASH_ID, alice);
         vm.prank(alice);
         adapter.setPrimaryAgentFor(address(account), HASH_ID);
+    }
+
+    function testForReservedSentinelReverts() external {
+        OwnableAccount account = new OwnableAccount(alice);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.PrimaryAgentIdReserved.selector, UNSET));
+        vm.prank(alice);
+        adapter.setPrimaryAgentFor(address(account), UNSET);
+    }
+
+    /* ------------------------------ clear paths ----------------------------- */
+
+    /// Clearing an already-unset account is a no-op write that still emits and still reads sentinel.
+    function testClearSelfIdempotentWhenUnset() external {
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit PrimaryAgentCleared(bob, bob);
+        vm.prank(bob);
+        adapter.clearPrimaryAgent();
+        assertEq(adapter.primaryAgentOf(bob), UNSET);
+    }
+
+    function testClearForByGetOwner() external {
+        GetOwnerAccount account = new GetOwnerAccount(alice);
+        vm.startPrank(alice);
+        adapter.setPrimaryAgentFor(address(account), SMALL_ID);
+        adapter.clearPrimaryAgentFor(address(account));
+        vm.stopPrank();
+        assertEq(adapter.primaryAgentOf(address(account)), UNSET);
+    }
+
+    function testClearForByAccessControlAdmin() external {
+        AccessControlAccount account = new AccessControlAccount();
+        account.grant(bytes32(0), alice);
+        vm.startPrank(alice);
+        adapter.setPrimaryAgentFor(address(account), SMALL_ID);
+        adapter.clearPrimaryAgentFor(address(account));
+        vm.stopPrank();
+        assertEq(adapter.primaryAgentOf(address(account)), UNSET);
+    }
+
+    function testClearForRevertsForNonController() external {
+        OwnableAccount account = new OwnableAccount(alice);
+        vm.prank(alice);
+        adapter.setPrimaryAgentFor(address(account), SMALL_ID);
+        // eve cannot clear an account she does not control...
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAccountController.selector, address(account), eve));
+        vm.prank(eve);
+        adapter.clearPrimaryAgentFor(address(account));
+        // ...and the value is untouched.
+        assertEq(adapter.primaryAgentOf(address(account)), SMALL_ID);
     }
 
     /* ---------------------------- auth failures ---------------------------- */

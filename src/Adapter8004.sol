@@ -23,7 +23,7 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
-/// @custom:version 0.0.9
+/// @custom:version 0.0.10
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -99,9 +99,14 @@ contract Adapter8004 is
     error InvalidTokenContractIsRegistry();
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
-    /// @notice Thrown when `setPrimaryAgentFor` is called by an address that is neither the account
-    /// itself, the account's `owner()` / `getOwner()`, nor a holder of its `DEFAULT_ADMIN_ROLE`.
+    /// @notice Thrown when `setPrimaryAgentFor` / `clearPrimaryAgentFor` is called by an address that
+    /// is neither the account itself, the account's `owner()` / `getOwner()`, nor a holder of its
+    /// `DEFAULT_ADMIN_ROLE`.
     error NotAccountController(address account, address caller);
+    /// @notice Thrown when a primary-agent setter is passed `PRIMARY_AGENT_UNSET` (all ones). That
+    /// value is reserved as the "unset" sentinel: it complements to zero in storage and would be
+    /// indistinguishable from a never-written entry. Clear via `clearPrimaryAgent[For]` instead.
+    error PrimaryAgentIdReserved(bytes32 agentId);
     error UnknownAgent(uint256 agentId);
     error AlreadyBound(uint256 agentId);
     error NotAgentOwner(uint256 agentId, address owner);
@@ -138,11 +143,23 @@ contract Adapter8004 is
 
     mapping(uint256 agentId => Binding binding) private _bindings;
 
+    /// @notice Sentinel returned by `primaryAgentOf` for an account that has never set a primary agent
+    /// or has cleared it. All ones, so it can never collide with a real ERC-8004 id (incremental, at
+    /// the low end of the range) and is astronomically unlikely to collide with a counterfactual hash.
+    /// Passing it to a setter reverts `PrimaryAgentIdReserved`. Not storage — does not affect layout.
+    bytes32 public constant PRIMARY_AGENT_UNSET = bytes32(type(uint256).max);
+
     /// @notice Reverse resolution: an address to the primary agent id it claims to belong to, on this
     /// chain. The id is an ERC-8004 registry token id (small) or a 32-byte counterfactual
     /// `registrationHash`; the two id spaces do not collide, so one mapping holds both. Appended after
     /// `_bindings` to preserve the storage layout across the UUPS upgrade.
-    mapping(address account => bytes32 agentId) private _primaryAgent;
+    ///
+    /// @dev Stores the bitwise complement of the id, never the id itself. A never-written slot is zero,
+    /// which complements to the all-ones `PRIMARY_AGENT_UNSET` sentinel — so "unwritten" reads as
+    /// "unset" for free, and every real id (including `0`) round-trips through `~`. This is why the
+    /// layout is unchanged (same slot 2, same `mapping(address => bytes32)` type) yet agent id `0` is
+    /// now representable, which a raw store with a zero-clears branch could not do.
+    mapping(address account => bytes32 complementAgentId) private _primaryAgent;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -718,33 +735,59 @@ contract Adapter8004 is
     //  Primary agent (reverse resolution: address -> agent id)
     // -----------------------------------------------------------------
 
-    /// @notice Set (or clear, with `agentId == bytes32(0)`) the caller's own primary agent id. The
-    /// caller always controls itself, so no extra authorization is required. The id is an ERC-8004
-    /// registry token id (passed as `bytes32(id)`) or a 32-byte counterfactual `registrationHash`.
+    /// @notice Set the caller's own primary agent id. The caller always controls itself, so no extra
+    /// authorization is required. The id is an ERC-8004 registry token id (passed as `bytes32(id)`) or
+    /// a 32-byte counterfactual `registrationHash`. To remove an id, call `clearPrimaryAgent`; passing
+    /// `PRIMARY_AGENT_UNSET` (all ones) reverts `PrimaryAgentIdReserved` (it is the unset sentinel).
     function setPrimaryAgent(bytes32 agentId) external {
         _setPrimaryAgent(msg.sender, agentId);
     }
 
-    /// @notice Set (or clear) the primary agent id for `account`. Authorized when the caller is the
-    /// account itself, the account's `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`.
+    /// @notice Set the primary agent id for `account`. Authorized when the caller is the account
+    /// itself, the account's `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`. To
+    /// remove an id, call `clearPrimaryAgentFor`. Reverts `PrimaryAgentIdReserved` for the all-ones id.
     function setPrimaryAgentFor(address account, bytes32 agentId) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
         _setPrimaryAgent(account, agentId);
     }
 
-    /// @notice Reverse-resolve an address to its primary agent id. Returns `bytes32(0)` when unset.
-    function primaryAgentOf(address account) external view returns (bytes32) {
-        return _primaryAgent[account];
+    /// @notice Clear the caller's own primary agent id. Afterwards `primaryAgentOf` returns
+    /// `PRIMARY_AGENT_UNSET`. Idempotent: clearing an already-unset account still emits
+    /// `PrimaryAgentCleared`.
+    function clearPrimaryAgent() external {
+        _clearPrimaryAgent(msg.sender);
     }
 
-    /// @dev Write or clear `_primaryAgent[account]` and emit `PrimaryAgentSet`. A zero id clears.
+    /// @notice Clear the primary agent id for `account`, under the same authorization model as
+    /// `setPrimaryAgentFor`. Reverts `NotAccountController` when the caller is not authorized.
+    function clearPrimaryAgentFor(address account) external {
+        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
+        _clearPrimaryAgent(account);
+    }
+
+    /// @notice Reverse-resolve an address to its primary agent id. Returns `PRIMARY_AGENT_UNSET` (all
+    /// ones) when the account has never set an id or has cleared it. Every real id — including agent
+    /// id `0` — is returned as itself.
+    function primaryAgentOf(address account) external view returns (bytes32) {
+        bytes32 stored = _primaryAgent[account];
+        return stored == bytes32(0) ? PRIMARY_AGENT_UNSET : ~stored;
+    }
+
+    /// @dev Store `agentId` as its bitwise complement and emit `PrimaryAgentSet`. No zero-branch: the
+    /// complement scheme makes an unwritten (zero) slot read back as `PRIMARY_AGENT_UNSET`, so every
+    /// real id — `0` included — round-trips. The all-ones id is rejected because it would complement
+    /// to zero and collide with the unset sentinel.
     function _setPrimaryAgent(address account, bytes32 agentId) private {
-        if (agentId == bytes32(0)) {
-            delete _primaryAgent[account];
-        } else {
-            _primaryAgent[account] = agentId;
-        }
+        if (agentId == bytes32(type(uint256).max)) revert PrimaryAgentIdReserved(agentId);
+        _primaryAgent[account] = ~agentId;
         emit PrimaryAgentSet(account, agentId, msg.sender);
+    }
+
+    /// @dev Reset the account's complement slot to zero — which reads back as `PRIMARY_AGENT_UNSET` —
+    /// and emit `PrimaryAgentCleared`. `delete` restores the exact "unwritten == unset" invariant.
+    function _clearPrimaryAgent(address account) private {
+        delete _primaryAgent[account];
+        emit PrimaryAgentCleared(account, msg.sender);
     }
 
     /// @dev True when `caller` controls `account`: the account itself, its `owner()` / `getOwner()`,

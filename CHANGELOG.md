@@ -27,9 +27,38 @@ the live implementation on a block explorer before relying on a version.
 `0.0.6` and `0.0.7` are not live on any chain. Re-verify the EIP-1967
 implementation slot on a block explorer before relying on this.
 
+## [0.0.10] - Unreleased
+
+Source version. Not deployed. Supersedes the `0.0.9` primary-agent semantics
+below (neither `0.0.9` nor `0.0.10` is live on any chain).
+
+### Changed
+- **Primary-agent storage is now complement-encoded** (`IERC8004AdapterPrimaryAgent`).
+  The `_primaryAgent` mapping still lives at slot 2 as `mapping(address => bytes32)`
+  — the storage layout is byte-identical (slots 0/1/2 unchanged, verified via
+  `forge inspect ... storageLayout`) — but it now stores the **bitwise complement**
+  of the id (`~agentId`) rather than the raw id.
+  - **Agent id `0` is now a representable primary agent.** An unwritten slot is
+    zero, which complements to the all-ones sentinel, so "unwritten" reads as
+    "unset" for free while every real id — `0` included — round-trips. The old
+    `0.0.9` design treated `agentId == 0` as a clear, so id `0` could not be set.
+  - New sentinel `PRIMARY_AGENT_UNSET = bytes32(type(uint256).max)` (all ones).
+    `primaryAgentOf(account)` returns it when the account has never set an id or
+    has cleared it (previously it returned `bytes32(0)`).
+  - Setters no longer treat `0` as a clear. Removal is explicit via new
+    `clearPrimaryAgent()` / `clearPrimaryAgentFor(address)`, which emit a
+    dedicated `PrimaryAgentCleared(account, clearedBy)` event.
+  - `setPrimaryAgent` / `setPrimaryAgentFor` revert `PrimaryAgentIdReserved`
+    when passed the all-ones sentinel id (it would complement to zero and alias
+    "unset").
+  - `PrimaryAgentSet` is now emitted only for real-id writes; clears emit
+    `PrimaryAgentCleared`. Authorization for the `*For` calls is unchanged
+    (account itself, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`).
+
 ## [0.0.9] - Unreleased
 
-Source version. Not deployed.
+Source version. Not deployed. Its primary-agent semantics are superseded by
+`0.0.10` above; the description below is retained as historical record.
 
 ### Added
 - **Primary-agent reverse resolution** (`IERC8004AdapterPrimaryAgent`): an
