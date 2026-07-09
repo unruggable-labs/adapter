@@ -27,6 +27,31 @@ the live implementation on a block explorer before relying on a version.
 `0.0.6` and `0.0.7` are not live on any chain. Re-verify the EIP-1967
 implementation slot on a block explorer before relying on this.
 
+## [0.0.9] - Unreleased
+
+Source version. Not deployed.
+
+### Added
+- **Primary-agent reverse resolution** (`IERC8004AdapterPrimaryAgent`): an
+  `address => bytes32 agentId` mapping on the adapter that resolves a wallet
+  address (or any address recorded in agent metadata) to the agent it claims to
+  belong to, on this chain. Combined with the agent's own wallet claim (ERC-8004
+  `agentWallet` or the counterfactual `CounterfactualAgentWalletSet` event), a
+  consumer can verify that a wallet and an agent mutually point at each other.
+  - The id is an ERC-8004 registry token id (small, incremental, stored as
+    `bytes32(id)`) or a 32-byte counterfactual `registrationHash`. The two id
+    spaces do not collide, so a single mapping holds both.
+  - `setPrimaryAgent(bytes32 agentId)` sets the caller's own id;
+    `setPrimaryAgentFor(address account, bytes32 agentId)` sets an account's id
+    when the caller is the account, its `owner()` / `getOwner()`, or a holder of
+    its `DEFAULT_ADMIN_ROLE`; `primaryAgentOf(address)` reads it. `agentId == 0`
+    clears. Emits `PrimaryAgentSet(account, agentId, setBy)`.
+  - The control check is a defensive static call that tolerates non-conforming
+    return data (wrong length or dirty bits) without reverting, and is
+    account-scoped: a contract that misreports its controller can only affect its
+    own mapping entry. New storage `_primaryAgent` is appended after `_bindings`
+    to preserve the upgrade layout. No registry writes, no effect on bindings.
+
 ## [0.0.8] - Unreleased
 
 Source version. Not deployed.

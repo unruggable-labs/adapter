@@ -14,6 +14,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
+import {IERC8004AdapterPrimaryAgent} from "./interfaces/IERC8004AdapterPrimaryAgent.sol";
 import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistration.sol";
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "./interfaces/IERC8004IdentityRegistry.sol";
@@ -22,7 +23,7 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
-/// @custom:version 0.0.8
+/// @custom:version 0.0.9
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -32,7 +33,8 @@ contract Adapter8004 is
     IERCAgentBindings,
     IERC8004IdentityRecord,
     IERC8004AdapterRegistration,
-    IERC8004AdapterCounterfactual
+    IERC8004AdapterCounterfactual,
+    IERC8004AdapterPrimaryAgent
 {
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
@@ -97,6 +99,9 @@ contract Adapter8004 is
     error InvalidTokenContractIsRegistry();
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
+    /// @notice Thrown when `setPrimaryAgentFor` is called by an address that is neither the account
+    /// itself, the account's `owner()` / `getOwner()`, nor a holder of its `DEFAULT_ADMIN_ROLE`.
+    error NotAccountController(address account, address caller);
     error UnknownAgent(uint256 agentId);
     error AlreadyBound(uint256 agentId);
     error NotAgentOwner(uint256 agentId, address owner);
@@ -132,6 +137,12 @@ contract Adapter8004 is
     IERC8004IdentityRegistry public identityRegistry;
 
     mapping(uint256 agentId => Binding binding) private _bindings;
+
+    /// @notice Reverse resolution: an address to the primary agent id it claims to belong to, on this
+    /// chain. The id is an ERC-8004 registry token id (small) or a 32-byte counterfactual
+    /// `registrationHash`; the two id spaces do not collide, so one mapping holds both. Appended after
+    /// `_bindings` to preserve the storage layout across the UUPS upgrade.
+    mapping(address account => bytes32 agentId) private _primaryAgent;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -701,6 +712,75 @@ contract Adapter8004 is
             COUNTERFACTUAL_PAYLOAD_VERSION,
             msg.sender
         );
+    }
+
+    // -----------------------------------------------------------------
+    //  Primary agent (reverse resolution: address -> agent id)
+    // -----------------------------------------------------------------
+
+    /// @notice Set (or clear, with `agentId == bytes32(0)`) the caller's own primary agent id. The
+    /// caller always controls itself, so no extra authorization is required. The id is an ERC-8004
+    /// registry token id (passed as `bytes32(id)`) or a 32-byte counterfactual `registrationHash`.
+    function setPrimaryAgent(bytes32 agentId) external {
+        _setPrimaryAgent(msg.sender, agentId);
+    }
+
+    /// @notice Set (or clear) the primary agent id for `account`. Authorized when the caller is the
+    /// account itself, the account's `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`.
+    function setPrimaryAgentFor(address account, bytes32 agentId) external {
+        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
+        _setPrimaryAgent(account, agentId);
+    }
+
+    /// @notice Reverse-resolve an address to its primary agent id. Returns `bytes32(0)` when unset.
+    function primaryAgentOf(address account) external view returns (bytes32) {
+        return _primaryAgent[account];
+    }
+
+    /// @dev Write or clear `_primaryAgent[account]` and emit `PrimaryAgentSet`. A zero id clears.
+    function _setPrimaryAgent(address account, bytes32 agentId) private {
+        if (agentId == bytes32(0)) {
+            delete _primaryAgent[account];
+        } else {
+            _primaryAgent[account] = agentId;
+        }
+        emit PrimaryAgentSet(account, agentId, msg.sender);
+    }
+
+    /// @dev True when `caller` controls `account`: the account itself, its `owner()` / `getOwner()`,
+    /// or a `DEFAULT_ADMIN_ROLE` (`0x00`) holder. Contract checks are best-effort static calls that
+    /// tolerate accounts (including EOAs) that do not implement them; the low-level path avoids
+    /// reverting on non-conforming return data. A contract that misreports its controller can only
+    /// affect its own mapping entry, so the checks are account-scoped and safe.
+    function _controlsAccount(address account, address caller) private view returns (bool) {
+        if (caller == account) return true;
+
+        // Ownable: owner(), then getOwner() as a fallback.
+        if (_staticReturnsAddress(account, abi.encodeWithSignature("owner()"), caller)) return true;
+        if (_staticReturnsAddress(account, abi.encodeWithSignature("getOwner()"), caller)) return true;
+
+        // AccessControl: DEFAULT_ADMIN_ROLE (0x00). Decode as a raw word so a dirty (non 0/1) bool
+        // cannot revert; any non-zero result is treated as "has role".
+        (bool ok, bytes memory ret) =
+            account.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), caller));
+        if (ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0) return true;
+
+        return false;
+    }
+
+    /// @dev Static-call `account` with `callData` and return true iff it yields exactly a clean
+    /// 32-byte address word equal to `expected`. Malformed return data (wrong length, or dirty high
+    /// bits that would make `abi.decode(_, (address))` revert) is treated as no match rather than
+    /// propagating, so a non-conforming or hostile account cannot brick or grief the control check.
+    function _staticReturnsAddress(address account, bytes memory callData, address expected)
+        private
+        view
+        returns (bool)
+    {
+        (bool ok, bytes memory ret) = account.staticcall(callData);
+        if (!ok || ret.length != 32) return false;
+        uint256 word = abi.decode(ret, (uint256));
+        return word <= type(uint160).max && address(uint160(word)) == expected;
     }
 
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {

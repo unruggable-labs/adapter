@@ -4,7 +4,7 @@
 
 ![version](https://img.shields.io/badge/version-0.0.7-blue)
 
-The current contract version is **`0.0.7`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.7` implementation is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.9`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.9` implementation is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -389,6 +389,20 @@ Reserved keys on the counterfactual write surface: `agent-binding` and `cf-regis
 
 > BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event (including the `uint8 version` field itself) changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to the payload version or to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
 
+### Primary agent (reverse resolution)
+
+The adapter maps an address to the agent it claims to belong to, so any consumer can go from a wallet address (or any address recorded in agent metadata) to an agent id on this chain. The stored id is either an ERC-8004 registry token id (small, incremental, stored as `bytes32(id)`) or a 32-byte counterfactual `registrationHash`; the two id spaces do not collide, so a single mapping holds both.
+
+The mapping records only the address's own claim. A verified link also requires reading the agent's own wallet claim (the ERC-8004 `agentWallet`, or the counterfactual `CounterfactualAgentWalletSet` event) and checking that the wallet and the agent point at each other.
+
+Functions:
+
+- `setPrimaryAgent(bytes32 agentId)` — set (or clear, with `0`) the caller's own id
+- `setPrimaryAgentFor(address account, bytes32 agentId)` — set an account's id; authorized when the caller is the account, its `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`
+- `primaryAgentOf(address account)` (view) — reverse-resolve to the id, `0` if unset
+
+Emits `PrimaryAgentSet(account, agentId, setBy)`.
+
 ## ERC Alignment
 
 This repo targets the agent-binding discovery format defined by [ERC-8217: Agent NFT Identity Bindings](https://eips.ethereum.org/EIPS/eip-8217). ERC-8217 has been merged into Ethereum/ERCs (originally PR [#1648](https://github.com/ethereum/ERCs/pull/1648)) but is still a Draft, not a finalized standard, so the format may change before the ERC is finalized.
@@ -453,6 +467,9 @@ Counterfactual (emit-only) functions:
 - `counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)`
 - `registrationHash(address tokenContract, uint256 tokenId)`
 - `counterfactualPayloadVersion()`
+- `setPrimaryAgent(bytes32 agentId)`
+- `setPrimaryAgentFor(address account, bytes32 agentId)`
+- `primaryAgentOf(address account)`
 
 ERC-required verification function:
 
