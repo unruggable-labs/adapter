@@ -1,10 +1,10 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.10`
+## Version `0.0.11`
 
-![version](https://img.shields.io/badge/version-0.0.10-blue)
+![version](https://img.shields.io/badge/version-0.0.11-blue)
 
-The current contract version is **`0.0.10`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.10` implementation is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.11`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.11` implementation is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -408,6 +408,23 @@ Functions:
 
 Emits `PrimaryAgentSet(account, agentId, setBy)` on set, `PrimaryAgentCleared(account, clearedBy)` on clear.
 
+#### Gasless (signed) primary agent — v0.0.11
+
+An account can authorize a primary-agent change with an EIP-712 signature and let any relayer submit it (no gas from the account). All three signed methods are **strictly account-self**: the signature is verified against `account` via EOA `ecrecover` **or the account's ERC-1271 policy** ([`SignatureChecker`](https://docs.openzeppelin.com/contracts/5.x/api/utils#SignatureChecker)). There is deliberately **no** owner/admin/controller signature route — that authority remains only on the paid `setPrimaryAgentFor` / `clearPrimaryAgentFor`.
+
+- `setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes signature)`
+- `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
+- `counterfactualRegisterAndSetPrimaryWithSig(standard, tokenContract, tokenId, agentURI, metadata[], agentWallet, signer, deadline, signature) -> registrationHash` — one `signer` atomically registers its own counterfactual agent and makes that deterministic `registrationHash` its own primary agent (single-signer; no independent `agentId`, no register-for-X / point-Y).
+- `nonces(address account)` (view) — one monotonic nonce per account, **shared** across all three signed methods.
+
+Replay/expiry model: the signed struct embeds the current `nonces(account)` (read on-chain, **not** a calldata argument) and a `deadline` capped at **30 minutes** (`MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME`; a deadline equal to the current block timestamp is still valid). A success consumes the nonce exactly once, so a used signature cannot be replayed and any other signed op pre-signed against the same nonce becomes invalid. Fetch `nonces(account)` immediately before signing; a stale signature is a refresh-and-resign, never a relayer retry. Errors: `SignatureDeadlineTooFar`, `SignatureExpired`, `InvalidSignature`. `agentId == 0` is a valid claim; the all-ones sentinel reverts `PrimaryAgentIdReserved`.
+
+**Safe / ERC-1271 caveat:** for a smart-contract account (e.g. a Safe), authorization is whatever that account's `isValidSignature` accepts — a Safe expresses delegated signing through its own ERC-1271 policy, not through any adapter-side owner/admin interpretation. A contract account whose ERC-1271 rejects a digest cannot be moved even by its `owner()`'s EOA signature on this path.
+
+**Event/indexer semantics:** each signed call emits the **legacy** state event first — `PrimaryAgentSet(account, agentId, setBy)` or `PrimaryAgentCleared(account, clearedBy)` with `setBy`/`clearedBy` = `msg.sender` (the **relayer**, kept truthful and backwards-compatible) — then a supplemental audit event `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)` / `PrimaryAgentClearedWithSig(account, relayer, nonce)`. Indexers update the reverse pointer **once** from the legacy event and use the signed event only to enrich provenance (authorization = EIP-712, relayer, consumed nonce); it is not a second state transition. The combined call additionally emits the existing `CounterfactualAgentRegistered` (and optional `CounterfactualAgentWalletSet`) with `emitter = signer` before the primary events.
+
+EIP-712 type strings, a viem typed-data object, and example calldata are published in [`docs/fixtures/adapter-primaryagent-withsig.md`](./docs/fixtures/adapter-primaryagent-withsig.md) — that generated fixture and the interface/ABI are the source of truth for consumers (Dappa must not hand-maintain a separate schema).
+
 ## ERC Alignment
 
 This repo targets the agent-binding discovery format defined by [ERC-8217: Agent NFT Identity Bindings](https://eips.ethereum.org/EIPS/eip-8217). ERC-8217 has been merged into Ethereum/ERCs (originally PR [#1648](https://github.com/ethereum/ERCs/pull/1648)) but is still a Draft, not a finalized standard, so the format may change before the ERC is finalized.
@@ -477,6 +494,10 @@ Counterfactual (emit-only) functions:
 - `clearPrimaryAgent()`
 - `clearPrimaryAgentFor(address account)`
 - `primaryAgentOf(address account)`
+- `setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes signature)`
+- `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
+- `counterfactualRegisterAndSetPrimaryWithSig(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata, address agentWallet, address signer, uint256 deadline, bytes signature)`
+- `nonces(address account)`
 
 ERC-required verification function:
 

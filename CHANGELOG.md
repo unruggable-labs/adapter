@@ -27,6 +27,46 @@ the live implementation on a block explorer before relying on a version.
 `0.0.6` and `0.0.7` are not live on any chain. Re-verify the EIP-1967
 implementation slot on a block explorer before relying on this.
 
+## [0.0.11] - Unreleased
+
+Source version. Not deployed. Adds a gasless (relayer-submittable) EIP-712
+surface for the primary-agent reverse pointer. No storage migration: `nonces`
+is appended at slot 3 and slots 0/1/2 are byte-identical to `0.0.10`.
+
+> Security gate: this is a new authorization / EIP-712 / replay / ERC-1271
+> surface. Per the design, it requires a sol-auditor pass, an independent
+> security-adapter review, and CSO reconciliation against the frozen diff/ABI
+> before any implementation deploy or Safe upgrade. Not shippable on tests alone.
+
+### Added
+- **Signed (account-self) primary-agent surface** (`IERC8004AdapterPrimaryAgent`):
+  - `setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes signature)`
+    and `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)` — any
+    relayer submits a signature by `account` itself (EOA `ecrecover` or the account's ERC-1271
+    policy, via `SignatureChecker`). Strictly account-self: there is **no** owner/admin/controller
+    signature route (that authority stays on the paid `setPrimaryAgentFor` / `clearPrimaryAgentFor`).
+  - `counterfactualRegisterAndSetPrimaryWithSig(...) -> registrationHash` — one signer atomically
+    registers its own counterfactual agent and makes that deterministic `registrationHash` its own
+    primary agent. A single `signer` field is both the direct token holder and the primary-agent
+    account; there is no independent `agentId` and no split-party (register-for-X, point-Y) route.
+  - `nonces(address)` — one monotonic nonce per account, **shared** by all three signed operations,
+    embedded in the signed struct (not a calldata argument) and consumed once per success, so a used
+    signature cannot be replayed and any op pre-signed against the same nonce is invalidated.
+  - `MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME = 30 minutes` deadline cap (a deadline equal to the current
+    block timestamp is still valid); errors `SignatureDeadlineTooFar` / `SignatureExpired` and the
+    shared `InvalidSignature`.
+  - Audit events `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)` and
+    `PrimaryAgentClearedWithSig(account, relayer, nonce)`. The legacy `PrimaryAgentSet` /
+    `PrimaryAgentCleared` events are unchanged and still emitted first with `setBy` / `clearedBy` =
+    `msg.sender` (the relayer); indexers act on the legacy event and use the signed event only for
+    provenance (authorization = EIP-712, relayer, nonce).
+  - `agent-binding` semantics unchanged: `agentId == 0` is a valid claim; the all-ones sentinel is
+    reserved and reverts `PrimaryAgentIdReserved`. The paid setters, the standalone counterfactual
+    registration (its nonce-free 30-minute `expiration` policy), and slot-2 complement encoding are
+    all untouched.
+  - Consumer fixtures (EIP-712 type strings, viem typed-data, and example calldata) published under
+    [`docs/fixtures/`](./docs/fixtures/adapter-primaryagent-withsig.md).
+
 ## [0.0.10] - Unreleased
 
 Source version. Not deployed. Supersedes the `0.0.9` primary-agent semantics

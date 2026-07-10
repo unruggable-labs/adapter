@@ -23,7 +23,7 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
-/// @custom:version 0.0.10
+/// @custom:version 0.0.11
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -91,6 +91,22 @@ contract Adapter8004 is
     bytes32 private constant METADATA_ENTRY_TYPEHASH =
         keccak256("MetadataEntry(string metadataKey,bytes metadataValue)");
 
+    /// @notice Upper bound on how far in the future a signed primary-agent `deadline` may sit. A
+    /// separate constant from `MAX_EXPIRATION_DELAY` (they happen to share a value) so the primary-agent
+    /// gasless surface and the counterfactual registration surface can be reasoned about independently.
+    uint256 private constant MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME = 30 minutes;
+
+    /// @notice EIP-712 typehashes for the gasless (account-self) primary-agent surface. The signed
+    /// payloads embed the on-chain `nonces[account]` value (read immediately before hashing) and a
+    /// bounded `deadline`; the `nonce` is deliberately not a calldata argument.
+    bytes32 private constant SET_PRIMARY_AGENT_TYPEHASH =
+        keccak256("SetPrimaryAgent(address account,bytes32 agentId,uint256 nonce,uint256 deadline)");
+    bytes32 private constant CLEAR_PRIMARY_AGENT_TYPEHASH =
+        keccak256("ClearPrimaryAgent(address account,uint256 nonce,uint256 deadline)");
+    bytes32 private constant COUNTERFACTUAL_REGISTER_AND_SET_PRIMARY_TYPEHASH = keccak256(
+        "CounterfactualRegisterAndSetPrimary(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address signer,uint256 nonce,uint256 deadline)MetadataEntry(string metadataKey,bytes metadataValue)"
+    );
+
     error InvalidTokenContract();
     /// @notice Thrown when a binding attempts to set `tokenContract` to the ERC-8004 identity registry
     /// itself. Permitted-and-then-bound, the agent would be permanently uncontrollable because
@@ -117,7 +133,14 @@ contract Adapter8004 is
     error ExpirationTooFar(uint256 expiration);
     /// @notice Thrown when the current block timestamp is past the signed `expiration`.
     error SignatureExpired(uint256 expiration);
+    /// @notice Thrown when a signed primary-agent `deadline` is more than
+    /// `MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME` seconds in the future. Distinct from `ExpirationTooFar`,
+    /// which guards the counterfactual `expiration`, so the two signed surfaces stay independent.
+    error SignatureDeadlineTooFar(uint256 deadline);
     /// @notice Thrown when the owner signature fails EOA and ERC-1271 verification for the digest.
+    /// Shared across the counterfactual and primary-agent signed surfaces: it already means "the EOA
+    /// or ERC-1271 check failed for this exact digest," which covers a wrong signer, tampered payload,
+    /// stale nonce, or wrong operation type on either surface.
     error InvalidSignature();
 
     event AgentBound(
@@ -160,6 +183,15 @@ contract Adapter8004 is
     /// layout is unchanged (same slot 2, same `mapping(address => bytes32)` type) yet agent id `0` is
     /// now representable, which a raw store with a zero-clears branch could not do.
     mapping(address account => bytes32 complementAgentId) private _primaryAgent;
+
+    /// @notice Per-account monotonic nonce shared by every signed primary-agent operation
+    /// (`setPrimaryAgentWithSig`, `clearPrimaryAgentWithSig`, `counterfactualRegisterAndSetPrimaryWithSig`).
+    /// The signed struct embeds the value returned here, read on-chain immediately before verification;
+    /// a success increments it exactly once, so a used signature cannot be replayed and any other
+    /// signed op pre-signed against the same value becomes invalid. Appended at regular slot 3 after
+    /// `_primaryAgent` (slot 2): slots 0/1/2 are byte-identical across the upgrade, and pre-upgrade
+    /// accounts begin at nonce zero with their existing primary-agent claims untouched.
+    mapping(address account => uint256 nonce) public nonces;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -790,6 +822,171 @@ contract Adapter8004 is
         emit PrimaryAgentCleared(account, msg.sender);
     }
 
+    // -----------------------------------------------------------------
+    //  Signed (gasless, account-self) primary agent surface
+    // -----------------------------------------------------------------
+
+    /// @notice Set `account`'s primary agent id from an EIP-712 signature by `account` itself, so any
+    /// relayer can submit it (gasless UX). Strictly account-self: the signature is validated against
+    /// `account` via `SignatureChecker` (EOA or the account's ERC-1271 policy); there is deliberately
+    /// no owner/admin/controller signature route here (that authority stays on the paid
+    /// `setPrimaryAgentFor`). The `nonce` is not a calldata argument — the signed payload embeds the
+    /// current `nonces[account]`, read on-chain immediately before verification. Reverts
+    /// `SignatureDeadlineTooFar` / `SignatureExpired` on deadline bounds and `InvalidSignature` on a bad
+    /// or stale signature; `agentId == PRIMARY_AGENT_UNSET` reverts `PrimaryAgentIdReserved` and `0` is a
+    /// valid id. Emits the legacy `PrimaryAgentSet(account, agentId, msg.sender=relayer)` then
+    /// `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)`.
+    function setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes calldata signature)
+        external
+    {
+        // 1. Enforce the bounded, unexpired deadline.
+        _requirePrimaryAgentDeadline(deadline);
+
+        // 2. Load the canonical current nonce and build the operation-specific digest over it.
+        uint256 nonce = nonces[account];
+        bytes32 structHash = keccak256(abi.encode(SET_PRIMARY_AGENT_TYPEHASH, account, agentId, nonce, deadline));
+
+        // 3. Require a valid account signature (EOA or ERC-1271) over that exact digest.
+        _verifyPrimaryAgentSig(account, structHash, signature);
+
+        // 4. Consume the nonce exactly once (before the pointer write; any later revert rolls it back).
+        nonces[account] = nonce + 1;
+
+        // 5. Perform the shared storage op (keeps the all-ones rejection and agent-id-zero rules).
+        _setPrimaryAgent(account, agentId);
+
+        // 6. Emit the signed-path audit event with the nonce consumed in step 2.
+        emit PrimaryAgentSetWithSig(account, agentId, msg.sender, nonce);
+    }
+
+    /// @notice Clear `account`'s primary agent id from an EIP-712 signature by `account` itself. Same
+    /// account-self authorization, shared nonce stream, and deadline bounds as `setPrimaryAgentWithSig`,
+    /// so a signed clear supersedes an earlier signed set (and vice versa). Afterwards `primaryAgentOf`
+    /// returns `PRIMARY_AGENT_UNSET`. Emits the legacy `PrimaryAgentCleared(account, relayer)` then
+    /// `PrimaryAgentClearedWithSig(account, relayer, nonce)`.
+    function clearPrimaryAgentWithSig(address account, uint256 deadline, bytes calldata signature) external {
+        // 1. Enforce the bounded, unexpired deadline.
+        _requirePrimaryAgentDeadline(deadline);
+
+        // 2. Load the canonical current nonce and build the clear digest over it.
+        uint256 nonce = nonces[account];
+        bytes32 structHash = keccak256(abi.encode(CLEAR_PRIMARY_AGENT_TYPEHASH, account, nonce, deadline));
+
+        // 3. Require a valid account signature (EOA or ERC-1271) over that exact digest.
+        _verifyPrimaryAgentSig(account, structHash, signature);
+
+        // 4. Consume the nonce exactly once.
+        nonces[account] = nonce + 1;
+
+        // 5. Clear the pointer through the shared helper.
+        _clearPrimaryAgent(account);
+
+        // 6. Emit the signed-path audit event with the nonce consumed in step 2.
+        emit PrimaryAgentClearedWithSig(account, msg.sender, nonce);
+    }
+
+    /// @notice Atomic gasless "register my counterfactual agent and make it my primary agent." A single
+    /// `signer` is BOTH the direct token holder authorizing the counterfactual registration AND the
+    /// account whose primary pointer is set — there is intentionally no separate `owner`/`account`
+    /// field and no caller-supplied `agentId`, so a registration for X cannot be bundled with a pointer
+    /// write for Y (use the two standalone signed calls for a deliberately split workflow). The primary
+    /// id is derived as the deterministic `registrationHash(tokenContract, tokenId)` and is the returned
+    /// value. Shares the primary-agent nonce stream and deadline bounds (NOT the standalone
+    /// counterfactual `expiration` model). Emits `CounterfactualAgentRegistered` (and, with a bundled
+    /// wallet, `CounterfactualAgentWalletSet`) with `emitter = signer`, then legacy
+    /// `PrimaryAgentSet(signer, registrationHash, relayer)`, then `PrimaryAgentSetWithSig`.
+    function counterfactualRegisterAndSetPrimaryWithSig(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
+        address agentWallet,
+        address signer,
+        uint256 deadline,
+        bytes calldata signature
+    ) external nonReentrant returns (bytes32 computedHash) {
+        // 1. Enforce the primary-agent deadline cap/expiry (not the counterfactual `expiration`).
+        _requirePrimaryAgentDeadline(deadline);
+
+        // 2. Reject an unusable token contract and reserved counterfactual metadata keys, and require
+        //    the signer to STRICTLY directly control the token (no delegate.xyz, no controller lookup),
+        //    exactly as `counterfactualRegisterWithSig`.
+        _requireValidTokenContract(tokenContract);
+        _requireNoReservedCounterfactualKeys(metadata);
+        _requireDirectControl(standard, tokenContract, tokenId, signer);
+
+        // 3. Load `nonces[signer]` and verify the combined signature over that exact value.
+        uint256 nonce = nonces[signer];
+        _verifyCounterfactualRegisterAndSetPrimarySig(
+            standard, tokenContract, tokenId, agentURI, metadata, agentWallet, signer, nonce, deadline, signature
+        );
+
+        // 4. Consume the nonce once, then re-emit the canonical counterfactual claim with emitter=signer.
+        nonces[signer] = nonce + 1;
+        computedHash =
+            _emitCounterfactualRegister(standard, tokenContract, tokenId, agentURI, metadata, agentWallet, signer);
+
+        // 5. Set the signer's primary agent to that exact derived hash (retains the reserved/zero rules;
+        //    an all-ones hash would revert `PrimaryAgentIdReserved` and roll back steps 4/5).
+        _setPrimaryAgent(signer, computedHash);
+
+        // 6. Emit the signed-path audit event after the legacy event from `_setPrimaryAgent`.
+        emit PrimaryAgentSetWithSig(signer, computedHash, msg.sender, nonce);
+    }
+
+    /// @dev Reject a signed primary-agent `deadline` that is beyond the lifetime cap or already past.
+    /// A deadline equal to `block.timestamp` is still valid for that block, matching the counterfactual
+    /// convention.
+    function _requirePrimaryAgentDeadline(uint256 deadline) private view {
+        if (deadline > block.timestamp + MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME) revert SignatureDeadlineTooFar(deadline);
+        if (block.timestamp > deadline) revert SignatureExpired(deadline);
+    }
+
+    /// @dev Verify `account`'s EIP-712 signature (EOA or ERC-1271) over `structHash` bound to the live
+    /// domain separator. Reverts `InvalidSignature` on failure. Strictly validates against `account`.
+    function _verifyPrimaryAgentSig(address account, bytes32 structHash, bytes calldata signature) private view {
+        if (
+            !SignatureChecker.isValidSignatureNow(
+                account, MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash), signature
+            )
+        ) {
+            revert InvalidSignature();
+        }
+    }
+
+    /// @dev Build and verify the combined register-and-set-primary EIP-712 digest, using the established
+    /// counterfactual field hashing plus the sole `signer`, on-chain `nonce`, and `deadline`. Extracted
+    /// to keep the entry point within the stack limit. Reverts `InvalidSignature` on failure.
+    function _verifyCounterfactualRegisterAndSetPrimarySig(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
+        address agentWallet,
+        address signer,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata signature
+    ) private view {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                COUNTERFACTUAL_REGISTER_AND_SET_PRIMARY_TYPEHASH,
+                uint8(standard),
+                tokenContract,
+                tokenId,
+                keccak256(bytes(agentURI)),
+                _hashMetadata(metadata),
+                agentWallet,
+                signer,
+                nonce,
+                deadline
+            )
+        );
+        _verifyPrimaryAgentSig(signer, structHash, signature);
+    }
+
     /// @dev True when `caller` controls `account`: the account itself, its `owner()` / `getOwner()`,
     /// or a `DEFAULT_ADMIN_ROLE` (`0x00`) holder. Contract checks are best-effort static calls that
     /// tolerate accounts (including EOAs) that do not implement them; the low-level path avoids
@@ -972,7 +1169,7 @@ contract Adapter8004 is
         }
     }
 
-    function _registrationHash(address tokenContract, uint256 tokenId) internal view returns (bytes32) {
+    function _registrationHash(address tokenContract, uint256 tokenId) internal view virtual returns (bytes32) {
         // 1. Bind the hash to the current chain, proxy address, and external token coordinates so
         //    counterfactual claims cannot be replayed across chains, adapters, or token identities.
         //    The token standard is deliberately excluded: an NFT has one identity regardless of which
