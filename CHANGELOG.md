@@ -27,6 +27,25 @@ the live implementation on a block explorer before relying on a version.
 `0.0.6` and `0.0.7` are not live on any chain. Re-verify the EIP-1967
 implementation slot on a block explorer before relying on this.
 
+## [0.0.12] - Unreleased
+
+Source version. Not deployed. No storage/layout change (slots 0/1/2/3 identical
+to `0.0.11`).
+
+### Added
+- **`registerAndSetPrimary(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI) -> uint256 agentId`**
+  — a caller-paid, no-signature/no-relayer convenience wrapper: it runs the canonical `register`
+  body (empty metadata) and then records the freshly minted `agentId` as the **caller's own** primary
+  agent, in one transaction. Equivalent to calling `register(...)` then `setPrimaryAgent(bytes32(agentId))`
+  yourself: identical token-control authorization, `AgentBound` event, and returned id, plus a
+  standard `PrimaryAgentSet(caller, bytes32(agentId), caller)`. No new storage, authorization, or event
+  families.
+
+### Changed
+- Refactor only: the shared register body helper is renamed `_registerImpl` → `_register` (no
+  `nonReentrant`), called by both `register` overloads and the new wrapper. `register` behavior,
+  authorization, events, and return value are unchanged.
+
 ## [0.0.11] - Unreleased
 
 Source version. Not deployed. Adds a gasless (relayer-submittable) EIP-712

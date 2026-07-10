@@ -23,7 +23,7 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
-/// @custom:version 0.0.11
+/// @custom:version 0.0.12
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -234,7 +234,7 @@ contract Adapter8004 is
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) public nonReentrant returns (uint256 agentId) {
-        return _registerImpl(standard, tokenContract, tokenId, agentURI, metadata);
+        return _register(standard, tokenContract, tokenId, agentURI, metadata);
     }
 
     function register(TokenStandard standard, address tokenContract, uint256 tokenId, string calldata agentURI)
@@ -242,8 +242,29 @@ contract Adapter8004 is
         nonReentrant
         returns (uint256 agentId)
     {
-        return
-            _registerImpl(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
+        return _register(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
+    }
+
+    /// @notice Caller-paid convenience wrapper: register a new adapter-managed ERC-8004 agent bound to
+    /// the caller's external token, then record that new `agentId` as the caller's own primary agent —
+    /// in one transaction, with no signature or relayer. Equivalent to `register(...)` (no-metadata
+    /// overload) immediately followed by the caller calling `setPrimaryAgent(bytes32(agentId))`
+    /// themselves: identical control/auth (the caller must control the token), identical `AgentBound`
+    /// event and returned `agentId`, plus the standard `PrimaryAgentSet(caller, bytes32(agentId),
+    /// caller)`. No new storage, authorization, or event families.
+    function registerAndSetPrimary(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI
+    ) external nonReentrant returns (uint256 agentId) {
+        // 1. Run the canonical register body (shared with `register`); reverts identically when the
+        //    caller does not control the token.
+        agentId = _register(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
+
+        // 2. Record the freshly minted agent as the caller's own primary agent through the shared
+        //    helper (keeps the all-ones `PrimaryAgentIdReserved` guard; a fresh incremental id is small).
+        _setPrimaryAgent(msg.sender, bytes32(agentId));
     }
 
     function bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)
@@ -292,7 +313,7 @@ contract Adapter8004 is
         emit AgentBound(agentId, standard, tokenContract, tokenId, msg.sender);
     }
 
-    function _registerImpl(
+    function _register(
         TokenStandard standard,
         address tokenContract,
         uint256 tokenId,

@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
+import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrimaryAgent.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -99,6 +100,40 @@ contract Adapter8004Test is Test {
             adapter.getMetadata(agentId, adapter.BINDING_METADATA_KEY()),
             registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY())
         );
+    }
+
+    function testRegisterAndSetPrimaryMintsBindsAndSetsPrimary() external {
+        // Fresh registry: the first minted agent id is 0 (also exercises "agent id 0 is a real id").
+        vm.prank(alice);
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit Adapter8004.AgentBound(0, IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, alice);
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterPrimaryAgent.PrimaryAgentSet(alice, bytes32(0), alice);
+        uint256 agentId = adapter.registerAndSetPrimary(
+            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/1"
+        );
+
+        assertEq(agentId, 0);
+        // Minted + bound exactly like register.
+        assertEq(registry.ownerOf(agentId), address(adapter));
+        assertEq(adapter.tokenURI(agentId), "ipfs://agent/1");
+        assertEq(registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY()), abi.encodePacked(address(adapter)));
+        IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
+        assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
+        assertEq(b.tokenContract, address(token721));
+        assertEq(b.tokenId, 1);
+        // Primary agent recorded for the caller, and it is the real id (not the unset sentinel).
+        assertEq(adapter.primaryAgentOf(alice), bytes32(agentId));
+        assertTrue(adapter.primaryAgentOf(alice) != adapter.PRIMARY_AGENT_UNSET());
+    }
+
+    function testRegisterAndSetPrimaryNonControllerRevertsLikeRegister() external {
+        // bob does not control alice's token 1 -> the shared register control check reverts identically.
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, type(uint256).max));
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/1");
+        // No primary pointer was written for bob.
+        assertEq(adapter.primaryAgentOf(bob), adapter.PRIMARY_AGENT_UNSET());
     }
 
     function test721ControllerCanUpdateRegistryFields() external {

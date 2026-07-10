@@ -24,6 +24,18 @@ interface IERC8004AdapterRegistration {
         string calldata agentURI
     ) external returns (uint256 agentId);
 
+    /// @notice Caller-paid one-transaction wrapper: `register(standard, tokenContract, tokenId,
+    /// agentURI)` (empty metadata) immediately followed by recording the returned `agentId` as the
+    /// CALLER's own primary agent (`setPrimaryAgent(bytes32(agentId))`). No signature or relayer. Same
+    /// token-control authorization and `AgentBound` event/return as `register`, plus a
+    /// `PrimaryAgentSet(caller, bytes32(agentId), caller)`. Introduces no new storage, auth, or events.
+    function registerAndSetPrimary(
+        IERCAgentBindings.TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        string calldata agentURI
+    ) external returns (uint256 agentId);
+
     /// @notice Bind an already-minted ERC-8004 `agentId` into adapter management against an external
     /// token. The caller MUST own the agent in the ERC-8004 registry and MUST currently control the
     /// external token under `_requireBindingControl`. The adapter MUST have prior ERC-721 transfer

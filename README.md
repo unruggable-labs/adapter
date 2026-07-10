@@ -1,10 +1,10 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.11`
+## Version `0.0.12`
 
-![version](https://img.shields.io/badge/version-0.0.11-blue)
+![version](https://img.shields.io/badge/version-0.0.12-blue)
 
-The current contract version is **`0.0.11`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.11` implementation is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.12`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.12` implementation is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -465,6 +465,7 @@ User-facing functions:
 
 - `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
 - `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI)`
+- `registerAndSetPrimary(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI)` — caller-paid `register` + set the new agent as the caller's own primary agent, in one tx
 - `bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)`
 - `setAgentURI(uint256 agentId, string newURI)`
 - `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`
