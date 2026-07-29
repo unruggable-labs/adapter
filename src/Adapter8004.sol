@@ -304,8 +304,9 @@ contract Adapter8004 is
         //    (binding to the registry would lock the agent permanently post-register).
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the token being bound.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Confirm the caller currently controls the token being bound, or is the directly
+        //    calling single-owner collection while the id has no current owner.
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Reject user-supplied metadata entries that target reserved keys: the canonical
         //    binding record (agent-binding) and cf-registration, which no register path writes.
@@ -548,7 +549,7 @@ contract Adapter8004 is
 
         // 2. Confirm the caller is a current controller, or the directly calling single-owner token
         //    contract while `tokenId` has no current owner.
-        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
         _requireNoReservedCounterfactualKeys(metadata);
@@ -584,7 +585,7 @@ contract Adapter8004 is
         _requireValidTokenContract(tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual URI update — the only on-chain record produced by this function.
         emit CounterfactualAgentURISet(
@@ -612,7 +613,7 @@ contract Adapter8004 is
         _requireValidTokenContract(tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         //    Cache the key hash once: `metadataKey` is `calldata` but recomputing the hash twice in
@@ -648,7 +649,7 @@ contract Adapter8004 is
         _requireValidTokenContract(tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         _requireNoReservedCounterfactualKeys(metadata);
@@ -679,7 +680,7 @@ contract Adapter8004 is
         _requireValidTokenContract(tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet assignment — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletSet(
@@ -704,7 +705,7 @@ contract Adapter8004 is
         _requireValidTokenContract(tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletUnset(
@@ -1000,17 +1001,15 @@ contract Adapter8004 is
         }
     }
 
-    /// @dev Authorizes every unsigned counterfactual write through one of two modes:
+    /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
     /// (1) the existing current-controller model, or (2) temporary collection authority when the
     /// direct caller is the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports
     /// no current owner. The latter window reopens after a burn if `ownerOf` again reverts or returns
     /// zero; preventing that would require historical-existence storage.
-    function _requireCounterfactualControl(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        address account
-    ) internal view {
+    function _requireTokenAuthority(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
+        internal
+        view
+    {
         if (account == tokenContract && _isSingleOwnerStandard(standard) && _hasNoCurrentOwner(tokenContract, tokenId))
         {
             return;

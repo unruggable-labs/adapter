@@ -39,8 +39,24 @@ regular slots 0 and 1. Uses empty `upgradeToAndCall` data (not an initializer
 or reinitializer payload).
 The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 
+### Added
+
+- Full ERC-8004 `register` (including `registerAndSetPrimary`) now accepts the same temporary
+  ownerless collection authority as unsigned counterfactual writes: the directly calling
+  ERC-721/ERC-1155F/ERC-6909F token contract may register its own id while `ownerOf(tokenId)`
+  reverts or returns canonical `address(0)`. Minting to a non-collection owner closes the window;
+  the buyer/controller then receives ordinary binding control. Plain ERC-1155/ERC-6909 remain
+  positive-balance controlled, and `bindExisting` still requires ordinary current control.
+
 ### Changed
 
+- Generalized `_requireCounterfactualControl` to the shared `_requireTokenAuthority` helper and
+  routed both full registration and every unsigned counterfactual write through it so their
+  ownerless-collection rule cannot drift.
+- `registerAndSetPrimary` remains caller-scoped: when a collection uses the ownerless window, it
+  records the new full agent as the collection's primary. An authorized mint flow that wants the
+  buyer's primary uses `register`, mints, then calls `setPrimaryAgentFor(buyer, agentId)`; otherwise
+  the buyer sets it separately.
 - Split reverse resolution into two independent systems:
   - full ERC-8004: `uint256` `setPrimaryAgent`, `primaryAgentOf`, full-only events, and
     `primaryAgentNonces`;
@@ -60,6 +76,9 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   legacy fallback.
 - Full-system signatures use the `SetPrimary8004Agent` and `ClearPrimary8004Agent` EIP-712
   types. The standard numeric-EVM `EIP712Domain` is unchanged.
+
+This ownerless full-registration change adds no public selector, storage slot, event ABI,
+counterfactual payload-version change, or `@custom:version` bump.
 
 ### Removed
 

@@ -221,7 +221,7 @@ After deployment:
 
 ### 2. Register A Bound Agent
 
-A user who controls an external token calls:
+A current controller, or a supported single-owner collection registering before mint, calls:
 
 ```solidity
 register(standard, tokenContract, tokenId, agentURI, metadata)
@@ -229,7 +229,8 @@ register(standard, tokenContract, tokenId, agentURI, metadata)
 
 The adapter does this:
 
-1. verifies the caller currently controls the external token
+1. verifies the caller currently controls the external token, or that the direct caller is the
+   ERC-721/ERC-1155F/ERC-6909F `tokenContract` and `ownerOf(tokenId)` reports no current owner
 2. rejects user metadata that tries to overwrite the canonical binding record
 3. calls `identityRegistry.register(...)`
 4. becomes owner of the new ERC-8004 identity token
@@ -240,6 +241,37 @@ The adapter does this:
 That last step matters because ERC-8004 sets `agentWallet = msg.sender` during registration. Since `msg.sender` is the adapter, the adapter clears that default wallet immediately.
 
 A convenience overload, `register(standard, tokenContract, tokenId, agentURI)`, registers with an empty metadata array.
+
+The ownerless collection window is the same narrow authority used by unsigned counterfactual
+writes: the collection must call the adapter directly for its own deployed address, and the window
+closes once `ownerOf(tokenId)` returns a nonzero owner. A stranger cannot use it. Plain ERC-1155 and
+ERC-6909 remain positive-balance controlled. After mint, the buyer (or an authorized delegate)
+controls the bound ERC-8004 agent through the normal binding model; the collection has no special
+authority unless it is itself the current controller.
+
+For a full ERC-8004 identity created during mint, register before minting:
+
+```solidity
+function mint(address buyer, uint256 tokenId, string calldata agentURI) external {
+    uint256 agentId = adapter.register(
+        IERCAgentBindings.TokenStandard.ERC721,
+        address(this),
+        tokenId,
+        agentURI
+    );
+    _mint(buyer, tokenId);
+
+    // Optional: when this caller is authorized for `buyer` under the primary-agent account-control
+    // model, associate the freshly registered full identity with the buyer.
+    adapter.setPrimaryAgentFor(buyer, agentId);
+}
+```
+
+If the collection cannot authorize `setPrimaryAgentFor(buyer, agentId)`, the buyer can set the
+pointer separately with `setPrimaryAgent(agentId)` (or use the signed full-primary path).
+`registerAndSetPrimary` remains caller-scoped: an ownerless collection using it sets the collection's
+own primary, not the future buyer's. `bindExisting` does not receive ownerless collection authority;
+it continues to require ordinary current control of an already-existing external token.
 
 ### 2b. Bind An Existing Agent
 
@@ -373,7 +405,7 @@ Note that repointing only changes where future forwarded calls go. It does not m
 
 ## Counterfactual Registration
 
-The counterfactual family mirrors the register surface as emit-only functions. They produce no ERC-8004 registry write and no adapter SSTORE; the emitted event is the only on-chain record. Every unsigned function accepts the existing current-controller authority. In addition, an ERC-721, ERC-1155F, or ERC-6909F token contract may call directly for its own id while `ownerOf(tokenId)` reports no current owner. This temporary collection authority lets the complete identity record be emitted immediately before mint without an owner signature or staging transfer.
+The counterfactual family mirrors the register surface as emit-only functions. They produce no ERC-8004 registry write and no adapter SSTORE; the emitted event is the only on-chain record. Every unsigned function shares the same token-authority rule as full `register`: existing current-controller authority, plus direct ERC-721/ERC-1155F/ERC-6909F collection authority for its own id while `ownerOf(tokenId)` reports no current owner. This temporary collection authority lets the complete identity record be emitted immediately before mint without an owner signature or staging transfer.
 
 This enables off-chain identities: a token can carry a usable identity through events before any on-chain mint, and can later be promoted to a real on-chain registration.
 
