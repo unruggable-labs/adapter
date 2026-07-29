@@ -12,31 +12,28 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// Every counterfactual event below carries `uint8 version` as its first non-indexed field.
 /// Implementations conforming to this baseline MUST emit `version == 1`. The three
 /// indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`.
+///
+/// Adapter8004's existing unsigned counterfactual functions accept either ordinary current-controller
+/// authority or, for ERC-721/ERC-1155F/ERC-6909F only, temporary authority from the directly calling
+/// token contract while `ownerOf(tokenId)` reports no current owner. The collection must call the
+/// adapter directly before mint (not through a router, forwarder, or delegatecall). A revert or
+/// canonical zero response opens that window; minting to a non-collection owner closes it, while a
+/// later burn can reopen it because the adapter deliberately stores no historical-existence bit.
+/// Plain ERC-1155/ERC-6909 remain positive-balance controlled. Collection-authorized events retain
+/// the existing schema and carry `emitter = tokenContract`; later owner/delegate events overwrite
+/// them by normal log ordering.
 interface IERC8004AdapterCounterfactual {
-    /// @notice Computes the canonical counterfactual registration hash. The identity is
-    /// `(chain, adapter, tokenContract, tokenId)`; the token standard is not part of it, so a
-    /// token has one hash regardless of which token interface it is registered through.
-    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32);
+    /// @notice Local ERC-7930 v1 Chain Identifier using CAIP-350 `eip155`: version 1, ChainType 0,
+    /// shortest non-empty big-endian `block.chainid`, and zero AddressLength.
+    function chainIdentifier() external view returns (bytes memory);
 
-    /// @notice Signature-authorized counterfactual registration for a token-bound agent.
-    /// The direct token holder signs one EIP-712 payload (URI + full metadata + optional bundled
-    /// wallet + bounded expiration) and any caller may submit it, solving the register-at-mint sender
-    /// mismatch. Supports ERC-721, ERC-1155, ERC-6909, ERC-1155F, and ERC-6909F through
-    /// direct-holder control only; no delegate.xyz signer, no nonce, no wallet consent. Emits
-    /// `CounterfactualAgentRegistered` (and
-    /// `CounterfactualAgentWalletSet` when `agentWallet != address(0)`) with `emitter = owner`.
-    /// Returns the canonical registration hash.
-    function counterfactualRegisterWithSig(
-        IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
-        address agentWallet,
-        address owner,
-        uint256 expiration,
-        bytes calldata signature
-    ) external returns (bytes32 computedHash);
+    /// @notice Full local ERC-7930 v1 Interoperable Address for an EVM account: the same chain
+    /// envelope as `chainIdentifier()`, followed by AddressLength 20 and the raw address bytes.
+    function interoperableAddress(address account) external view returns (bytes memory);
+
+    /// @notice Computes the canonical counterfactual registration hash. The identity is
+    /// `keccak256(abi.encode(interoperableAddress(adapter), tokenContract, tokenId))`.
+    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32);
 
     /// @notice Counterfactual registration claim. No registry write, no SSTORE.
     /// Indexers MUST treat the latest event per (tokenContract, tokenId) as authoritative.

@@ -4,6 +4,10 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
+import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
+import {IERC8004AdapterCounterfactualPrimaryAgent} from
+    "../src/interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
+import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrimaryAgent.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRecord} from "../src/interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
@@ -43,6 +47,61 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909), 2);
         assertEq(uint8(IERCAgentBindings.TokenStandard.ERC1155F), 3);
         assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909F), 4);
+    }
+
+    function testPrimaryInterfacesCastAndSelectors() external {
+        IERC8004AdapterPrimaryAgent full = IERC8004AdapterPrimaryAgent(address(adapter));
+        IERC8004AdapterCounterfactualPrimaryAgent cf = IERC8004AdapterCounterfactualPrimaryAgent(address(adapter));
+        assertEq(full.primaryAgentOf(alice), type(uint256).max);
+        assertEq(cf.primaryCounterfactualAgentOf(alice), bytes32(type(uint256).max));
+        assertEq(IERC8004AdapterPrimaryAgent.setPrimaryAgent.selector, bytes4(keccak256("setPrimaryAgent(uint256)")));
+        assertEq(
+            IERC8004AdapterCounterfactualPrimaryAgent.setPrimaryCounterfactualAgent.selector,
+            bytes4(keccak256("setPrimaryCounterfactualAgent(address,uint256)"))
+        );
+        (bool oldNonceGetter,) = address(adapter).staticcall(abi.encodeWithSignature("nonces(address)", alice));
+        assertFalse(oldNonceGetter);
+        (bool counterfactualNonceGetter,) =
+            address(adapter).staticcall(abi.encodeWithSignature("primaryCounterfactualAgentNonces(address)", alice));
+        assertFalse(counterfactualNonceGetter);
+        (bool counterfactualSetWithSig,) = address(adapter).call(
+            abi.encodeWithSignature(
+                "setPrimaryCounterfactualAgentWithSig(address,address,uint256,uint256,bytes)",
+                alice,
+                address(token721),
+                1,
+                block.timestamp,
+                bytes("")
+            )
+        );
+        assertFalse(counterfactualSetWithSig);
+        (bool counterfactualClearWithSig,) = address(adapter).call(
+            abi.encodeWithSignature(
+                "clearPrimaryCounterfactualAgentWithSig(address,uint256,bytes)", alice, block.timestamp, bytes("")
+            )
+        );
+        assertFalse(counterfactualClearWithSig);
+    }
+
+    function testCounterfactualHashInterfaceCastAndSelectors() external view {
+        IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
+        assertEq(cf.chainIdentifier(), adapter.chainIdentifier());
+        assertEq(cf.interoperableAddress(alice), adapter.interoperableAddress(alice));
+        assertEq(cf.registrationHash(alice, 7), adapter.registrationHash(alice, 7));
+        assertEq(
+            IERC8004AdapterCounterfactual.interoperableAddress.selector,
+            bytes4(keccak256("interoperableAddress(address)"))
+        );
+    }
+
+    function testPrimaryEventTopicsAreSystemSpecific() external pure {
+        assertEq(
+            IERC8004AdapterPrimaryAgent.PrimaryAgentSet.selector, keccak256("PrimaryAgentSet(address,uint256,address)")
+        );
+        assertEq(
+            IERC8004AdapterCounterfactualPrimaryAgent.PrimaryCounterfactualAgentSet.selector,
+            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,address)")
+        );
     }
 
     // ---------------------------------------------------------------------

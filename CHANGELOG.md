@@ -14,7 +14,7 @@ The adapter is a Safe-owned UUPS proxy. A source version is not live until its
 implementation is deployed and the proxy is upgraded via the multisig. Confirm
 the live implementation on a block explorer before relying on a version.
 
-**Currently live on-chain (verified 2026-05-23, per-chain — they differ):**
+**Currently live on-chain (verified from EIP-1967 slots on 2026-07-29; per-chain — they differ):**
 
 - **Sepolia** (`0x7621…`): the **delegate.xyz v2** implementation
   (`0x31a68E5b…`). Proxy was upgraded, so delegate.xyz support is live here.
@@ -24,8 +24,93 @@ the live implementation on a block explorer before relying on a version.
 - **Mainnet** (`0xde15…`): the counterfactual implementation
   (`0xa6D23f27…`). delegate.xyz is NOT live (its impl was never deployed here).
 
-`0.0.6` and `0.0.7` are not live on any chain. Re-verify the EIP-1967
-implementation slot on a block explorer before relying on this.
+Numbered source versions `0.0.6`-`0.0.13` are not live on any chain. In
+particular, the primary-agent layouts in `0.0.9`-`0.0.13` are not production
+upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
+on this summary; see the
+[last-deployed baseline audit](./deployments/upgrade-baseline-from-last-deployed.md).
+
+## [0.0.14] - Unreleased
+
+Breaking source release. Not deployed. Upgrades directly from the active
+May 15 counterfactual implementation on Mainnet/Base and the active
+delegate.xyz implementation on Sepolia. Both deployed baselines have only
+regular slots 0 and 1. Uses empty `upgradeToAndCall` data (not an initializer
+or reinitializer payload).
+The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
+
+### Changed
+
+- Split reverse resolution into two independent systems:
+  - full ERC-8004: `uint256` `setPrimaryAgent`, `primaryAgentOf`, full-only events, and
+    `primaryAgentNonces`;
+  - counterfactual: new `set/clear/primaryCounterfactualAgent...` APIs, coordinate-bearing
+    `PrimaryCounterfactualAgent...` events.
+- `registerAndSetPrimary` writes only the full mapping.
+- Removed the ambiguous `nonces(address)` API and old `setPrimaryAgent(bytes32)` selector.
+  `PrimaryAgentSet` and `PrimaryAgentSetWithSig` now index a `uint256`, changing their topic0.
+- Counterfactual hashes now use
+  `keccak256(abi.encode(interoperableAddress(address(adapter)),
+  tokenContract, tokenId))`. The adapter proxy is a full ERC-7930 v1 / CAIP-350 `eip155`
+  Interoperable Address containing the local chain and raw 20-byte proxy address. `tokenContract`
+  deliberately remains a naked EVM `address`; chain binding comes from the adapter Interoperable
+  Address alone. `interoperableAddress(address)` exposes that encoding, while `chainIdentifier()`
+  exposes its AddressLength=0 chain-only variant. This uses
+  `abi.encode(bytes,address,uint256)`, not packed encoding, and is a hard hash cutover with no
+  legacy fallback.
+- Full-system signatures use the `SetPrimary8004Agent` and `ClearPrimary8004Agent` EIP-712
+  types. The standard numeric-EVM `EIP712Domain` is unchanged.
+
+### Removed
+
+- Removed the unreleased signature-based counterfactual registration APIs
+  `counterfactualRegisterWithSig(...)` and
+  `counterfactualRegisterAndSetPrimaryWithSig(...)`. Register-at-mint now uses the unsigned
+  counterfactual register family: the collection calls the adapter directly while the
+  ERC-721/ERC-1155F/ERC-6909F id is ownerless, then mints.
+- Removed their EIP-712 typehashes, payload structs, metadata hashing and verification helpers,
+  bundled registration-event helper, CF-only `ExpirationTooFar` error, tests, and typed-data
+  fixture content.
+- Removed the unreleased signed counterfactual-primary APIs and nonce getter, their EIP-712
+  typehashes, `WithSig` events, tests, and fixture:
+  `setPrimaryCounterfactualAgentWithSig`, `clearPrimaryCounterfactualAgentWithSig`, and
+  `primaryCounterfactualAgentNonces`. Full-system signed primary reverse-resolution remains
+  available through `setPrimaryAgentWithSig` and `clearPrimaryAgentWithSig`.
+
+### Storage and migration
+
+- Appended `_primaryAgent` (slot 2), `_primaryCounterfactualAgent` (slot 3), and
+  `_primaryAgentNonces` (slot 4) directly after the live fields. The unreleased
+  0.0.9-0.0.13 layouts consume no
+  compatibility slots because they were never deployed.
+- There is no production primary-agent state to migrate and no heuristic migration or
+  reinitializer. Both new systems begin unset after a direct live-baseline upgrade.
+  Production rollout must still prove zero legacy primary events and stop if that gate fails,
+  because a failure would contradict the audited baseline.
+
+## [0.0.13] - Unreleased
+
+Source version. Not deployed. No storage migration or initializer.
+
+### Added
+- Ownerless collection authority for every existing **unsigned** counterfactual write on
+  ERC-721, ERC-1155F, and ERC-6909F. When the directly calling `tokenContract` has deployed
+  code and `ownerOf(tokenId)` reverts or returns canonical `address(0)`, it may emit registration,
+  URI, metadata, batch metadata, wallet-set, and wallet-unset events before mint. Events keep
+  `emitter = tokenContract`; multiple emissions remain allowed and latest log order wins.
+- Fail-closed `ownerOf` response validation. A successful result must be exactly one canonical
+  ABI address word; wrong-length or dirty-upper-bit results revert `InvalidOwnerOfResponse`.
+
+### Changed
+- `_requireValidTokenContract` now rejects addresses without deployed code, preventing an EOA
+  from masquerading as an ownerless collection. Constructor-time adapter calls are unsupported.
+- After mint, collection calls fall back to the unchanged owner/delegate controller model. A burn
+  can reopen the collection-only window because “ownerless” means no current owner and the adapter
+  deliberately stores no historical-existence bit.
+- Plain ERC-1155 and ERC-6909 remain positive-balance controlled.
+
+There are no new public selectors, storage slots, registration-hash changes, counterfactual event
+topics, payload-version changes, or EIP-712 changes in `0.0.13`.
 
 ## [0.0.12] - Unreleased
 
@@ -64,25 +149,20 @@ is appended at slot 3 and slots 0/1/2 are byte-identical to `0.0.10`.
     relayer submits a signature by `account` itself (EOA `ecrecover` or the account's ERC-1271
     policy, via `SignatureChecker`). Strictly account-self: there is **no** owner/admin/controller
     signature route (that authority stays on the paid `setPrimaryAgentFor` / `clearPrimaryAgentFor`).
-  - `counterfactualRegisterAndSetPrimaryWithSig(...) -> registrationHash` — one signer atomically
-    registers its own counterfactual agent and makes that deterministic `registrationHash` its own
-    primary agent. A single `signer` field is both the direct token holder and the primary-agent
-    account; there is no independent `agentId` and no split-party (register-for-X, point-Y) route.
-  - `nonces(address)` — one monotonic nonce per account, **shared** by all three signed operations,
+  - `nonces(address)` — one monotonic nonce per account, **shared** by signed set/clear operations,
     embedded in the signed struct (not a calldata argument) and consumed once per success, so a used
     signature cannot be replayed and any op pre-signed against the same nonce is invalidated.
   - `MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME = 30 minutes` deadline cap (a deadline equal to the current
-    block timestamp is still valid); errors `SignatureDeadlineTooFar` / `SignatureExpired` and the
-    shared `InvalidSignature`.
+    block timestamp is still valid); errors `SignatureDeadlineTooFar` / `SignatureExpired` and
+    `InvalidSignature`.
   - Audit events `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)` and
     `PrimaryAgentClearedWithSig(account, relayer, nonce)`. The legacy `PrimaryAgentSet` /
     `PrimaryAgentCleared` events are unchanged and still emitted first with `setBy` / `clearedBy` =
     `msg.sender` (the relayer); indexers act on the legacy event and use the signed event only for
     provenance (authorization = EIP-712, relayer, nonce).
   - `agent-binding` semantics unchanged: `agentId == 0` is a valid claim; the all-ones sentinel is
-    reserved and reverts `PrimaryAgentIdReserved`. The paid setters, the standalone counterfactual
-    registration (its nonce-free 30-minute `expiration` policy), and slot-2 complement encoding are
-    all untouched.
+    reserved and reverts `PrimaryAgentIdReserved`. The paid setters and slot-2 complement encoding
+    are untouched.
   - Consumer fixtures (EIP-712 type strings, viem typed-data, and example calldata) published under
     [`docs/fixtures/`](./docs/fixtures/adapter-primaryagent-withsig.md).
 
@@ -174,25 +254,12 @@ Source version. Not deployed. Requires a fresh security review and audit pass
 before any multisig deploy.
 
 ### Added
-- `counterfactualRegisterWithSig`: signature-authorized counterfactual
-  registration for ERC-721-, ERC-1155-, ERC-6909-, ERC-1155F-, and
-  ERC-6909F-bound agents. The token owner signs one EIP-712
-  payload (`agentURI` + full `metadata` + optional `agentWallet` + bounded
-  `expiration`) and any caller (an NFT mint function, router, or relayer) can
-  submit it, so a counterfactual registration can be folded into a mint
-  transaction. Emits the existing `CounterfactualAgentRegistered` (and
-  `CounterfactualAgentWalletSet` when a wallet is included) with
-  `emitter = owner`. Owner-only signer (`ownerOf(tokenId)`), `MAX_EXPIRATION_DELAY`
-  of 30 minutes, no nonce, no new storage (stateless EIP-712 domain). Solves the
-  register-at-mint problem; updates afterward use the existing controller-gated
-  unsigned setters.
 - Token standard enum values `ERC1155F` (`0x03`) and `ERC6909F` (`0x04`) for
   non-fungible ERC-1155/ERC-6909 tokens that expose `ownerOf(uint256)` per the
   ERC-8276 (Non-Fungible Multi-Token `ownerOf`) profile, in review as
   Ethereum/ERCs PR #1767. These standards use single-owner control (`ownerOf`
   plus delegate.xyz on unsigned/controller-gated paths); plain
   ERC-1155/ERC-6909 remain balance-based.
-- Errors: `ExpirationTooFar`, `SignatureExpired`, `InvalidSignature`.
 
 ### Changed (security review)
 - Reserved the `cf-registration` key on the **canonical** write surface as well:
@@ -200,14 +267,6 @@ before any multisig deploy.
   counterfactual surface. Previously the key was reserved only on counterfactual
   writes, so a controller could fabricate a promotion back-link on the canonical
   surface. The key has no legitimate on-chain writer.
-- `counterfactualRegisterWithSig` EIP-712 type now declares the dynamic fields
-  with their wallet-renderable types: `string agentURI` and
-  `MetadataEntry[] metadata` (with the nested `MetadataEntry` type appended),
-  replacing the opaque `bytes32 agentURIHash` / `bytes32 metadataHash`. Wallets
-  now display the actual URI and metadata being signed instead of two hashes.
-  On-chain digest hashing is unchanged in form; only the type string (and thus
-  the typehash) changed. Safe to do now because the signed surface has never
-  been deployed, so no signatures or integrators exist against the old type.
 - Removed an unreachable internal helper (`_requireNotReservedBindingKey`) whose
   name was one character from a live helper; canonical writes now route through
   the shared counterfactual-key guard.

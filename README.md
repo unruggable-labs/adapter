@@ -1,10 +1,10 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.12`
+## Version `0.0.14`
 
-![version](https://img.shields.io/badge/version-0.0.12-blue)
+![version](https://img.shields.io/badge/version-0.0.14-blue)
 
-The current contract version is **`0.0.12`** (`@custom:version` in [`src/Adapter8004.sol`](/Users/nxt3d/projects/adapter/src/Adapter8004.sol)). This is the repo source; the `0.0.12` implementation is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.14`** (`@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol)). This is unreleased repo source and is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -71,12 +71,12 @@ Supported binding standards:
 - ERC-1155F
 - ERC-6909F
 
-What `0.0.10` adds over the initial release (on-chain status varies by chain and version — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting`, the signed register, and the primary-agent surface are not yet deployed anywhere):
+What the unreleased source adds over the active deployments (on-chain status varies by chain — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting` and the primary-agent surface are not yet deployed anywhere):
 
 - `bindExisting(...)`: pull an already-minted ERC-8004 agent into adapter management against an external token, using a two-transaction approval model.
 - delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
-- `counterfactualRegisterWithSig(...)`: a signature-authorized counterfactual registration so a mint function or relayer can register on the token owner's behalf in one owner signature (full URI + metadata + optional agent wallet). Supports all binding standards. Solves register-at-mint.
+- Direct collection register-at-mint for ownerless ERC-721/ERC-1155F/ERC-6909F ids through the existing unsigned counterfactual selectors.
 - Primary-agent reverse resolution: an `address => agent id` mapping so any consumer can go from a wallet address (or any address recorded in agent metadata) to the agent it claims to belong to, on this chain.
 
 ## What The Adapter Does
@@ -176,11 +176,11 @@ Adapter proxy addresses:
 - Base: `0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27`
 - Sepolia: `0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92`
 
-Adapter implementation addresses (Ethereum mainnet and Base are initial-release; Sepolia is the current live implementation):
+Current live implementation addresses (verified via the EIP-1967 slots; see the [upgrade-baseline audit](./deployments/upgrade-baseline-from-last-deployed.md)):
 
-- Ethereum mainnet: `0xA54a604448A5Ab0AfFccdDa6228EC4F2ac12a586`
-- Base: `0x9DB9d78E1BB45604Fbfe30FaE123B152FA10de2d`
-- Sepolia: `0x31a68e5bc0224ad081d6ec20229b05f558609257` (current live implementation, verified via the EIP-1967 slot; the Sepolia proxy was upgraded past its initial-release implementation `0x5Ced539aE5Fe67183a2bA4E984F92D57dFB3bd49`)
+- Ethereum mainnet: `0xa6D23f27D3b1780B12488482a008cB3c3787135f` (2026-05-15 counterfactual build)
+- Base: `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9` (2026-05-15 counterfactual build)
+- Sepolia: `0x31a68E5bc0224ad081d6Ec20229B05F558609257` (delegate.xyz build)
 
 Admin (Safe v1.4.1 multisig, same address on all three chains):
 
@@ -190,7 +190,16 @@ Previously held by EOA `0xF8e03bd4436371E0e2F7C02E529b2172fe72b4EF` until the 20
 
 Users and integrators should interact with the proxy addresses, not the implementation addresses.
 
-Implementation upgrades are governed by the Safe multisig through UUPS. The [`deployments/`](./deployments) folder is the authoritative record of each upgrade and its prepared Safe transaction payloads, including the `0.0.6` implementation. Confirm the live implementation on a block explorer before relying on a specific version on a specific chain.
+Implementation upgrades are governed by the Safe multisig through UUPS. The [`deployments/`](./deployments) folder records executed upgrades, implementation-only deployments, and prepared Safe payloads; those are different states. The `0.0.6` payloads were not executed, and the purported Mainnet implementation address came from a dry run and has no code. Confirm the live EIP-1967 implementation slot before relying on a version on any chain.
+
+The unreleased `0.0.14` implementation upgrades directly from the active
+Mainnet/Base May 15 build or the active Sepolia delegate.xyz build—not from
+unreleased numbered source versions. Both live layouts populate only regular
+slots 0 and 1. The three new primary-agent mappings append directly at slots
+2-4. Existing proxies must use empty
+`upgradeToAndCall` data; `initialize(...)` is only for a new proxy. No storage
+migration or reinitializer is required. Sepolia's delegate.xyz getters and
+authorization remain present in `0.0.14`.
 
 ## Flow
 
@@ -364,9 +373,28 @@ Note that repointing only changes where future forwarded calls go. It does not m
 
 ## Counterfactual Registration
 
-The counterfactual family mirrors the register surface as emit-only functions. They produce no ERC-8004 registry write and no adapter SSTORE; the emitted event is the only on-chain record. They are gated by current bound-token control, exactly like the on-chain surface, so only a controller can emit a claim for a given token.
+The counterfactual family mirrors the register surface as emit-only functions. They produce no ERC-8004 registry write and no adapter SSTORE; the emitted event is the only on-chain record. Every unsigned function accepts the existing current-controller authority. In addition, an ERC-721, ERC-1155F, or ERC-6909F token contract may call directly for its own id while `ownerOf(tokenId)` reports no current owner. This temporary collection authority lets the complete identity record be emitted immediately before mint without an owner signature or staging transfer.
 
 This enables off-chain identities: a token can carry a usable identity through events before any on-chain mint, and can later be promoted to a real on-chain registration.
+
+Recommended collection flow:
+
+```solidity
+function mint(address buyer, uint256 tokenId, string calldata agentURI) external {
+    adapter.counterfactualRegister(
+        IERCAgentBindings.TokenStandard.ERC721,
+        address(this),
+        tokenId,
+        agentURI
+    );
+    // Optional URI, metadata, or wallet counterfactual setters may run here too.
+    _mint(buyer, tokenId);
+}
+```
+
+The collection must be the direct adapter caller and pass its own deployed address as `tokenContract`; a router, forwarded sender, `delegatecall`, or call from the collection constructor does not establish this authority. Register first and mint second. After `ownerOf` returns a nonzero owner, the collection has no special privilege and calls revert unless it separately qualifies under the normal owner/delegate controller model. The buyer or an authorized delegate can then overwrite the collection payload, and latest log order wins. Multiple emissions are allowed while no owner exists and share the same `registrationHash`.
+
+Plain ERC-1155 and ERC-6909 do not gain this ownerless path because neither standard supplies a universal global owner/nonexistence query; their unsigned calls still require positive balance. A reverted `ownerOf` or canonical `address(0)` response means “no current owner,” not “never minted,” so burning a single-owner id can reopen the collection-only window. Signature-based counterfactual registration is intentionally not supported: register-at-mint collections should call the unsigned function directly while the id is ownerless, then mint.
 
 Functions:
 
@@ -374,56 +402,64 @@ Functions:
 - `counterfactualSetAgentURI(standard, tokenContract, tokenId, newURI)`
 - `counterfactualSetMetadata(standard, tokenContract, tokenId, key, value)`
 - `counterfactualSetMetadataBatch(standard, tokenContract, tokenId, entries)`
-- `counterfactualSetAgentWallet(standard, tokenContract, tokenId, newWallet)` (no signature, no expiration, because no ERC-8004 wallet binding is created)
+- `counterfactualSetAgentWallet(standard, tokenContract, tokenId, newWallet)` (no signature because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, tokenContract, tokenId)`
 - `registrationHash(tokenContract, tokenId)` (view)
+- `interoperableAddress(account)` (view)
+- `chainIdentifier()` (view)
 - `counterfactualPayloadVersion()` (pure)
 
 Indexer rules:
 
 - each event carries `uint8 version` as its first non-indexed field; this baseline emits `version == 1`
 - the three indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`
-- the `registrationHash` is `keccak256(abi.encode(block.chainid, adapterProxy, tokenContract, tokenId))`, so a claim cannot be replayed across chains, adapters, or token ids; the token standard is excluded, so a token has one identity regardless of the interface it is registered through
+- the `registrationHash` is
+  `keccak256(abi.encode(interoperableAddress(adapterProxy), tokenContract, tokenId))`,
+  using standard `(bytes,address,uint256)` ABI encoding (not packed); the adapter proxy carries the
+  full local ERC-7930 envelope, `tokenContract` remains a naked EVM address, and the token standard
+  remains excluded
+- `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
+  chain plus AddressLength `20` and the raw EVM address
+- `chainIdentifier()` returns the same local chain envelope with AddressLength `0`; it remains a
+  useful chain diagnostic but is not one of the canonical hash fields
+- chain binding comes from the adapter proxy's Interoperable Address alone; do not encode
+  `tokenContract` as an Interoperable Address
 - indexers MUST treat the latest event per `(tokenContract, tokenId)` as authoritative
+- order state transitions by `(blockNumber, transactionIndex, logIndex)`; a later full registration
+  replaces the earlier full payload and later setters update individual fields
+- ownerless collection events carry `emitter == tokenContract`; this records the authorizing caller,
+  but is not a permanent proof that the token was pre-mint because the collection may later be a
+  normal owner or delegate
 
 Reserved keys on the counterfactual write surface: `agent-binding` and `cf-registration`.
 
 > BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event (including the `uint8 version` field itself) changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to the payload version or to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
 
-### Primary agent (reverse resolution)
+### Independent primary-agent systems
 
-The adapter maps an address to the agent it claims to belong to, so any consumer can go from a wallet address (or any address recorded in agent metadata) to an agent id on this chain. The stored id is either an ERC-8004 registry token id (small, incremental, stored as `bytes32(id)`) or a 32-byte counterfactual `registrationHash`; the two id spaces do not collide, so a single mapping holds both.
+`0.0.14` has two structurally separate reverse claims. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 registrationHash`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
 
-The mapping records only the address's own claim. A verified link also requires reading the agent's own wallet claim (the ERC-8004 `agentWallet`, or the counterfactual `CounterfactualAgentWalletSet` event) and checking that the wallet and the agent point at each other.
+Full ERC-8004:
 
-The stored value is the bitwise complement of the id, so an unwritten slot reads back as the reserved all-ones sentinel `PRIMARY_AGENT_UNSET` — which means "unset" is distinct from every real id, including agent id `0` (a real, settable id). Clearing is an explicit call, never `setPrimaryAgent(0)`. This design keeps the storage layout unchanged (same slot 2, same `mapping(address => bytes32)`).
+- `setPrimaryAgent(uint256 agentId)` / `setPrimaryAgentFor(account, agentId)`
+- `clearPrimaryAgent()` / `clearPrimaryAgentFor(account)`
+- `primaryAgentOf(account) -> uint256`
+- `setPrimaryAgentWithSig(...)`, `clearPrimaryAgentWithSig(...)`, and `primaryAgentNonces(account)`
+- unset is `PRIMARY_AGENT_UNSET == type(uint256).max`; agent ID `0` is valid
 
-Functions:
+Counterfactual:
 
-- `setPrimaryAgent(bytes32 agentId)` — set the caller's own id; reverts `PrimaryAgentIdReserved` for the all-ones sentinel
-- `setPrimaryAgentFor(address account, bytes32 agentId)` — set an account's id; authorized when the caller is the account, its `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`
-- `clearPrimaryAgent()` — clear the caller's own id (reads back as `PRIMARY_AGENT_UNSET`)
-- `clearPrimaryAgentFor(address account)` — clear an account's id, under the same authorization as `setPrimaryAgentFor`
-- `primaryAgentOf(address account)` (view) — reverse-resolve to the id; returns the all-ones `PRIMARY_AGENT_UNSET` sentinel if unset
+- `setPrimaryCounterfactualAgent(tokenContract, tokenId)` / `setPrimaryCounterfactualAgentFor(account, tokenContract, tokenId)`
+- `clearPrimaryCounterfactualAgent()` / `clearPrimaryCounterfactualAgentFor(account)`
+- `primaryCounterfactualAgentOf(account) -> bytes32`
+- setters derive the hash; callers cannot store an arbitrary value
+- unset is `PRIMARY_COUNTERFACTUAL_AGENT_UNSET == bytes32(type(uint256).max)`
 
-Emits `PrimaryAgentSet(account, agentId, setBy)` on set, `PrimaryAgentCleared(account, clearedBy)` on clear.
+Paid `...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. The full-system signed reverse-pointer calls are strictly account-self through EOA/ERC-1271 `SignatureChecker`, allow any relayer, and retain the inclusive 30-minute deadline cap. Counterfactual primaries intentionally have no signed/gasless surface; collections use the direct unsigned register-at-mint path and `setPrimaryCounterfactualAgentFor`. `registerAndSetPrimary` writes only the full mapping.
 
-#### Gasless (signed) primary agent — v0.0.11
+Each full-system signed reverse-pointer path emits its state event first and its `WithSig` provenance event second.
 
-An account can authorize a primary-agent change with an EIP-712 signature and let any relayer submit it (no gas from the account). All three signed methods are **strictly account-self**: the signature is verified against `account` via EOA `ecrecover` **or the account's ERC-1271 policy** ([`SignatureChecker`](https://docs.openzeppelin.com/contracts/5.x/api/utils#SignatureChecker)). There is deliberately **no** owner/admin/controller signature route — that authority remains only on the paid `setPrimaryAgentFor` / `clearPrimaryAgentFor`.
-
-- `setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes signature)`
-- `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
-- `counterfactualRegisterAndSetPrimaryWithSig(standard, tokenContract, tokenId, agentURI, metadata[], agentWallet, signer, deadline, signature) -> registrationHash` — one `signer` atomically registers its own counterfactual agent and makes that deterministic `registrationHash` its own primary agent (single-signer; no independent `agentId`, no register-for-X / point-Y).
-- `nonces(address account)` (view) — one monotonic nonce per account, **shared** across all three signed methods.
-
-Replay/expiry model: the signed struct embeds the current `nonces(account)` (read on-chain, **not** a calldata argument) and a `deadline` capped at **30 minutes** (`MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME`; a deadline equal to the current block timestamp is still valid). A success consumes the nonce exactly once, so a used signature cannot be replayed and any other signed op pre-signed against the same nonce becomes invalid. Fetch `nonces(account)` immediately before signing; a stale signature is a refresh-and-resign, never a relayer retry. Errors: `SignatureDeadlineTooFar`, `SignatureExpired`, `InvalidSignature`. `agentId == 0` is a valid claim; the all-ones sentinel reverts `PrimaryAgentIdReserved`.
-
-**Safe / ERC-1271 caveat:** for a smart-contract account (e.g. a Safe), authorization is whatever that account's `isValidSignature` accepts — a Safe expresses delegated signing through its own ERC-1271 policy, not through any adapter-side owner/admin interpretation. A contract account whose ERC-1271 rejects a digest cannot be moved even by its `owner()`'s EOA signature on this path.
-
-**Event/indexer semantics:** each signed call emits the **legacy** state event first — `PrimaryAgentSet(account, agentId, setBy)` or `PrimaryAgentCleared(account, clearedBy)` with `setBy`/`clearedBy` = `msg.sender` (the **relayer**, kept truthful and backwards-compatible) — then a supplemental audit event `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)` / `PrimaryAgentClearedWithSig(account, relayer, nonce)`. Indexers update the reverse pointer **once** from the legacy event and use the signed event only to enrich provenance (authorization = EIP-712, relayer, consumed nonce); it is not a second state transition. The combined call additionally emits the existing `CounterfactualAgentRegistered` (and optional `CounterfactualAgentWalletSet`) with `emitter = signer` before the primary events.
-
-EIP-712 type strings, a viem typed-data object, and example calldata are published in [`docs/fixtures/adapter-primaryagent-withsig.md`](./docs/fixtures/adapter-primaryagent-withsig.md) — that generated fixture and the interface/ABI are the source of truth for consumers (Dappa must not hand-maintain a separate schema).
+This is a hard cutover from unreleased source behavior, not a production storage migration. Live proxies never deployed the old mixed pointer or shared nonce, so the new mappings occupy slots 2–4 and start empty. Old bare-chain-id hashes and old EIP-712 signatures are invalid. See the [full signed-primary fixture](./docs/fixtures/adapter-primaryagent-withsig.md), [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md), and [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
 
 ## ERC Alignment
 
@@ -489,16 +525,22 @@ Counterfactual (emit-only) functions:
 - `counterfactualSetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId, address newWallet)`
 - `counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)`
 - `registrationHash(address tokenContract, uint256 tokenId)`
+- `interoperableAddress(address account)`
+- `chainIdentifier()`
 - `counterfactualPayloadVersion()`
-- `setPrimaryAgent(bytes32 agentId)`
-- `setPrimaryAgentFor(address account, bytes32 agentId)`
+- `setPrimaryAgent(uint256 agentId)`
+- `setPrimaryAgentFor(address account, uint256 agentId)`
 - `clearPrimaryAgent()`
 - `clearPrimaryAgentFor(address account)`
 - `primaryAgentOf(address account)`
-- `setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes signature)`
+- `setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes signature)`
 - `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
-- `counterfactualRegisterAndSetPrimaryWithSig(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata, address agentWallet, address signer, uint256 deadline, bytes signature)`
-- `nonces(address account)`
+- `primaryAgentNonces(address account)`
+- `setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)`
+- `setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)`
+- `clearPrimaryCounterfactualAgent()`
+- `clearPrimaryCounterfactualAgentFor(address account)`
+- `primaryCounterfactualAgentOf(address account)`
 
 ERC-required verification function:
 

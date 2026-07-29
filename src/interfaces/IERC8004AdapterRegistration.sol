@@ -26,9 +26,9 @@ interface IERC8004AdapterRegistration {
 
     /// @notice Caller-paid one-transaction wrapper: `register(standard, tokenContract, tokenId,
     /// agentURI)` (empty metadata) immediately followed by recording the returned `agentId` as the
-    /// CALLER's own primary agent (`setPrimaryAgent(bytes32(agentId))`). No signature or relayer. Same
+    /// CALLER's own full primary agent (`setPrimaryAgent(agentId)`). No signature or relayer. Same
     /// token-control authorization and `AgentBound` event/return as `register`, plus a
-    /// `PrimaryAgentSet(caller, bytes32(agentId), caller)`. Introduces no new storage, auth, or events.
+    /// `PrimaryAgentSet(caller, agentId, caller)`. Introduces no new authorization model.
     function registerAndSetPrimary(
         IERCAgentBindings.TokenStandard standard,
         address tokenContract,

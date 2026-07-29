@@ -14,6 +14,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
+import {IERC8004AdapterCounterfactualPrimaryAgent} from "./interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
 import {IERC8004AdapterPrimaryAgent} from "./interfaces/IERC8004AdapterPrimaryAgent.sol";
 import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistration.sol";
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
@@ -23,7 +24,15 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
-/// @custom:version 0.0.12
+/// @notice Upgrade target for the active Adapter8004 proxies.
+/// @dev The production upgrade baseline is the implementation currently selected by each proxy,
+/// not the unreleased 0.0.9-0.0.13 source history. The active Mainnet/Base and Sepolia
+/// implementations both use regular slots 0 (`identityRegistry`) and 1 (`_bindings`) only.
+/// v0.0.14 appends its three primary-agent mappings directly at slots 2-4. A direct production
+/// upgrade requires no migration or reinitializer and must use empty `upgradeToAndCall` data.
+/// Sepolia's live delegate.xyz constants and authorization behavior are retained by this
+/// implementation.
+/// @custom:version 0.0.14
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -34,7 +43,8 @@ contract Adapter8004 is
     IERC8004IdentityRecord,
     IERC8004AdapterRegistration,
     IERC8004AdapterCounterfactual,
-    IERC8004AdapterPrimaryAgent
+    IERC8004AdapterPrimaryAgent,
+    IERC8004AdapterCounterfactualPrimaryAgent
 {
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
@@ -68,11 +78,7 @@ contract Adapter8004 is
     /// downstream indexer to subscribe to the new topics from that block forward.
     uint8 private constant COUNTERFACTUAL_PAYLOAD_VERSION = 1;
 
-    /// @notice Upper bound on how far in the future a signed counterfactual `expiration` may sit. Caps
-    /// the window during which a superseded-but-unexpired owner signature can be replayed.
-    uint256 private constant MAX_EXPIRATION_DELAY = 30 minutes;
-
-    /// @notice Stateless EIP-712 domain for the signed counterfactual surface. The domain name
+    /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
     /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
     /// inline from `block.chainid` and `address(this)` so no storage slot or cached separator is
     /// introduced and the contract stays storage-layout neutral across upgrades.
@@ -81,33 +87,23 @@ contract Adapter8004 is
     string private constant EIP712_NAME = "Adapter8004";
     string private constant EIP712_VERSION = "1";
 
-    /// @notice EIP-712 typehash for the signed counterfactual registration payload. Dynamic fields
-    /// are declared with their wallet-renderable types; hashing still follows the EIP-712 rules.
-    bytes32 private constant COUNTERFACTUAL_REGISTER_TYPEHASH = keccak256(
-        "CounterfactualRegister(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address owner,uint256 expiration)MetadataEntry(string metadataKey,bytes metadataValue)"
-    );
-
-    /// @notice EIP-712 typehash for a single metadata entry, hashed per the EIP-712 array rule.
-    bytes32 private constant METADATA_ENTRY_TYPEHASH =
-        keccak256("MetadataEntry(string metadataKey,bytes metadataValue)");
-
     /// @notice Upper bound on how far in the future a signed primary-agent `deadline` may sit. A
-    /// separate constant from `MAX_EXPIRATION_DELAY` (they happen to share a value) so the primary-agent
-    /// gasless surface and the counterfactual registration surface can be reasoned about independently.
+    /// short lifetime bounds replay exposure for relayer-submitted reverse-pointer updates.
     uint256 private constant MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME = 30 minutes;
 
-    /// @notice EIP-712 typehashes for the gasless (account-self) primary-agent surface. The signed
-    /// payloads embed the on-chain `nonces[account]` value (read immediately before hashing) and a
-    /// bounded `deadline`; the `nonce` is deliberately not a calldata argument.
+    /// @notice EIP-712 typehashes for the gasless (account-self) full-system primary-agent surface.
+    /// The signed payloads embed the operation's on-chain nonce and a bounded `deadline`;
+    /// the `nonce` is deliberately not a calldata argument.
     bytes32 private constant SET_PRIMARY_AGENT_TYPEHASH =
-        keccak256("SetPrimaryAgent(address account,bytes32 agentId,uint256 nonce,uint256 deadline)");
+        keccak256("SetPrimary8004Agent(address account,uint256 agentId,uint256 nonce,uint256 deadline)");
     bytes32 private constant CLEAR_PRIMARY_AGENT_TYPEHASH =
-        keccak256("ClearPrimaryAgent(address account,uint256 nonce,uint256 deadline)");
-    bytes32 private constant COUNTERFACTUAL_REGISTER_AND_SET_PRIMARY_TYPEHASH = keccak256(
-        "CounterfactualRegisterAndSetPrimary(uint8 standard,address tokenContract,uint256 tokenId,string agentURI,MetadataEntry[] metadata,address agentWallet,address signer,uint256 nonce,uint256 deadline)MetadataEntry(string metadataKey,bytes metadataValue)"
-    );
+        keccak256("ClearPrimary8004Agent(address account,uint256 nonce,uint256 deadline)");
 
     error InvalidTokenContract();
+    /// @notice Thrown when a single-owner token's `ownerOf(tokenId)` call succeeds but does not
+    /// return exactly one canonical ABI-encoded address word. Malformed success responses fail
+    /// closed rather than opening the ownerless collection-authority window.
+    error InvalidOwnerOfResponse(address tokenContract, uint256 tokenId);
     /// @notice Thrown when a binding attempts to set `tokenContract` to the ERC-8004 identity registry
     /// itself. Permitted-and-then-bound, the agent would be permanently uncontrollable because
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
@@ -122,25 +118,21 @@ contract Adapter8004 is
     /// @notice Thrown when a primary-agent setter is passed `PRIMARY_AGENT_UNSET` (all ones). That
     /// value is reserved as the "unset" sentinel: it complements to zero in storage and would be
     /// indistinguishable from a never-written entry. Clear via `clearPrimaryAgent[For]` instead.
-    error PrimaryAgentIdReserved(bytes32 agentId);
+    error PrimaryAgentIdReserved(uint256 agentId);
+    error PrimaryCounterfactualAgentHashReserved(bytes32 registrationHash);
+    error InvalidChainId();
     error UnknownAgent(uint256 agentId);
     error AlreadyBound(uint256 agentId);
     error NotAgentOwner(uint256 agentId, address owner);
     error AgentTransferNotApproved(uint256 agentId);
 
-    /// @notice Thrown when a signed counterfactual registration's `expiration` is more than
-    /// `MAX_EXPIRATION_DELAY` seconds in the future. Bounds the replay window of a signed payload.
-    error ExpirationTooFar(uint256 expiration);
-    /// @notice Thrown when the current block timestamp is past the signed `expiration`.
-    error SignatureExpired(uint256 expiration);
+    /// @notice Thrown when the current block timestamp is past a signed primary-agent `deadline`.
+    error SignatureExpired(uint256 deadline);
     /// @notice Thrown when a signed primary-agent `deadline` is more than
-    /// `MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME` seconds in the future. Distinct from `ExpirationTooFar`,
-    /// which guards the counterfactual `expiration`, so the two signed surfaces stay independent.
+    /// `MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME` seconds in the future.
     error SignatureDeadlineTooFar(uint256 deadline);
-    /// @notice Thrown when the owner signature fails EOA and ERC-1271 verification for the digest.
-    /// Shared across the counterfactual and primary-agent signed surfaces: it already means "the EOA
-    /// or ERC-1271 check failed for this exact digest," which covers a wrong signer, tampered payload,
-    /// stale nonce, or wrong operation type on either surface.
+    /// @notice Thrown when an account signature fails EOA and ERC-1271 verification for the digest.
+    /// This covers a wrong signer, tampered payload, stale nonce, or wrong operation type.
     error InvalidSignature();
 
     event AgentBound(
@@ -166,38 +158,26 @@ contract Adapter8004 is
 
     mapping(uint256 agentId => Binding binding) private _bindings;
 
-    /// @notice Sentinel returned by `primaryAgentOf` for an account that has never set a primary agent
-    /// or has cleared it. All ones, so it can never collide with a real ERC-8004 id (incremental, at
-    /// the low end of the range) and is astronomically unlikely to collide with a counterfactual hash.
-    /// Passing it to a setter reverts `PrimaryAgentIdReserved`. Not storage — does not affect layout.
-    bytes32 public constant PRIMARY_AGENT_UNSET = bytes32(type(uint256).max);
+    /// @notice Full-system unset sentinel. Agent id zero remains representable.
+    uint256 public constant PRIMARY_AGENT_UNSET = type(uint256).max;
+    bytes32 public constant PRIMARY_COUNTERFACTUAL_AGENT_UNSET = bytes32(type(uint256).max);
 
-    /// @notice Reverse resolution: an address to the primary agent id it claims to belong to, on this
-    /// chain. The id is an ERC-8004 registry token id (small) or a 32-byte counterfactual
-    /// `registrationHash`; the two id spaces do not collide, so one mapping holds both. Appended after
-    /// `_bindings` to preserve the storage layout across the UUPS upgrade.
-    ///
-    /// @dev Stores the bitwise complement of the id, never the id itself. A never-written slot is zero,
-    /// which complements to the all-ones `PRIMARY_AGENT_UNSET` sentinel — so "unwritten" reads as
-    /// "unset" for free, and every real id (including `0`) round-trips through `~`. This is why the
-    /// layout is unchanged (same slot 2, same `mapping(address => bytes32)` type) yet agent id `0` is
-    /// now representable, which a raw store with a zero-clears branch could not do.
-    mapping(address account => bytes32 complementAgentId) private _primaryAgent;
-
-    /// @notice Per-account monotonic nonce shared by every signed primary-agent operation
-    /// (`setPrimaryAgentWithSig`, `clearPrimaryAgentWithSig`, `counterfactualRegisterAndSetPrimaryWithSig`).
-    /// The signed struct embeds the value returned here, read on-chain immediately before verification;
-    /// a success increments it exactly once, so a used signature cannot be replayed and any other
-    /// signed op pre-signed against the same value becomes invalid. Appended at regular slot 3 after
-    /// `_primaryAgent` (slot 2): slots 0/1/2 are byte-identical across the upgrade, and pre-upgrade
-    /// accounts begin at nonce zero with their existing primary-agent claims untouched.
-    mapping(address account => uint256 nonce) public nonces;
+    /// @dev Active v0.0.14 reverse claims and full-system nonces. These three mappings are
+    /// append-only regular slots 2 through 4 and begin empty after a direct upgrade from either active deployed
+    /// implementation. Unreleased 0.0.9-0.0.13 layouts are not production compatibility
+    /// baselines and therefore consume no reserved slots.
+    mapping(address account => uint256 complementAgentId) private _primaryAgent;
+    mapping(address account => bytes32 complementRegistrationHash) private _primaryCounterfactualAgent;
+    mapping(address account => uint256 nonce) private _primaryAgentNonces;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
+    /// @notice Initializes a newly deployed proxy.
+    /// @dev Do not call during an upgrade of an existing proxy. Active proxies already have slots
+    /// 0 and 1 initialized; v0.0.14 adds only empty mappings and has no reinitializer.
     function initialize(address identityRegistry_, address initialOwner) external initializer {
         // 1. Reject an unusable registry target before any state is initialized.
         if (identityRegistry_ == address(0)) {
@@ -248,9 +228,9 @@ contract Adapter8004 is
     /// @notice Caller-paid convenience wrapper: register a new adapter-managed ERC-8004 agent bound to
     /// the caller's external token, then record that new `agentId` as the caller's own primary agent —
     /// in one transaction, with no signature or relayer. Equivalent to `register(...)` (no-metadata
-    /// overload) immediately followed by the caller calling `setPrimaryAgent(bytes32(agentId))`
+    /// overload) immediately followed by the caller calling `setPrimaryAgent(agentId)`
     /// themselves: identical control/auth (the caller must control the token), identical `AgentBound`
-    /// event and returned `agentId`, plus the standard `PrimaryAgentSet(caller, bytes32(agentId),
+    /// event and returned `agentId`, plus the standard `PrimaryAgentSet(caller, agentId,
     /// caller)`. No new storage, authorization, or event families.
     function registerAndSetPrimary(
         TokenStandard standard,
@@ -264,7 +244,7 @@ contract Adapter8004 is
 
         // 2. Record the freshly minted agent as the caller's own primary agent through the shared
         //    helper (keeps the all-ones `PrimaryAgentIdReserved` guard; a fresh incremental id is small).
-        _setPrimaryAgent(msg.sender, bytes32(agentId));
+        _setPrimaryAgent(msg.sender, agentId);
     }
 
     function bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)
@@ -497,7 +477,8 @@ contract Adapter8004 is
     // COUNTERFACTUAL FUNCTIONS
     // -----------------------------------------------------------------
     // Emit-only mirrors of the on-chain register surface. No SSTORE, no
-    // ERC-8004 registry calls; gated only by current bound-token control.
+    // ERC-8004 registry calls; gated by current bound-token control or the temporary
+    // direct ownerless-collection authority documented below.
     // Indexers consume the emitted events as soft-state claims (latest
     // event per `registrationHash` wins), enabling off-chain identities
     // that can later be promoted to on-chain registrations.
@@ -512,14 +493,26 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
+    function interoperableAddress(address account) external view returns (bytes memory) {
+        return _interoperableAddress(account);
+    }
+
+    /// @inheritdoc IERC8004AdapterCounterfactual
+    function chainIdentifier() external view returns (bytes memory) {
+        return _chainIdentifier();
+    }
+
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualPayloadVersion() external pure returns (uint8) {
         return COUNTERFACTUAL_PAYLOAD_VERSION;
     }
 
     /// @notice Counterfactual registration: claim an identity for an external token without minting in the
-    /// ERC-8004 registry and without persisting any adapter storage. The single source of truth is the
-    /// emitted `CounterfactualAgentRegistered` event. The same controller may re-emit any number of times;
-    /// indexers MUST resolve the latest event per `(tokenContract, tokenId)` as authoritative.
+    /// ERC-8004 registry and without persisting any adapter storage. Authorized for a current controller,
+    /// or for the directly calling token contract while an ERC-721/ERC-1155F/ERC-6909F id has no current
+    /// owner. The same authority may re-emit any number of times; indexers MUST resolve the latest event
+    /// per `(tokenContract, tokenId)` as authoritative. Collection-authorized events use
+    /// `emitter = tokenContract`.
     function counterfactualRegister(
         TokenStandard standard,
         address tokenContract,
@@ -553,8 +546,9 @@ contract Adapter8004 is
         //    revert taxonomy matches `register`.
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the token being claimed.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Confirm the caller is a current controller, or the directly calling single-owner token
+        //    contract while `tokenId` has no current owner.
+        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
         _requireNoReservedCounterfactualKeys(metadata);
@@ -575,79 +569,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Signature-authorized counterfactual registration for a token-bound agent. Solves the
-    /// register-at-mint problem: the token owner signs one EIP-712 payload (URI + full metadata +
-    /// optional bundled wallet + bounded expiration) and ANY caller (a minting contract, router, or
-    /// relayer) can submit it. The adapter remains the single counterfactual event emitter, with
-    /// `emitter = owner` (never the relayer). No registry call, no adapter SSTORE, no nonce.
-    ///
-    /// Intentionally narrower than the unsigned surface: strict direct-holder signer only (no
-    /// delegate.xyz), one full registration per call, no wallet-consent signature.
-    function counterfactualRegisterWithSig(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
-        address agentWallet,
-        address owner,
-        uint256 expiration,
-        bytes calldata signature
-    ) external nonReentrant returns (bytes32 computedHash) {
-        // 1. Bound the signature's lifetime: cap how far ahead the expiration may be, then reject expiry.
-        if (expiration > block.timestamp + MAX_EXPIRATION_DELAY) revert ExpirationTooFar(expiration);
-        if (block.timestamp > expiration) revert SignatureExpired(expiration);
-
-        // 2. Reject an unusable external token contract address and the registry itself.
-        _requireValidTokenContract(tokenContract);
-
-        // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
-        _requireNoReservedCounterfactualKeys(metadata);
-
-        // 4. The signer MUST directly control the bound token. Not `_requireBindingControl`: the
-        //    signed path is direct-holder-only and must not accept delegate.xyz signers.
-        _requireDirectControl(standard, tokenContract, tokenId, owner);
-
-        // 5/6. Build the EIP-712 digest binding the full payload and verify the owner signature (EOA or
-        //      ERC-1271). Done in a helper to keep this frame within stack limits.
-        _verifyCounterfactualRegisterSig(
-            standard, tokenContract, tokenId, agentURI, metadata, agentWallet, owner, expiration, signature
-        );
-
-        // 7/8/9/10. Compute the registration hash and emit the claim (plus the optional bundled wallet)
-        //            with `emitter = owner`. Done in a helper to keep this frame within stack limits.
-        computedHash =
-            _emitCounterfactualRegister(standard, tokenContract, tokenId, agentURI, metadata, agentWallet, owner);
-        return computedHash;
-    }
-
-    /// @dev Computes the registration hash and emits `CounterfactualAgentRegistered` (and, when
-    /// `agentWallet != address(0)`, `CounterfactualAgentWalletSet`) with `emitter = owner`. Extracted
-    /// from the entry point purely to keep that function within the stack limit.
-    function _emitCounterfactualRegister(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
-        address agentWallet,
-        address owner
-    ) private returns (bytes32 computedHash) {
-        computedHash = _registrationHash(tokenContract, tokenId);
-
-        emit CounterfactualAgentRegistered(
-            computedHash, tokenContract, tokenId, COUNTERFACTUAL_PAYLOAD_VERSION, standard, agentURI, metadata, owner
-        );
-
-        if (agentWallet != address(0)) {
-            emit CounterfactualAgentWalletSet(
-                computedHash, tokenContract, tokenId, COUNTERFACTUAL_PAYLOAD_VERSION, agentWallet, owner
-            );
-        }
-    }
-
-    /// @notice Counterfactual agent URI update. No registry write, no SSTORE. The emitted event is the
-    /// single source of truth; indexers MUST treat the latest event per token as authoritative.
+    /// @notice Counterfactual agent URI update. No registry write, no SSTORE. A current controller
+    /// may call, as may the directly calling token contract while a supported single-owner id has no
+    /// current owner. The emitted event is the single source of truth; indexers MUST treat the latest
+    /// event per token as authoritative.
     function counterfactualSetAgentURI(
         TokenStandard standard,
         address tokenContract,
@@ -658,8 +583,8 @@ contract Adapter8004 is
         //    revert taxonomy matches `register`.
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the bound token.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Apply current-controller or ownerless collection authority.
+        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual URI update — the only on-chain record produced by this function.
         emit CounterfactualAgentURISet(
@@ -672,7 +597,9 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual single-key metadata write. No registry write, no SSTORE.
+    /// @notice Counterfactual single-key metadata write. No registry write, no SSTORE. Accepts
+    /// current-controller authority or direct ownerless collection authority for supported
+    /// single-owner standards.
     function counterfactualSetMetadata(
         TokenStandard standard,
         address tokenContract,
@@ -684,8 +611,8 @@ contract Adapter8004 is
         //    revert taxonomy matches `register`.
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the bound token.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Apply current-controller or ownerless collection authority.
+        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         //    Cache the key hash once: `metadataKey` is `calldata` but recomputing the hash twice in
@@ -707,7 +634,9 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual batch metadata write. No registry write, no SSTORE.
+    /// @notice Counterfactual batch metadata write. No registry write, no SSTORE. Accepts
+    /// current-controller authority or direct ownerless collection authority for supported
+    /// single-owner standards.
     function counterfactualSetMetadataBatch(
         TokenStandard standard,
         address tokenContract,
@@ -718,8 +647,8 @@ contract Adapter8004 is
         //    revert taxonomy matches `register`.
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the bound token.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Apply current-controller or ownerless collection authority.
+        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         _requireNoReservedCounterfactualKeys(metadata);
@@ -735,9 +664,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual agent-wallet assignment. Deliberately accepts no signature / expiration because
-    /// no ERC-8004 wallet binding is being created — the event is purely an off-chain claim, gated only by
-    /// current bound-token control.
+    /// @notice Counterfactual agent-wallet assignment. Deliberately accepts no signature because no
+    /// ERC-8004 wallet binding is being created — the event is purely an off-chain claim, gated by
+    /// current-controller authority or direct ownerless collection authority for supported
+    /// single-owner standards.
     function counterfactualSetAgentWallet(
         TokenStandard standard,
         address tokenContract,
@@ -748,8 +678,8 @@ contract Adapter8004 is
         //    revert taxonomy matches `register`.
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the bound token.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Apply current-controller or ownerless collection authority.
+        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet assignment — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletSet(
@@ -762,7 +692,9 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual agent-wallet clear. No registry write, no SSTORE.
+    /// @notice Counterfactual agent-wallet clear. No registry write, no SSTORE. Accepts
+    /// current-controller authority or direct ownerless collection authority for supported
+    /// single-owner standards.
     function counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)
         external
         nonReentrant
@@ -771,8 +703,8 @@ contract Adapter8004 is
         //    revert taxonomy matches `register`.
         _requireValidTokenContract(tokenContract);
 
-        // 2. Confirm the caller currently controls the bound token.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        // 2. Apply current-controller or ownerless collection authority.
+        _requireCounterfactualControl(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletUnset(
@@ -785,21 +717,21 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
-    //  Primary agent (reverse resolution: address -> agent id)
+    //  Full ERC-8004 primary agent (reverse resolution: address -> registry agent id)
     // -----------------------------------------------------------------
 
     /// @notice Set the caller's own primary agent id. The caller always controls itself, so no extra
-    /// authorization is required. The id is an ERC-8004 registry token id (passed as `bytes32(id)`) or
-    /// a 32-byte counterfactual `registrationHash`. To remove an id, call `clearPrimaryAgent`; passing
+    /// authorization is required. The id is strictly an ERC-8004 registry token id. To remove an id,
+    /// call `clearPrimaryAgent`; passing
     /// `PRIMARY_AGENT_UNSET` (all ones) reverts `PrimaryAgentIdReserved` (it is the unset sentinel).
-    function setPrimaryAgent(bytes32 agentId) external {
+    function setPrimaryAgent(uint256 agentId) external {
         _setPrimaryAgent(msg.sender, agentId);
     }
 
     /// @notice Set the primary agent id for `account`. Authorized when the caller is the account
     /// itself, the account's `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`. To
     /// remove an id, call `clearPrimaryAgentFor`. Reverts `PrimaryAgentIdReserved` for the all-ones id.
-    function setPrimaryAgentFor(address account, bytes32 agentId) external {
+    function setPrimaryAgentFor(address account, uint256 agentId) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
         _setPrimaryAgent(account, agentId);
     }
@@ -821,17 +753,13 @@ contract Adapter8004 is
     /// @notice Reverse-resolve an address to its primary agent id. Returns `PRIMARY_AGENT_UNSET` (all
     /// ones) when the account has never set an id or has cleared it. Every real id — including agent
     /// id `0` — is returned as itself.
-    function primaryAgentOf(address account) external view returns (bytes32) {
-        bytes32 stored = _primaryAgent[account];
-        return stored == bytes32(0) ? PRIMARY_AGENT_UNSET : ~stored;
+    function primaryAgentOf(address account) external view returns (uint256) {
+        uint256 stored = _primaryAgent[account];
+        return stored == 0 ? PRIMARY_AGENT_UNSET : ~stored;
     }
 
-    /// @dev Store `agentId` as its bitwise complement and emit `PrimaryAgentSet`. No zero-branch: the
-    /// complement scheme makes an unwritten (zero) slot read back as `PRIMARY_AGENT_UNSET`, so every
-    /// real id — `0` included — round-trips. The all-ones id is rejected because it would complement
-    /// to zero and collide with the unset sentinel.
-    function _setPrimaryAgent(address account, bytes32 agentId) private {
-        if (agentId == bytes32(type(uint256).max)) revert PrimaryAgentIdReserved(agentId);
+    function _setPrimaryAgent(address account, uint256 agentId) private {
+        if (agentId == type(uint256).max) revert PrimaryAgentIdReserved(agentId);
         _primaryAgent[account] = ~agentId;
         emit PrimaryAgentSet(account, agentId, msg.sender);
     }
@@ -844,6 +772,56 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
+    //  Counterfactual primary agent (reverse resolution: address -> registration hash)
+    // -----------------------------------------------------------------
+
+    function setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)
+        external
+        returns (bytes32 computedHash)
+    {
+        return _setPrimaryCounterfactualAgent(msg.sender, tokenContract, tokenId);
+    }
+
+    function setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)
+        external
+        returns (bytes32 computedHash)
+    {
+        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
+        return _setPrimaryCounterfactualAgent(account, tokenContract, tokenId);
+    }
+
+    function clearPrimaryCounterfactualAgent() external {
+        _clearPrimaryCounterfactualAgent(msg.sender);
+    }
+
+    function clearPrimaryCounterfactualAgentFor(address account) external {
+        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
+        _clearPrimaryCounterfactualAgent(account);
+    }
+
+    function primaryCounterfactualAgentOf(address account) external view returns (bytes32) {
+        bytes32 stored = _primaryCounterfactualAgent[account];
+        return stored == bytes32(0) ? PRIMARY_COUNTERFACTUAL_AGENT_UNSET : ~stored;
+    }
+
+    function _setPrimaryCounterfactualAgent(address account, address tokenContract, uint256 tokenId)
+        private
+        returns (bytes32 computedHash)
+    {
+        computedHash = _registrationHash(tokenContract, tokenId);
+        if (computedHash == bytes32(type(uint256).max)) {
+            revert PrimaryCounterfactualAgentHashReserved(computedHash);
+        }
+        _primaryCounterfactualAgent[account] = ~computedHash;
+        emit PrimaryCounterfactualAgentSet(account, computedHash, tokenContract, tokenId, msg.sender);
+    }
+
+    function _clearPrimaryCounterfactualAgent(address account) private {
+        delete _primaryCounterfactualAgent[account];
+        emit PrimaryCounterfactualAgentCleared(account, msg.sender);
+    }
+
+    // -----------------------------------------------------------------
     //  Signed (gasless, account-self) primary agent surface
     // -----------------------------------------------------------------
 
@@ -852,26 +830,26 @@ contract Adapter8004 is
     /// `account` via `SignatureChecker` (EOA or the account's ERC-1271 policy); there is deliberately
     /// no owner/admin/controller signature route here (that authority stays on the paid
     /// `setPrimaryAgentFor`). The `nonce` is not a calldata argument — the signed payload embeds the
-    /// current `nonces[account]`, read on-chain immediately before verification. Reverts
+    /// current `primaryAgentNonces(account)`, read on-chain immediately before verification. Reverts
     /// `SignatureDeadlineTooFar` / `SignatureExpired` on deadline bounds and `InvalidSignature` on a bad
     /// or stale signature; `agentId == PRIMARY_AGENT_UNSET` reverts `PrimaryAgentIdReserved` and `0` is a
     /// valid id. Emits the legacy `PrimaryAgentSet(account, agentId, msg.sender=relayer)` then
     /// `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)`.
-    function setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes calldata signature)
+    function setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes calldata signature)
         external
     {
         // 1. Enforce the bounded, unexpired deadline.
         _requirePrimaryAgentDeadline(deadline);
 
         // 2. Load the canonical current nonce and build the operation-specific digest over it.
-        uint256 nonce = nonces[account];
+        uint256 nonce = _primaryAgentNonces[account];
         bytes32 structHash = keccak256(abi.encode(SET_PRIMARY_AGENT_TYPEHASH, account, agentId, nonce, deadline));
 
         // 3. Require a valid account signature (EOA or ERC-1271) over that exact digest.
         _verifyPrimaryAgentSig(account, structHash, signature);
 
         // 4. Consume the nonce exactly once (before the pointer write; any later revert rolls it back).
-        nonces[account] = nonce + 1;
+        _primaryAgentNonces[account] = nonce + 1;
 
         // 5. Perform the shared storage op (keeps the all-ones rejection and agent-id-zero rules).
         _setPrimaryAgent(account, agentId);
@@ -881,7 +859,7 @@ contract Adapter8004 is
     }
 
     /// @notice Clear `account`'s primary agent id from an EIP-712 signature by `account` itself. Same
-    /// account-self authorization, shared nonce stream, and deadline bounds as `setPrimaryAgentWithSig`,
+    /// account-self authorization, full-system nonce stream, and deadline bounds as `setPrimaryAgentWithSig`,
     /// so a signed clear supersedes an earlier signed set (and vice versa). Afterwards `primaryAgentOf`
     /// returns `PRIMARY_AGENT_UNSET`. Emits the legacy `PrimaryAgentCleared(account, relayer)` then
     /// `PrimaryAgentClearedWithSig(account, relayer, nonce)`.
@@ -890,14 +868,14 @@ contract Adapter8004 is
         _requirePrimaryAgentDeadline(deadline);
 
         // 2. Load the canonical current nonce and build the clear digest over it.
-        uint256 nonce = nonces[account];
+        uint256 nonce = _primaryAgentNonces[account];
         bytes32 structHash = keccak256(abi.encode(CLEAR_PRIMARY_AGENT_TYPEHASH, account, nonce, deadline));
 
         // 3. Require a valid account signature (EOA or ERC-1271) over that exact digest.
         _verifyPrimaryAgentSig(account, structHash, signature);
 
         // 4. Consume the nonce exactly once.
-        nonces[account] = nonce + 1;
+        _primaryAgentNonces[account] = nonce + 1;
 
         // 5. Clear the pointer through the shared helper.
         _clearPrimaryAgent(account);
@@ -906,54 +884,8 @@ contract Adapter8004 is
         emit PrimaryAgentClearedWithSig(account, msg.sender, nonce);
     }
 
-    /// @notice Atomic gasless "register my counterfactual agent and make it my primary agent." A single
-    /// `signer` is BOTH the direct token holder authorizing the counterfactual registration AND the
-    /// account whose primary pointer is set — there is intentionally no separate `owner`/`account`
-    /// field and no caller-supplied `agentId`, so a registration for X cannot be bundled with a pointer
-    /// write for Y (use the two standalone signed calls for a deliberately split workflow). The primary
-    /// id is derived as the deterministic `registrationHash(tokenContract, tokenId)` and is the returned
-    /// value. Shares the primary-agent nonce stream and deadline bounds (NOT the standalone
-    /// counterfactual `expiration` model). Emits `CounterfactualAgentRegistered` (and, with a bundled
-    /// wallet, `CounterfactualAgentWalletSet`) with `emitter = signer`, then legacy
-    /// `PrimaryAgentSet(signer, registrationHash, relayer)`, then `PrimaryAgentSetWithSig`.
-    function counterfactualRegisterAndSetPrimaryWithSig(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
-        address agentWallet,
-        address signer,
-        uint256 deadline,
-        bytes calldata signature
-    ) external nonReentrant returns (bytes32 computedHash) {
-        // 1. Enforce the primary-agent deadline cap/expiry (not the counterfactual `expiration`).
-        _requirePrimaryAgentDeadline(deadline);
-
-        // 2. Reject an unusable token contract and reserved counterfactual metadata keys, and require
-        //    the signer to STRICTLY directly control the token (no delegate.xyz, no controller lookup),
-        //    exactly as `counterfactualRegisterWithSig`.
-        _requireValidTokenContract(tokenContract);
-        _requireNoReservedCounterfactualKeys(metadata);
-        _requireDirectControl(standard, tokenContract, tokenId, signer);
-
-        // 3. Load `nonces[signer]` and verify the combined signature over that exact value.
-        uint256 nonce = nonces[signer];
-        _verifyCounterfactualRegisterAndSetPrimarySig(
-            standard, tokenContract, tokenId, agentURI, metadata, agentWallet, signer, nonce, deadline, signature
-        );
-
-        // 4. Consume the nonce once, then re-emit the canonical counterfactual claim with emitter=signer.
-        nonces[signer] = nonce + 1;
-        computedHash =
-            _emitCounterfactualRegister(standard, tokenContract, tokenId, agentURI, metadata, agentWallet, signer);
-
-        // 5. Set the signer's primary agent to that exact derived hash (retains the reserved/zero rules;
-        //    an all-ones hash would revert `PrimaryAgentIdReserved` and roll back steps 4/5).
-        _setPrimaryAgent(signer, computedHash);
-
-        // 6. Emit the signed-path audit event after the legacy event from `_setPrimaryAgent`.
-        emit PrimaryAgentSetWithSig(signer, computedHash, msg.sender, nonce);
+    function primaryAgentNonces(address account) external view returns (uint256) {
+        return _primaryAgentNonces[account];
     }
 
     /// @dev Reject a signed primary-agent `deadline` that is beyond the lifetime cap or already past.
@@ -974,38 +906,6 @@ contract Adapter8004 is
         ) {
             revert InvalidSignature();
         }
-    }
-
-    /// @dev Build and verify the combined register-and-set-primary EIP-712 digest, using the established
-    /// counterfactual field hashing plus the sole `signer`, on-chain `nonce`, and `deadline`. Extracted
-    /// to keep the entry point within the stack limit. Reverts `InvalidSignature` on failure.
-    function _verifyCounterfactualRegisterAndSetPrimarySig(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
-        address agentWallet,
-        address signer,
-        uint256 nonce,
-        uint256 deadline,
-        bytes calldata signature
-    ) private view {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                COUNTERFACTUAL_REGISTER_AND_SET_PRIMARY_TYPEHASH,
-                uint8(standard),
-                tokenContract,
-                tokenId,
-                keccak256(bytes(agentURI)),
-                _hashMetadata(metadata),
-                agentWallet,
-                signer,
-                nonce,
-                deadline
-            )
-        );
-        _verifyPrimaryAgentSig(signer, structHash, signature);
     }
 
     /// @dev True when `caller` controls `account`: the account itself, its `owner()` / `getOwner()`,
@@ -1050,11 +950,13 @@ contract Adapter8004 is
         newImplementation;
     }
 
-    /// @dev Reject `address(0)` and the ERC-8004 identity registry itself as `tokenContract`. Binding
-    /// the registry would let `_hasBindingControl` resolve to the adapter post-bind, permanently
-    /// locking the agent away from any external controller.
+    /// @dev Reject an address without deployed code and the ERC-8004 identity registry itself as
+    /// `tokenContract`. Runtime code is required so an EOA cannot masquerade as an ownerless
+    /// collection. Calls from a token contract constructor are unsupported because its runtime code
+    /// is not installed yet. Binding the registry would let `_hasBindingControl` resolve to the
+    /// adapter post-bind, permanently locking the agent away from any external controller.
     function _requireValidTokenContract(address tokenContract) internal view {
-        if (tokenContract == address(0)) {
+        if (tokenContract.code.length == 0) {
             revert InvalidTokenContract();
         }
         if (tokenContract == address(identityRegistry)) {
@@ -1098,22 +1000,45 @@ contract Adapter8004 is
         }
     }
 
-    function _requireDirectControl(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
-        internal
-        view
-    {
-        bool controls;
-        if (_isSingleOwnerStandard(standard)) {
-            controls = ISingleOwnerToken(tokenContract).ownerOf(tokenId) == account;
-        } else if (standard == TokenStandard.ERC1155) {
-            controls = IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
-        } else {
-            controls = IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
+    /// @dev Authorizes every unsigned counterfactual write through one of two modes:
+    /// (1) the existing current-controller model, or (2) temporary collection authority when the
+    /// direct caller is the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports
+    /// no current owner. The latter window reopens after a burn if `ownerOf` again reverts or returns
+    /// zero; preventing that would require historical-existence storage.
+    function _requireCounterfactualControl(
+        TokenStandard standard,
+        address tokenContract,
+        uint256 tokenId,
+        address account
+    ) internal view {
+        if (account == tokenContract && _isSingleOwnerStandard(standard) && _hasNoCurrentOwner(tokenContract, tokenId))
+        {
+            return;
+        }
+        _requireBindingControl(standard, tokenContract, tokenId, account);
+    }
+
+    /// @dev Probes `ownerOf` without assuming a universal nonexistent-token revert selector.
+    /// Revert and canonical zero mean no current owner; canonical nonzero means owned. A successful
+    /// response of any other shape fails closed.
+    function _hasNoCurrentOwner(address tokenContract, uint256 tokenId) private view returns (bool) {
+        (bool success, bytes memory result) =
+            tokenContract.staticcall(abi.encodeCall(ISingleOwnerToken.ownerOf, (tokenId)));
+        if (!success) {
+            return true;
+        }
+        if (result.length != 32) {
+            revert InvalidOwnerOfResponse(tokenContract, tokenId);
         }
 
-        if (!controls) {
-            revert NotController(account, type(uint256).max);
+        uint256 ownerWord;
+        assembly ("memory-safe") {
+            ownerWord := mload(add(result, 0x20))
         }
+        if (ownerWord >> 160 != 0) {
+            revert InvalidOwnerOfResponse(tokenContract, tokenId);
+        }
+        return address(uint160(ownerWord)) == address(0);
     }
 
     function _hasBindingControl(Binding memory binding, address account) internal view returns (bool) {
@@ -1191,51 +1116,73 @@ contract Adapter8004 is
     }
 
     function _registrationHash(address tokenContract, uint256 tokenId) internal view virtual returns (bytes32) {
-        // 1. Bind the hash to the current chain, proxy address, and external token coordinates so
-        //    counterfactual claims cannot be replayed across chains, adapters, or token identities.
-        //    The token standard is deliberately excluded: an NFT has one identity regardless of which
-        //    token interface it is registered through. The standard is still validated at registration
-        //    time via the ownership check, bound into the signed EIP-712 payload, and carried in events.
-        return keccak256(abi.encode(block.chainid, address(this), tokenContract, tokenId));
+        return _registrationHashFor(_interoperableAddress(address(this)), tokenContract, tokenId);
     }
 
-    /// @dev Builds the EIP-712 digest for `counterfactualRegisterWithSig` and verifies the owner
-    /// signature (EOA or ERC-1271 via OpenZeppelin `SignatureChecker`). Reverts `InvalidSignature` on
-    /// failure. Extracted from the entry point purely to keep that function within the stack limit.
-    function _verifyCounterfactualRegisterSig(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata,
-        address agentWallet,
-        address owner,
-        uint256 expiration,
-        bytes calldata signature
-    ) private view {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                COUNTERFACTUAL_REGISTER_TYPEHASH,
-                uint8(standard),
-                tokenContract,
-                tokenId,
-                keccak256(bytes(agentURI)),
-                _hashMetadata(metadata),
-                agentWallet,
-                owner,
-                expiration
-            )
-        );
-        if (
-            !SignatureChecker.isValidSignatureNow(
-                owner, MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash), signature
-            )
-        ) {
-            revert InvalidSignature();
+    /// @dev ERC-7930 v1 Chain Identifier using the CAIP-350 `eip155` profile:
+    /// version(0x0001) || ChainType(0x0000) || referenceLength || shortest non-empty
+    /// big-endian block.chainid || addressLength(0x00).
+    function _chainIdentifier() internal view virtual returns (bytes memory identifier) {
+        return _chainIdentifierFor(block.chainid);
+    }
+
+    /// @dev Full ERC-7930 v1 Interoperable Address using the local CAIP-350 `eip155` chain reference
+    /// and the raw 20-byte EVM address.
+    function _interoperableAddress(address account) internal view virtual returns (bytes memory identifier) {
+        return _interoperableAddressFor(block.chainid, account);
+    }
+
+    function _chainIdentifierFor(uint256 chainId) internal pure returns (bytes memory identifier) {
+        return _erc7930AddressFor(chainId, address(0), false);
+    }
+
+    function _interoperableAddressFor(uint256 chainId, address account)
+        internal
+        pure
+        returns (bytes memory identifier)
+    {
+        return _erc7930AddressFor(chainId, account, true);
+    }
+
+    function _erc7930AddressFor(uint256 chainId, address account, bool includeAddress)
+        private
+        pure
+        returns (bytes memory identifier)
+    {
+        if (chainId == 0) revert InvalidChainId();
+
+        uint256 referenceLength;
+        uint256 remaining = chainId;
+        while (remaining != 0) {
+            ++referenceLength;
+            remaining >>= 8;
         }
+
+        identifier = new bytes(referenceLength + 6 + (includeAddress ? 20 : 0));
+        identifier[1] = 0x01;
+        identifier[4] = bytes1(uint8(referenceLength));
+        for (uint256 i; i < referenceLength; ++i) {
+            identifier[5 + referenceLength - 1 - i] = bytes1(uint8(chainId >> (i * 8)));
+        }
+        if (includeAddress) {
+            identifier[5 + referenceLength] = 0x14;
+            bytes20 rawAddress = bytes20(account);
+            for (uint256 i; i < 20; ++i) {
+                identifier[6 + referenceLength + i] = rawAddress[i];
+            }
+        }
+        // Otherwise the final byte remains zero: ERC-7930 AddressLength == 0.
     }
 
-    /// @dev Stateless EIP-712 domain separator for the signed counterfactual surface. Computed inline
+    function _registrationHashFor(bytes memory adapterInteroperableAddress, address tokenContract, uint256 tokenId)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId));
+    }
+
+    /// @dev Stateless EIP-712 domain separator for the signed primary-agent surface. Computed inline
     /// from constants, `block.chainid`, and `address(this)`; never cached, so no storage is added and
     /// cross-chain / cross-adapter replay is blocked by `chainId` and `verifyingContract`.
     function _domainSeparator() internal view returns (bytes32) {
@@ -1248,21 +1195,5 @@ contract Adapter8004 is
                 address(this)
             )
         );
-    }
-
-    /// @dev EIP-712 hash of the metadata array: hash each encoded entry, concatenate the entry hashes,
-    /// then hash the concatenation. An empty array hashes to `keccak256("")`.
-    function _hashMetadata(IERC8004IdentityRegistry.MetadataEntry[] calldata entries) internal pure returns (bytes32) {
-        bytes32[] memory hashes = new bytes32[](entries.length);
-        for (uint256 i; i < entries.length; ++i) {
-            hashes[i] = keccak256(
-                abi.encode(
-                    METADATA_ENTRY_TYPEHASH,
-                    keccak256(bytes(entries[i].metadataKey)),
-                    keccak256(entries[i].metadataValue)
-                )
-            );
-        }
-        return keccak256(abi.encodePacked(hashes));
     }
 }

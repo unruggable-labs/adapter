@@ -21,16 +21,16 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 ///        - `value` = 0
 ///        - `data`  = `upgradeToAndCall(newImplementation, "")`
 ///   2. Writes a ready-to-import Safe Transaction Builder JSON to
-///      `deployments/2026-05-20-bindexisting-counterfactual-v1-safe-tx-<network>.json`,
+///      `deployments/2026-07-29-primary-split-erc7930-safe-tx-<network>.json`,
 ///      where `<network>` is derived from `block.chainid` via `_networkNames`. The Safe
 ///      signers can drag-and-drop that file into the Transaction Builder instead of
 ///      copy-pasting raw calldata. The JSON description includes the implementation
 ///      EXTCODEHASH so signers can independently compare it against
 ///      `keccak256(eth_getCode(<implementation>))`.
 ///
-/// Initializer bytes are empty: the bindExisting + counterfactual v1 changes add only
-/// constants, a new function, and event/interface surface changes — no new storage and
-/// no `reinitializer`, so the proxy needs no post-upgrade initialization call.
+/// Upgrade data is empty: the active Mainnet/Base and Sepolia implementations both use only
+/// regular slots 0/1. Adapter8004 v0.0.14 appends four mappings directly at slots 2-5. New mappings
+/// begin empty naturally; no migration or `reinitializer` is permitted.
 contract DeployAdapterImplementationScript is Script {
     /// @notice Thrown when this script runs on a chain id outside the production set
     /// (`1` mainnet, `8453` base, `11155111` sepolia). Stops the script before any
@@ -71,9 +71,9 @@ contract DeployAdapterImplementationScript is Script {
         implementation = address(new Adapter8004());
         vm.stopBroadcast();
 
-        // 2. Build the calldata the Safe must execute against the proxy. Empty initializer
-        //    bytes — the bindExisting + counterfactual v1 change is constants, logic, and
-        //    event/interface surface only, no storage migration.
+        // 2. Build the calldata the Safe must execute against the proxy. Empty upgrade data:
+        //    v0.0.14 upgrades directly from the active slot-0/1 baselines and uses naturally empty
+        //    append-only mappings, with no initializer, reinitializer, or migration.
         upgradeCalldata = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (implementation, bytes("")));
 
         // 3. Print the Safe Transaction Builder parameters for this chain.
@@ -86,6 +86,18 @@ contract DeployAdapterImplementationScript is Script {
         console2.logAddress(implementation);
         console2.log("data (upgradeToAndCall(newImplementation, 0x)):");
         console2.logBytes(upgradeCalldata);
+        bytes memory identifier = _chainIdentifier(block.chainid);
+        console2.log("ERC-7930 Chain Identifier expected from proxy after upgrade:");
+        console2.logBytes(identifier);
+        bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, proxy);
+        console2.log("ERC-7930 Interoperable Address for proxy:");
+        console2.logBytes(proxyInteroperableAddress);
+        console2.log("Sample registrationHash(proxy, tokenContract=0x1, tokenId=0):");
+        console2.logBytes32(keccak256(abi.encode(proxyInteroperableAddress, address(1), uint256(0))));
+
+        console2.log("=== New primary-agent event topic[0] hashes ===");
+        console2.logBytes32(keccak256(bytes("PrimaryAgentSet(address,uint256,address)")));
+        console2.logBytes32(keccak256(bytes("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,address)")));
 
         console2.log("=== Counterfactual event topic[0] hashes (subscribe to these post-upgrade) ===");
         console2.log(
@@ -153,7 +165,7 @@ contract DeployAdapterImplementationScript is Script {
         _requireProxyMatchesChain(proxy, block.chainid);
 
         string memory path =
-            string.concat("deployments/2026-05-20-bindexisting-counterfactual-v1-safe-tx-", networkSlug, ".json");
+            string.concat("deployments/2026-07-29-primary-split-erc7930-safe-tx-", networkSlug, ".json");
         bytes32 implementationCodehash;
         assembly {
             implementationCodehash := extcodehash(implementation)
@@ -173,14 +185,14 @@ contract DeployAdapterImplementationScript is Script {
             vm.toString(block.timestamp * 1000),
             ",\n",
             '  "meta": {\n',
-            '    "name": "Adapter8004 v0.0.7 - bindExisting + counterfactual v1 + signed counterfactual register upgrade - ',
+            '    "name": "Adapter8004 v0.0.14 - split primaries + ERC-7930 hashes - ',
             networkDisplayName,
             '",\n',
-            '    "description": "Upgrade the Adapter8004 UUPS proxy to v0.0.7, adding bindExisting, the versioned counterfactual event family (uint8 version, cf-registration reserved key), and signature-authorized counterfactual registration (counterfactualRegisterWithSig). Implementation deployed at ',
+            '    "description": "Upgrade the Adapter8004 UUPS proxy directly from its active deployed implementation to v0.0.14. Separates full uint256 and counterfactual bytes32 primary-agent mappings/nonces/events, and changes every counterfactual registration hash to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), tokenContract, tokenId)). Four mappings append directly after the live layout at slots 2-5. Implementation deployed at ',
             vm.toString(implementation),
             " (bytecode hash ",
             vm.toString(implementationCodehash),
-            ') by DeployAdapterImplementation.s.sol. Empty initializer (constants + new function only, no new storage).",\n',
+            ') by DeployAdapterImplementation.s.sol. Empty upgrade data (append-only mappings begin empty; no initializer, migration, or reinitializer).",\n',
             '    "txBuilderVersion": "1.18.0",\n',
             '    "createdFromSafeAddress": "',
             vm.toString(SAFE_ADDRESS),
@@ -217,6 +229,38 @@ contract DeployAdapterImplementationScript is Script {
         if (chainId == 8453) return ("base", "Base");
         if (chainId == 11155111) return ("sepolia", "Sepolia");
         revert UnsupportedChainId(chainId);
+    }
+
+    function _chainIdentifier(uint256 chainId) internal pure returns (bytes memory identifier) {
+        uint256 length;
+        uint256 remaining = chainId;
+        while (remaining != 0) {
+            ++length;
+            remaining >>= 8;
+        }
+        identifier = new bytes(length + 6);
+        identifier[1] = 0x01;
+        identifier[4] = bytes1(uint8(length));
+        for (uint256 i; i < length; ++i) {
+            identifier[5 + length - 1 - i] = bytes1(uint8(chainId >> (i * 8)));
+        }
+    }
+
+    function _interoperableAddress(uint256 chainId, address account)
+        internal
+        pure
+        returns (bytes memory interoperable)
+    {
+        bytes memory identifier = _chainIdentifier(chainId);
+        interoperable = new bytes(identifier.length + 20);
+        for (uint256 i; i < identifier.length - 1; ++i) {
+            interoperable[i] = identifier[i];
+        }
+        interoperable[identifier.length - 1] = 0x14;
+        bytes20 rawAddress = bytes20(account);
+        for (uint256 i; i < 20; ++i) {
+            interoperable[identifier.length + i] = rawAddress[i];
+        }
     }
 
     /// @dev Returns the canonical proxy address for `chainId`, or reverts with

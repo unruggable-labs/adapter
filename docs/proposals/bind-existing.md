@@ -169,7 +169,13 @@ Existing tests do not appear to encode an invariant that every bound agent was m
 The counterfactual functions are independent from `bindExisting`. They do not know or store an ERC-8004 `agentId`, do not call `identityRegistry`, and do not write `_bindings`. Their `registrationHash` domain is:
 
 ```solidity
-keccak256(abi.encode(block.chainid, address(this), tokenContract, tokenId))
+keccak256(
+    abi.encode(
+        interoperableAddress(address(this)),
+        tokenContract,
+        tokenId
+    )
+)
 ```
 
 That domain is keyed by adapter and external token coordinates, not by `(IdentityRegistry, agentId)`. A caller can counterfactually register a token first and later bind an existing on-chain `agentId` to that same token. There is no on-chain storage conflict. Indexers should treat counterfactual events as soft-state claims and the later `AgentBound(agentId, ...)` as the on-chain binding record for the specific ERC-8004 identity.
