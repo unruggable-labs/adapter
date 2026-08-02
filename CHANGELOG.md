@@ -44,14 +44,14 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 - Contract bindings. `CONTRACT` is appended to `TokenStandard` as value `5`; values `0`-`4` are
   unchanged, so stored bindings and indexed history keep their meaning. Values `0`-`4` name a token
   within a contract; `CONTRACT` names any deployed contract itself, token or not. An ERC-20 claiming
-  its own identity is the motivating example and uses `CONTRACT` like any other contract — there is
+  its own identity is the motivating example and uses `CONTRACT` like any other contract. There is
   no ERC-20-specific standard value. (ERC-20Agent is a separate metadata profile layered on top, not a
   binding standard.)
   - `tokenId` MUST be `0`: a contract-level binding has exactly one canonical coordinate. Any other
     id reverts the new `NonZeroTokenIdForContract(tokenContract, tokenId)` error rather than being
     coerced, enforced at both authority choke points, so it covers `register`,
     `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
-  - The controller is the bound `tokenContract` itself and nothing else — no holder, delegate,
+  - The controller is the bound `tokenContract` itself and nothing else. No holder, delegate,
     optional `owner()`, or adapter admin has authority. The adapter probes neither `ownerOf` nor
     either `balanceOf` shape; control is `msg.sender == tokenContract`, so a contract with no token
     interface at all binds exactly like one that has one.
@@ -63,7 +63,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     contract that calls the adapter itself fails, because the adapter sees that contract as
     `msg.sender`. An external owner or governance address may instead call an entry point on the
     bound contract, which then makes the outbound adapter call (the planned reference pattern). A
-    constructor call is rejected — deployed runtime code is required. `delegatecall` into
+    constructor call is rejected. Deployed runtime code is required. `delegatecall` into
     `Adapter8004` is unsupported and dangerous: it is a UUPS implementation with its own storage
     layout, not a library. `bindExisting` additionally requires the bound contract to own the
     ERC-8004 agent and to have approved the adapter. `registerAndSetPrimary` records the bound
@@ -73,9 +73,40 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     once and then freezes. Repeatable management needs a governance-gated, upgradeable, or
     pass-through outbound path.
   - Post-bind, the mutable registry fields are bound-contract-only and its latest write wins. The
-    `Binding` stays immutable with deliberately no revoke or unbind API — register a fresh ERC-8004
+    `Binding` stays immutable with deliberately no revoke or unbind API. Register a fresh ERC-8004
     identity instead. Counterfactual claims likewise have no whole-claim tombstone: later events
     from the contract supersede earlier ones by last-event-wins, and wallet unset is field-level.
+- Ownable contract bindings. `CONTRACT_OWNABLE` is appended to `TokenStandard` as value `6`; values
+  `0`-`5` are unchanged, so stored bindings and indexed history keep their meaning.
+  - Authority is **both** the bound `tokenContract` and the current address returned by its
+    `owner()`. The bound contract never loses authority: the owner route is added to contract-self
+    authority, not substituted for it.
+  - This is an explicit opt-in chosen at bind time, and, like the rest of the `Binding`, the choice
+    is immutable. `CONTRACT` (value `5`) semantics are entirely unchanged: binding as `5` still means
+    no `owner()`, role, or balance route in, and the adapter still makes zero external authority
+    calls on that branch. A contract that wants owner-driven management opts in by binding as `6`
+    instead of `5`.
+  - The `owner()` probe is a fail-closed `STATICCALL`. The typed interface declares `owner()` as
+    `view`, so an authority check can never reenter. A revert (no assumed selector), returndata that
+    is not exactly 32 bytes, dirty upper bits above the 160-bit address, or a zero owner each grant
+    no external authority, and a zero owner therefore never matches a zero `account`. None of these
+    outcomes removes contract-self authority.
+  - Owner authority is **dynamic**: it follows ownership transfer. A new owner gains authority over
+    agents bound before it took over, and the previous owner loses it. This is the deliberate
+    contrast with value `5`, whose bound contract is the permanent sole controller. Under EIP-173
+    and the marketplace convention, many contracts expose `owner()` only as a royalties or
+    collection-metadata admin, often a stale deployer EOA, so this authority is never assumed.
+    It exists only where a contract chose value `6`.
+  - For both values the `Binding` itself stays immutable, with deliberately no revoke or unbind API.
+    Ownership transfer moves who may write; it never rebinds or unbinds an agent.
+  - `tokenId` MUST be `0` for value `6` as well, enforced at both authority choke points and
+    reverting with the same `NonZeroTokenIdForContract(tokenContract, tokenId)` error. Value `6`
+    also stays outside the single-owner set: no ownerless-collection window, no delegate.xyz route.
+  - `registrationHash` is unchanged and the standard remains excluded from it, so a contract at
+    `(X, 0)` claiming as ERC-721 token `#0`, `CONTRACT`, and `CONTRACT_OWNABLE` aliases all three
+    onto one identity with one current claim, resolved by the latest
+    `CounterfactualAgentRegistered.standard` in log order. `AgentBound` and the counterfactual event
+    layouts are unchanged; `6` is only a new value in the existing `uint8` field.
 - Full ERC-8004 `register` (including `registerAndSetPrimary`) now accepts the same temporary
   ownerless collection authority as unsigned counterfactual writes: the directly calling
   ERC-721/ERC-1155F/ERC-6909F token contract may register its own id while `ownerOf(tokenId)`
@@ -117,12 +148,12 @@ counterfactual payload-version change, or `@custom:version` bump.
 
 Contract bindings add no public selector, storage slot, or `@custom:version` bump either.
 `registrationHash`, the counterfactual event schema, and `version == 1` are unchanged;
-`AgentBound` keeps its layout with `standard` indexed, and `CounterfactualAgentRegistered` — the
-only counterfactual event carrying a standard — keeps its layout with `standard` non-indexed.
-`CONTRACT` is only a new value in the existing `uint8` field. Because the standard is excluded from
-`registrationHash`, any two standards claiming the same `(tokenContract, tokenId)` alias onto one
-hash; a contract at `(X, 0)` claiming both its ERC-721 token `#0` and `CONTRACT` is the worked
-example. That is accepted and documented — hashing the standard would break
+`AgentBound` keeps its layout with `standard` indexed, and `CounterfactualAgentRegistered`, the
+only counterfactual event carrying a standard, keeps its layout with `standard` non-indexed.
+`CONTRACT` and `CONTRACT_OWNABLE` are only new values in the existing `uint8` field. Because the
+standard is excluded from `registrationHash`, any two standards claiming the same `(tokenContract,
+tokenId)` alias onto one hash; a contract at `(X, 0)` claiming its ERC-721 token `#0`, `CONTRACT`,
+and `CONTRACT_OWNABLE` is the worked example. That is accepted and documented. Hashing the standard would break
 every existing hash. The claims are deliberately one identity with one current claim, and indexers
 read the latest `CounterfactualAgentRegistered.standard` in log order to see which claim wins.
 

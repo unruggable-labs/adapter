@@ -246,9 +246,9 @@ contract Adapter8004 is
     /// overload) immediately followed by the caller calling `setPrimaryAgent(agentId)`
     /// themselves: identical control/auth (the caller must control the token), identical `AgentBound`
     /// event and returned `agentId`, plus the standard `PrimaryAgentSet(caller, agentId,
-    /// caller)`. No new storage, authorization, or event families. Caller-scoped everywhere: for a
-    /// `CONTRACT` binding the caller is necessarily the bound contract, so the primary is recorded for
-    /// that contract itself, never for a holder or an address behind it.
+    /// caller)`. No new storage, authorization, or event families. Caller-scoped everywhere: a
+    /// `CONTRACT` binding records the primary for the bound contract; a `CONTRACT_OWNABLE` binding
+    /// records it for whichever authorized account made this call.
     function registerAndSetPrimary(
         TokenStandard standard,
         address tokenContract,
@@ -286,9 +286,9 @@ contract Adapter8004 is
         }
 
         // 4. Require external binding control under the existing authority model: single-owner
-        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, and a
-        //    `CONTRACT` binding requires the bound contract itself — so binding one here means that
-        //    contract must both own the agent (step 3) and have approved the adapter (step 5).
+        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `CONTRACT`
+        //    requires the bound contract itself, and `CONTRACT_OWNABLE` also accepts its current owner.
+        //    The authorized caller must also own the agent (step 3) and approve the adapter (step 5).
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
         // 5. Require the adapter to have prior ERC-721 transfer approval for `agentId` —
@@ -498,8 +498,8 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     // Emit-only mirrors of the on-chain register surface. No SSTORE, no
     // ERC-8004 registry calls; gated by current bound-token control, the temporary
-    // direct ownerless-collection authority documented below, or — for a `CONTRACT`
-    // binding at `tokenId 0` — the permanent authority of the bound contract itself.
+    // direct ownerless-collection authority documented below, or a contract binding's
+    // value-5 contract-self / value-6 contract-self-or-current-owner authority at `tokenId 0`.
     // There is no whole-claim tombstone: a claim can only be superseded by a later
     // event, and unsetting the wallet clears that field alone.
     // Indexers consume the emitted events as soft-state claims (latest
