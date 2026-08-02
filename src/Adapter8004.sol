@@ -24,6 +24,10 @@ interface ISingleOwnerToken {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
+interface IOwnableContract {
+    function owner() external view returns (address);
+}
+
 /// @notice Upgrade target for the active Adapter8004 proxies.
 /// @dev The production upgrade baseline is the implementation currently selected by each proxy,
 /// not the unreleased 0.0.9-0.0.13 source history. The active Mainnet/Base and Sepolia
@@ -109,7 +113,7 @@ contract Adapter8004 is
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
     /// through `_hasBindingControl`.
     error InvalidTokenContractIsRegistry();
-    /// @notice Thrown by any `CONTRACT` adapter operation called with a nonzero `tokenId` —
+    /// @notice Thrown by any `CONTRACT` or `CONTRACT_OWNABLE` adapter operation called with a nonzero `tokenId` —
     /// registration, `bindExisting`, and the emit-only counterfactual calls alike, since all of them
     /// pass through the same authority choke points. A contract-level binding names the contract
     /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
@@ -1024,8 +1028,8 @@ contract Adapter8004 is
     }
 
     /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
-    /// (1) the existing current-controller model — which for a `CONTRACT` binding means the bound
-    /// contract itself, permanently — or (2) temporary collection authority when the direct caller is
+    /// (1) the existing current-controller model — which for contract bindings always includes the
+    /// bound contract itself — or (2) temporary collection authority when the direct caller is
     /// the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
     /// The latter window reopens after a burn if `ownerOf` again reverts or returns zero; preventing
     /// that would require historical-existence storage.
@@ -1054,14 +1058,14 @@ contract Adapter8004 is
         _requireBindingControl(standard, tokenContract, tokenId, account);
     }
 
-    /// @dev A `CONTRACT` binding names the contract itself rather than a token within it, so it has
+    /// @dev `CONTRACT` and `CONTRACT_OWNABLE` name the contract itself rather than a token within it, so each has
     /// exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
     /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
     /// a contract-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
     /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
     /// id they submitted. No-op for every other standard.
     function _requireCanonicalTokenId(TokenStandard standard, address tokenContract, uint256 tokenId) internal pure {
-        if (standard == TokenStandard.CONTRACT && tokenId != 0) {
+        if ((standard == TokenStandard.CONTRACT || standard == TokenStandard.CONTRACT_OWNABLE) && tokenId != 0) {
             revert NonZeroTokenIdForContract(tokenContract, tokenId);
         }
     }
@@ -1117,7 +1121,16 @@ contract Adapter8004 is
             return account == tokenContract;
         }
 
-        // 2. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
+        // 2. The explicit ownable contract model retains contract-self authority and additionally
+        //    follows the contract's live `owner()`. The probe is a fail-closed STATICCALL: a revert,
+        //    wrong-length response, dirty upper bits, or zero owner grants no external authority.
+        //    This standard remains outside the single-owner token set, so it gets neither an
+        //    ownerless-collection window nor delegate.xyz authority.
+        if (standard == TokenStandard.CONTRACT_OWNABLE) {
+            return account == tokenContract || _isCurrentContractOwner(tokenContract, account);
+        }
+
+        // 3. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
         //    delegation from the current owner. Direct ownership is checked first so current owners
         //    never pay a registry call.
         if (_isSingleOwnerStandard(standard)) {
@@ -1128,13 +1141,13 @@ contract Adapter8004 is
             return _isERC721Delegate(account, owner, tokenContract, tokenId);
         }
 
-        // 3. ERC-1155 control means any positive balance for the bound id.
+        // 4. ERC-1155 control means any positive balance for the bound id.
         //    No delegate.xyz check: the no-vault API cannot soundly map a delegation to a holder.
         if (standard == TokenStandard.ERC1155) {
             return IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
         }
 
-        // 4. ERC-6909 control also means any positive balance for the bound id.
+        // 5. ERC-6909 control also means any positive balance for the bound id.
         //    No delegate.xyz check: v2 has no ERC-6909 token-id delegation primitive.
         return IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
     }
@@ -1142,6 +1155,28 @@ contract Adapter8004 is
     function _isSingleOwnerStandard(TokenStandard standard) internal pure returns (bool) {
         return
             standard == TokenStandard.ERC721 || standard == TokenStandard.ERC1155F || standard == TokenStandard.ERC6909F;
+    }
+
+    /// @dev Fail-closed EIP-173 owner probe for the opt-in `CONTRACT_OWNABLE` standard. The typed
+    /// interface pins `owner()` as `view`, and the low-level `staticcall` makes that read-only at the
+    /// EVM level. Only exactly one clean ABI address word is accepted. A zero owner never matches,
+    /// including when `account` is also zero.
+    function _isCurrentContractOwner(address tokenContract, address account) private view returns (bool) {
+        (bool success, bytes memory result) = tokenContract.staticcall(abi.encodeCall(IOwnableContract.owner, ()));
+        if (!success || result.length != 32) {
+            return false;
+        }
+
+        uint256 ownerWord;
+        assembly ("memory-safe") {
+            ownerWord := mload(add(result, 0x20))
+        }
+        if (ownerWord >> 160 != 0) {
+            return false;
+        }
+
+        address currentOwner = address(uint160(ownerWord));
+        return currentOwner != address(0) && account == currentOwner;
     }
 
     /// @dev Consults the immutable delegate.xyz v2 registry for an ERC-721 delegation from the current
