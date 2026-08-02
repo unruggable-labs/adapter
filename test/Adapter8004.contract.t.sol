@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {Adapter8004} from "../src/Adapter8004.sol";
+import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
+import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockContractBinder} from "./mocks/MockContractBinder.sol";
@@ -24,6 +26,25 @@ contract ProbeTrapBinder is MockERC20 {
 
     function balanceOf(address, uint256) external pure returns (uint256) {
         revert OwnershipProbe();
+    }
+}
+
+/// @dev One contract that can claim under two standards at the same coordinate: an ERC-721-shaped
+/// collection whose ids are all unminted, so the temporary single-owner window is open for id 0, and
+/// a contract binding of itself at id 0. Used to pin the deliberate alias: `registrationHash` is
+/// computed from `(adapter, tokenContract, tokenId)` only, so it is standard-independent — any two
+/// standards claiming the same `(tokenContract, tokenId)` land on one counterfactual identity and
+/// last-event-wins applies. Nothing about the alias depends on the fixture being a token; it
+/// inherits `MockERC20` only because that is a convenient concrete binder.
+contract HybridERC721Contract is MockERC20 {
+    constructor(Adapter8004 adapter) MockERC20(adapter) {}
+
+    function ownerOf(uint256) external pure returns (address) {
+        revert("nonexistent token");
+    }
+
+    function counterfactualRegisterAsERC721(uint256 tokenId, string calldata agentURI) external returns (bytes32) {
+        return ADAPTER.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(this), tokenId, agentURI);
     }
 }
 
@@ -136,6 +157,40 @@ contract Adapter8004ContractBindingTest is Test {
         assertTrue(adapter.isController(secondAgentId, address(binder)));
     }
 
+    function testRegisterAndSetPrimaryGivesThePrimaryToTheCallingContract() external {
+        uint256 agentId = token.registerAndSetPrimary(0);
+
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(binding.tokenContract, address(token));
+        assertEq(binding.tokenId, 0);
+        assertEq(registry.ownerOf(agentId), address(adapter));
+
+        // The primary belongs to the bound contract — the caller — and to nobody else.
+        assertEq(adapter.primaryAgentOf(address(token)), agentId);
+        assertTrue(adapter.primaryAgentOf(address(token)) != adapter.PRIMARY_AGENT_UNSET());
+        assertEq(adapter.primaryAgentOf(holder), adapter.PRIMARY_AGENT_UNSET());
+        assertEq(adapter.primaryAgentOf(admin), adapter.PRIMARY_AGENT_UNSET());
+        assertEq(adapter.primaryAgentOf(stranger), adapter.PRIMARY_AGENT_UNSET());
+    }
+
+    function testRegisterAndSetPrimaryRejectsEveryCallerThatIsNotTheBoundContract() external {
+        _expectNotController(holder);
+        vm.prank(holder);
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://holder");
+        assertEq(adapter.primaryAgentOf(holder), adapter.PRIMARY_AGENT_UNSET());
+
+        _expectNotController(admin);
+        vm.prank(admin);
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://admin");
+        assertEq(adapter.primaryAgentOf(admin), adapter.PRIMARY_AGENT_UNSET());
+
+        _expectNotController(stranger);
+        vm.prank(stranger);
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://stranger");
+        assertEq(adapter.primaryAgentOf(stranger), adapter.PRIMARY_AGENT_UNSET());
+    }
+
     function testHolderAdminAndStrangerCannotRegisterAContractBinding() external {
         _expectNotController(holder);
         vm.prank(holder);
@@ -188,19 +243,74 @@ contract Adapter8004ContractBindingTest is Test {
     //  Unsigned counterfactual surface
     // -----------------------------------------------------------------
 
-    function testCounterfactualRegisterFallsThroughTheSameAuthorityChain() external {
+    function testEveryUnsignedCounterfactualWriterAcceptsTheBoundContract() external {
         bytes32 expectedHash = adapter.registrationHash(address(token), 0);
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
+        IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
+
+        // Register, short overload (empty metadata array).
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualAgentRegistered(
+            expectedHash,
+            address(token),
+            0,
+            1,
+            IERCAgentBindings.TokenStandard.CONTRACT,
+            "ipfs://erc20-agent",
+            empty,
+            address(token)
+        );
         assertEq(token.counterfactualRegister(0), expectedHash);
 
+        // Register, full overload (caller-supplied metadata).
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualAgentRegistered(
+            expectedHash,
+            address(token),
+            0,
+            1,
+            IERCAgentBindings.TokenStandard.CONTRACT,
+            "ipfs://full",
+            metadata,
+            address(token)
+        );
+        assertEq(token.counterfactualRegisterWithMetadata(0, "ipfs://full", metadata), expectedHash);
+
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualAgentURISet(
+            expectedHash, address(token), 0, 1, "ipfs://cf-uri", address(token)
+        );
+        token.counterfactualSetAgentURI(0, "ipfs://cf-uri");
+
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualMetadataSet(
+            expectedHash, address(token), 0, 1, "k", bytes("v"), address(token)
+        );
+        token.counterfactualSetMetadata(0, "k", bytes("v"));
+
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualMetadataBatchSet(
+            expectedHash, address(token), 0, 1, metadata, address(token)
+        );
+        token.counterfactualSetMetadataBatch(0, metadata);
+
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletSet(
+            expectedHash, address(token), 0, 1, wallet, address(token)
+        );
         token.counterfactualSetAgentWallet(0, wallet);
 
-        _expectNotController(stranger);
-        vm.prank(stranger);
-        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://stranger");
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletUnset(
+            expectedHash, address(token), 0, 1, address(token)
+        );
+        token.counterfactualUnsetAgentWallet(0);
+    }
 
-        _expectNotController(holder);
-        vm.prank(holder);
-        adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, wallet);
+    function testEveryUnsignedCounterfactualWriterDeniesHolderAdminAndStranger() external {
+        _assertEveryCounterfactualWriterDenied(holder);
+        _assertEveryCounterfactualWriterDenied(admin);
+        _assertEveryCounterfactualWriterDenied(stranger);
     }
 
     // -----------------------------------------------------------------
@@ -309,9 +419,288 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(registry.ownerOf(agentId), address(adapter));
     }
 
+    function testEveryContractBindingWriteEntryPointRejectsANonZeroTokenId() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
+        uint256 agentId = token.prepareExistingAgent(registry);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.register(1);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.registerWithMetadata(1, metadata);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.registerAndSetPrimary(1);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.bindExisting(agentId, 1);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualRegister(1);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualRegisterWithMetadata(1, "ipfs://non-canonical", metadata);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualSetAgentURI(1, "ipfs://non-canonical");
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualSetMetadata(1, "k", bytes("v"));
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualSetMetadataBatch(1, metadata);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualSetAgentWallet(1, wallet);
+
+        _expectNonZeroTokenId(address(token), 1);
+        token.counterfactualUnsetAgentWallet(1);
+
+        // Nothing was minted, bound, or claimed along the way.
+        assertEq(registry.ownerOf(agentId), address(token));
+        assertEq(adapter.primaryAgentOf(address(token)), adapter.PRIMARY_AGENT_UNSET());
+    }
+
+    // -----------------------------------------------------------------
+    //  Raw event compatibility
+    // -----------------------------------------------------------------
+
+    function testCounterfactualAgentRegisteredRawLayoutIsUnchangedForContractBindings() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
+
+        vm.recordLogs();
+        bytes32 hash = token.counterfactualRegisterWithMetadata(0, "ipfs://raw", metadata);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(logs.length, 1, "counterfactual register is emit-only");
+        assertEq(logs[0].emitter, address(adapter));
+
+        // Selector and the three fixed indexed topics are the pre-CONTRACT ones.
+        assertEq(logs[0].topics.length, 4);
+        assertEq(
+            logs[0].topics[0],
+            keccak256(
+                "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)"
+            )
+        );
+        assertEq(logs[0].topics[1], hash);
+        assertEq(logs[0].topics[2], bytes32(uint256(uint160(address(token)))));
+        assertEq(logs[0].topics[3], bytes32(uint256(0)), "a contract binding's tokenId topic is always 0");
+
+        // Non-indexed head words: `uint8 version` then `uint8 standard`.
+        assertEq(_word(logs[0].data, 0), 1, "payload version");
+        assertEq(_word(logs[0].data, 0), adapter.counterfactualPayloadVersion());
+        assertEq(_word(logs[0].data, 1), 5, "non-indexed standard is the appended CONTRACT value");
+
+        // Whole body, including `emitter == tokenContract` for a contract-authorized claim.
+        assertEq(
+            keccak256(logs[0].data),
+            keccak256(
+                abi.encode(uint8(1), IERCAgentBindings.TokenStandard.CONTRACT, "ipfs://raw", metadata, address(token))
+            )
+        );
+    }
+
+    function testAgentBoundRawLayoutIsUnchangedForContractBindings() external {
+        vm.recordLogs();
+        uint256 agentId = token.register(0);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        Vm.Log memory bound = _findLog(logs, keccak256("AgentBound(uint256,uint8,address,uint256,address)"));
+        assertEq(bound.emitter, address(adapter));
+        assertEq(bound.topics.length, 4);
+        assertEq(bound.topics[1], bytes32(agentId));
+        assertEq(bound.topics[2], bytes32(uint256(5)), "indexed standard is the appended CONTRACT value");
+        assertEq(bound.topics[3], bytes32(uint256(uint160(address(token)))));
+        assertEq(keccak256(bound.data), keccak256(abi.encode(uint256(0), address(token))));
+    }
+
+    // -----------------------------------------------------------------
+    //  Alias (the standard is deliberately excluded from registrationHash)
+    // -----------------------------------------------------------------
+
+    function testHybridContractAliasesItsERC721AndContractClaimsOntoOneIdentity() external {
+        HybridERC721Contract hybrid = new HybridERC721Contract(adapter);
+        bytes32 expectedHash = adapter.registrationHash(address(hybrid), 0);
+
+        vm.recordLogs();
+        // Authorized as an unminted single-owner id 0, then as the bound contract itself.
+        assertEq(hybrid.counterfactualRegisterAsERC721(0, "ipfs://as-721"), expectedHash);
+        assertEq(hybrid.counterfactualRegister(0), expectedHash);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(logs.length, 2);
+        bytes32 topic0 = keccak256(
+            "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)"
+        );
+        for (uint256 i; i < 2; ++i) {
+            assertEq(logs[i].emitter, address(adapter));
+            assertEq(logs[i].topics[0], topic0);
+            // Identical identity topics: the hash is standard-independent, and the standard is not
+            // indexed either.
+            assertEq(logs[i].topics[1], expectedHash);
+            assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(hybrid)))));
+            assertEq(logs[i].topics[3], bytes32(uint256(0)));
+        }
+
+        // Only the non-indexed body distinguishes them, and log order decides the winner: the losing
+        // ERC-721 body is emitted first and the winning contract-binding body last, so last-event-wins
+        // resolves the identity to that claim's content — standard *and* agentURI *and* emitter.
+        IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
+        assertEq(
+            keccak256(logs[0].data),
+            keccak256(
+                abi.encode(uint8(1), IERCAgentBindings.TokenStandard.ERC721, "ipfs://as-721", empty, address(hybrid))
+            ),
+            "log 0 is the superseded ERC-721 claim"
+        );
+        assertEq(
+            keccak256(logs[1].data),
+            keccak256(
+                abi.encode(
+                    uint8(1), IERCAgentBindings.TokenStandard.CONTRACT, "ipfs://erc20-agent", empty, address(hybrid)
+                )
+            ),
+            "log 1 is the winning contract-binding claim"
+        );
+        assertEq(_word(logs[0].data, 1), uint8(IERCAgentBindings.TokenStandard.ERC721));
+        assertEq(_word(logs[1].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+    }
+
+    // -----------------------------------------------------------------
+    //  Permanent authority vs immutable bindings
+    // -----------------------------------------------------------------
+
+    function testAuthorityCanReassertClaimsButBindingsStayImmutable() external {
+        uint256 firstAgentId = token.register(0);
+
+        // The permanent authority can re-emit a counterfactual claim at any later time...
+        assertEq(token.counterfactualRegister(0), adapter.registrationHash(address(token), 0));
+
+        // ...and mint further, distinct ERC-8004 identities for the same contract, here through the
+        // metadata-bearing full register overload, whose entries must land in the registry.
+        uint256 secondAgentId = token.registerWithMetadata(0, _metadata("role", "treasury"));
+        assertTrue(secondAgentId != firstAgentId);
+        assertEq(adapter.bindingOf(secondAgentId).tokenContract, address(token));
+        assertEq(uint8(adapter.bindingOf(secondAgentId).standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(registry.getMetadata(secondAgentId, "role"), bytes("treasury"));
+        assertEq(registry.tokenURI(secondAgentId), "ipfs://erc20-agent");
+        assertEq(
+            registry.getMetadata(secondAgentId, adapter.BINDING_METADATA_KEY()), abi.encodePacked(address(adapter))
+        );
+        assertEq(registry.getAgentWallet(secondAgentId), address(0));
+        assertTrue(adapter.isController(secondAgentId, address(token)));
+
+        // ...but an agent that is already bound can never be rebound, by anyone.
+        uint256 existingAgentId = token.prepareExistingAgent(registry);
+        token.bindExisting(existingAgentId, 0);
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.AlreadyBound.selector, existingAgentId));
+        token.bindExisting(existingAgentId, 0);
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.AlreadyBound.selector, firstAgentId));
+        vm.prank(stranger);
+        adapter.bindExisting(firstAgentId, IERCAgentBindings.TokenStandard.ERC721, address(token), 0);
+
+        // The original binding is byte-for-byte what it was at registration.
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(firstAgentId);
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(binding.tokenContract, address(token));
+        assertEq(binding.tokenId, 0);
+    }
+
+    // -----------------------------------------------------------------
+    //  Registry may not be bound
+    // -----------------------------------------------------------------
+
+    function testIdentityRegistryCannotBeBoundAsAContract() external {
+        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 0, "ipfs://registry");
+
+        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 0, "ipfs://registry");
+
+        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        adapter.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 0, "ipfs://registry"
+        );
+
+        // The registry rejection precedes the canonical-id check, matching the other standards.
+        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 1, "ipfs://registry");
+
+        // A codeless address is still the generic rejection.
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(0), 0, "ipfs://zero");
+    }
+
     // -----------------------------------------------------------------
     //  Helpers
     // -----------------------------------------------------------------
+
+    function _assertEveryCounterfactualWriterDenied(address account) internal {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://denied");
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://denied", metadata
+        );
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://denied");
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "k", bytes("v"));
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, metadata);
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, wallet);
+
+        _expectNotController(account);
+        vm.prank(account);
+        adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0);
+    }
+
+    function _findLog(Vm.Log[] memory logs, bytes32 topic0) internal pure returns (Vm.Log memory found) {
+        uint256 matches;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length != 0 && logs[i].topics[0] == topic0) {
+                found = logs[i];
+                ++matches;
+            }
+        }
+        require(matches == 1, "expected exactly one matching log");
+    }
+
+    /// @dev Reads the `index`-th 32-byte word of an event body without `abi.decode`, which would
+    /// need the whole five-field counterfactual tuple (and blows the stack in these tests).
+    function _word(bytes memory data, uint256 index) internal pure returns (uint256 value) {
+        uint256 offset = index * 32;
+        for (uint256 i; i < 32; ++i) {
+            value = (value << 8) | uint8(data[offset + i]);
+        }
+    }
+
+    function _metadata(string memory metadataKey, string memory metadataValue)
+        internal
+        pure
+        returns (IERC8004IdentityRegistry.MetadataEntry[] memory metadata)
+    {
+        metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
+        metadata[0] =
+            IERC8004IdentityRegistry.MetadataEntry({metadataKey: metadataKey, metadataValue: bytes(metadataValue)});
+    }
 
     /// @dev Asserts the target answers none of the ownership/balance shapes the other standards use,
     /// so probing it would revert rather than resolve.
