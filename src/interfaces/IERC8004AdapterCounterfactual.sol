@@ -22,6 +22,33 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// Plain ERC-1155/ERC-6909 remain positive-balance controlled. Collection-authorized events retain
 /// the existing schema and carry `emitter = tokenContract`; later owner/delegate events overwrite
 /// them by normal log ordering.
+///
+/// `CONTRACT` (`TokenStandard` value 5, appended; values 0-4 unchanged) uses the same unsigned
+/// functions under a different authority. It names a deployed contract itself rather than a token
+/// within it, so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForContract`. The bound
+/// contract itself is the only authorized emitter: the adapter's immediate EVM caller must be
+/// `tokenContract`. A router, forwarder, or multicall that calls the adapter itself fails, since the
+/// adapter sees that contract as `msg.sender`; an external owner or governance address may instead
+/// call an entry point on the bound contract that makes the outbound adapter call. `delegatecall`
+/// into the adapter is unsupported and dangerous — it is a UUPS implementation with its own storage
+/// layout, not a library. Holders, an optional `owner()`, and the adapter admin have no authority,
+/// and the adapter probes neither `ownerOf` nor either `balanceOf` shape. Unlike the transient
+/// single-owner window above — which closes on mint and can reopen on burn — a contract-level
+/// binding has no token whose ownership could change hands, so its authority window never closes.
+/// (An ERC-20 claiming its own contract-level identity through `CONTRACT` is the motivating example;
+/// there is no ERC-20-specific standard value.)
+///
+/// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
+/// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
+/// wallet field alone. The event schema, indexed topics, `registrationHash`, and `version == 1`
+/// are unchanged by `CONTRACT`. `CounterfactualAgentRegistered.standard` — the only counterfactual
+/// event that carries a standard — remains non-indexed (the on-chain `AgentBound.standard` keeps its
+/// own indexed slot). Because the standard is excluded from the hash, any two standards claiming the
+/// same `(tokenContract, tokenId)` alias onto one `registrationHash`; a contract that is also an
+/// ERC-721 collection claiming both its token `#0` and `CONTRACT` at `(X, 0)` is the worked example.
+/// That is accepted and documented: they are deliberately one identity with one current claim, and
+/// consumers read the latest `CounterfactualAgentRegistered.standard` in log order to see which
+/// claim currently wins.
 interface IERC8004AdapterCounterfactual {
     /// @notice Local ERC-7930 v1 Chain Identifier using CAIP-350 `eip155`: version 1, ChainType 0,
     /// shortest non-empty big-endian `block.chainid`, and zero AddressLength.

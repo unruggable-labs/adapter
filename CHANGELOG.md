@@ -41,6 +41,41 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 
 ### Added
 
+- Contract bindings. `CONTRACT` is appended to `TokenStandard` as value `5`; values `0`-`4` are
+  unchanged, so stored bindings and indexed history keep their meaning. Values `0`-`4` name a token
+  within a contract; `CONTRACT` names any deployed contract itself, token or not. An ERC-20 claiming
+  its own identity is the motivating example and uses `CONTRACT` like any other contract — there is
+  no ERC-20-specific standard value. (ERC-20Agent is a separate metadata profile layered on top, not a
+  binding standard.)
+  - `tokenId` MUST be `0`: a contract-level binding has exactly one canonical coordinate. Any other
+    id reverts the new `NonZeroTokenIdForContract(tokenContract, tokenId)` error rather than being
+    coerced, enforced at both authority choke points, so it covers `register`,
+    `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
+  - The controller is the bound `tokenContract` itself and nothing else — no holder, delegate,
+    optional `owner()`, or adapter admin has authority. The adapter probes neither `ownerOf` nor
+    either `balanceOf` shape; control is `msg.sender == tokenContract`, so a contract with no token
+    interface at all binds exactly like one that has one.
+  - Unlike the transient ERC-721/ERC-1155F/ERC-6909F direct-collection window, which closes on mint
+    and can reopen on burn, a contract-level binding has no token whose ownership could change hands,
+    so its authority window never closes. `CONTRACT` is deliberately excluded from the single-owner
+    set: no ownerless probe, no delegate.xyz route.
+  - The adapter's immediate EVM caller must be `tokenContract`. A router, forwarder, or multicall
+    contract that calls the adapter itself fails, because the adapter sees that contract as
+    `msg.sender`. An external owner or governance address may instead call an entry point on the
+    bound contract, which then makes the outbound adapter call (the planned reference pattern). A
+    constructor call is rejected — deployed runtime code is required. `delegatecall` into
+    `Adapter8004` is unsupported and dangerous: it is a UUPS implementation with its own storage
+    layout, not a library. `bindExisting` additionally requires the bound contract to own the
+    ERC-8004 agent and to have approved the adapter. `registerAndSetPrimary` records the bound
+    contract's own primary agent.
+  - Permanent authority is worth nothing without a repeatable outbound path to the adapter. A
+    contract that cannot call out cannot bind at all; one with a single post-deployment hook binds
+    once and then freezes. Repeatable management needs a governance-gated, upgradeable, or
+    pass-through outbound path.
+  - Post-bind, the mutable registry fields are bound-contract-only and its latest write wins. The
+    `Binding` stays immutable with deliberately no revoke or unbind API — register a fresh ERC-8004
+    identity instead. Counterfactual claims likewise have no whole-claim tombstone: later events
+    from the contract supersede earlier ones by last-event-wins, and wallet unset is field-level.
 - Full ERC-8004 `register` (including `registerAndSetPrimary`) now accepts the same temporary
   ownerless collection authority as unsigned counterfactual writes: the directly calling
   ERC-721/ERC-1155F/ERC-6909F token contract may register its own id while `ownerOf(tokenId)`
@@ -79,6 +114,17 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 
 This ownerless full-registration change adds no public selector, storage slot, event ABI,
 counterfactual payload-version change, or `@custom:version` bump.
+
+Contract bindings add no public selector, storage slot, or `@custom:version` bump either.
+`registrationHash`, the counterfactual event schema, and `version == 1` are unchanged;
+`AgentBound` keeps its layout with `standard` indexed, and `CounterfactualAgentRegistered` — the
+only counterfactual event carrying a standard — keeps its layout with `standard` non-indexed.
+`CONTRACT` is only a new value in the existing `uint8` field. Because the standard is excluded from
+`registrationHash`, any two standards claiming the same `(tokenContract, tokenId)` alias onto one
+hash; a contract at `(X, 0)` claiming both its ERC-721 token `#0` and `CONTRACT` is the worked
+example. That is accepted and documented — hashing the standard would break
+every existing hash. The claims are deliberately one identity with one current claim, and indexers
+read the latest `CounterfactualAgentRegistered.standard` in log order to see which claim wins.
 
 ### Removed
 
