@@ -109,6 +109,14 @@ contract Adapter8004 is
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
     /// through `_hasBindingControl`.
     error InvalidTokenContractIsRegistry();
+    /// @notice Thrown by any `CONTRACT` adapter operation called with a nonzero `tokenId` —
+    /// registration, `bindExisting`, and the emit-only counterfactual calls alike, since all of them
+    /// pass through the same authority choke points. A contract-level binding names the contract
+    /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
+    /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
+    /// its `registrationHash`, and any pointer derived from it can never disagree with the id the
+    /// caller submitted.
+    error NonZeroTokenIdForContract(address tokenContract, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
     /// @notice Thrown when `setPrimaryAgentFor` / `clearPrimaryAgentFor` is called by an address that
@@ -995,7 +1003,11 @@ contract Adapter8004 is
         internal
         view
     {
-        // 1. Reuse the token-standard-specific control check before first registration.
+        // 1. Pin contract-level bindings to the canonical id 0 in the same call that decides control,
+        //    so no write path can reach storage or an event with a nonzero contract-binding id.
+        _requireCanonicalTokenId(standard, tokenContract, tokenId);
+
+        // 2. Reuse the token-standard-specific control check before first registration.
         if (!_hasBindingControl(standard, tokenContract, tokenId, account)) {
             revert NotController(account, type(uint256).max);
         }
@@ -1010,11 +1022,28 @@ contract Adapter8004 is
         internal
         view
     {
+        // 1. Pin contract-level bindings to the canonical id 0 before any authority branch is taken,
+        //    so the ownerless window cannot be entered and no emit-only path can escape the check.
+        _requireCanonicalTokenId(standard, tokenContract, tokenId);
+
+        // 2. Temporary single-owner collection authority, then the shared current-control chain.
         if (account == tokenContract && _isSingleOwnerStandard(standard) && _hasNoCurrentOwner(tokenContract, tokenId))
         {
             return;
         }
         _requireBindingControl(standard, tokenContract, tokenId, account);
+    }
+
+    /// @dev A `CONTRACT` binding names the contract itself rather than a token within it, so it has
+    /// exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
+    /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
+    /// a contract-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
+    /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
+    /// id they submitted. No-op for every other standard.
+    function _requireCanonicalTokenId(TokenStandard standard, address tokenContract, uint256 tokenId) internal pure {
+        if (standard == TokenStandard.CONTRACT && tokenId != 0) {
+            revert NonZeroTokenIdForContract(tokenContract, tokenId);
+        }
     }
 
     /// @dev Probes `ownerOf` without assuming a universal nonexistent-token revert selector.
@@ -1049,7 +1078,24 @@ contract Adapter8004 is
         view
         returns (bool)
     {
-        // 1. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
+        // 1. A contract-level binding names `tokenContract` itself rather than a token within it, so
+        //    the bound contract is the controller and nobody else is. There is no per-token owner or
+        //    holder to resolve, and the adapter asks the contract nothing: `ownerOf` and both
+        //    `balanceOf` shapes are never probed on this branch, and `tokenId` is not consulted (it is
+        //    pinned to 0 at the choke points above). Anything the contract exposes itself — an
+        //    `owner()`, a token balance, a role — carries no authority here.
+        //    Unlike the transient single-owner collection window in `_requireTokenAuthority` — which
+        //    closes as soon as the id is minted and can reopen on burn — this authority never closes:
+        //    there is no token whose ownership could change hands, so the bound contract is the
+        //    permanent controller of the agents it binds. Deliberately not part of
+        //    `_isSingleOwnerStandard`, so it gets no ownerless-window probe and no delegate.xyz
+        //    ERC-721 delegation route. (An ERC-20 binding its own supply-wide identity is the
+        //    motivating example, but nothing here is specific to tokens.)
+        if (standard == TokenStandard.CONTRACT) {
+            return account == tokenContract;
+        }
+
+        // 2. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
         //    delegation from the current owner. Direct ownership is checked first so current owners
         //    never pay a registry call.
         if (_isSingleOwnerStandard(standard)) {
@@ -1060,13 +1106,13 @@ contract Adapter8004 is
             return _isERC721Delegate(account, owner, tokenContract, tokenId);
         }
 
-        // 2. ERC-1155 control means any positive balance for the bound id.
+        // 3. ERC-1155 control means any positive balance for the bound id.
         //    No delegate.xyz check: the no-vault API cannot soundly map a delegation to a holder.
         if (standard == TokenStandard.ERC1155) {
             return IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
         }
 
-        // 3. ERC-6909 control also means any positive balance for the bound id.
+        // 4. ERC-6909 control also means any positive balance for the bound id.
         //    No delegate.xyz check: v2 has no ERC-6909 token-id delegation primitive.
         return IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
     }
