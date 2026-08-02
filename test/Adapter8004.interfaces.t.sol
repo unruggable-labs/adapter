@@ -48,6 +48,7 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(uint8(IERCAgentBindings.TokenStandard.ERC1155F), 3);
         assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909F), 4);
         assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT), 5);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE), 6);
     }
 
     function testPrimaryInterfacesCastAndSelectors() external {

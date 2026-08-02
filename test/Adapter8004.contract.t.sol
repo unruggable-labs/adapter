@@ -39,12 +39,89 @@ contract ProbeTrapBinder is MockERC20 {
 contract HybridERC721Contract is MockERC20 {
     constructor(Adapter8004 adapter) MockERC20(adapter) {}
 
+    function owner() external view returns (address) {
+        return address(this);
+    }
+
     function ownerOf(uint256) external pure returns (address) {
         revert("nonexistent token");
     }
 
     function counterfactualRegisterAsERC721(uint256 tokenId, string calldata agentURI) external returns (bytes32) {
         return ADAPTER.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(this), tokenId, agentURI);
+    }
+
+    function counterfactualRegisterAsOwnable(uint256 tokenId, string calldata agentURI) external returns (bytes32) {
+        return ADAPTER.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(this), tokenId, agentURI
+        );
+    }
+}
+
+contract OwnableERC20Binder is MockERC20 {
+    address internal currentOwner;
+
+    constructor(Adapter8004 adapter, address initialOwner) MockERC20(adapter) {
+        currentOwner = initialOwner;
+    }
+
+    function owner() external view virtual returns (address) {
+        return currentOwner;
+    }
+
+    function transferOwnership(address newOwner) external {
+        require(msg.sender == currentOwner, "not owner");
+        currentOwner = newOwner;
+    }
+
+    function registerOwnable(uint256 tokenId) external returns (uint256) {
+        return ADAPTER.register(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(this), tokenId, "ipfs://ownable-agent"
+        );
+    }
+
+    function counterfactualRegisterOwnable(uint256 tokenId) external returns (bytes32) {
+        return ADAPTER.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(this), tokenId, "ipfs://ownable-agent"
+        );
+    }
+
+    function bindExistingOwnable(uint256 agentId, uint256 tokenId) external {
+        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(this), tokenId);
+    }
+
+    function setOwnableMetadata(uint256 agentId, string calldata key, bytes calldata value) external {
+        ADAPTER.setMetadata(agentId, key, value);
+    }
+}
+
+contract RevertingOwnerBinder is OwnableERC20Binder {
+    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+
+    function owner() external pure override returns (address) {
+        revert("owner unavailable");
+    }
+}
+
+contract DirtyOwnerBinder is OwnableERC20Binder {
+    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+
+    function owner() external view override returns (address) {
+        assembly ("memory-safe") {
+            mstore(0, or(sload(currentOwner.slot), shl(160, 1)))
+            return(0, 0x20)
+        }
+    }
+}
+
+contract ShortOwnerBinder is OwnableERC20Binder {
+    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+
+    function owner() external view override returns (address) {
+        assembly ("memory-safe") {
+            mstore(0, sload(currentOwner.slot))
+            return(1, 0x1f)
+        }
     }
 }
 
@@ -237,6 +314,141 @@ contract Adapter8004ContractBindingTest is Test {
         // The same authority can keep registering further agents for the same contract.
         uint256 secondAgentId = token.register(0);
         assertTrue(adapter.isController(secondAgentId, address(token)));
+    }
+
+    // -----------------------------------------------------------------
+    //  Explicit ownable contract authority
+    // -----------------------------------------------------------------
+
+    function testOwnableOwnerAndContractCanRegisterAndManageWhileOthersAreDenied() external {
+        address contractOwner = makeAddr("contractOwner");
+        OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, contractOwner);
+        ownable.mint(holder, 1_000 ether);
+
+        vm.prank(contractOwner);
+        uint256 ownerRegisteredId = adapter.register(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://owner-registered"
+        );
+        assertTrue(adapter.isController(ownerRegisteredId, contractOwner));
+        assertTrue(adapter.isController(ownerRegisteredId, address(ownable)));
+
+        vm.prank(contractOwner);
+        adapter.setMetadata(ownerRegisteredId, "controller", bytes("owner"));
+        assertEq(registry.getMetadata(ownerRegisteredId, "controller"), bytes("owner"));
+
+        ownable.setOwnableMetadata(ownerRegisteredId, "controller", bytes("contract"));
+        assertEq(registry.getMetadata(ownerRegisteredId, "controller"), bytes("contract"));
+
+        uint256 contractRegisteredId = ownable.registerOwnable(0);
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(contractRegisteredId);
+        assertEq(uint8(binding.standard), 6);
+        assertEq(binding.tokenContract, address(ownable));
+        assertEq(binding.tokenId, 0);
+        assertTrue(adapter.isController(contractRegisteredId, contractOwner));
+        assertTrue(adapter.isController(contractRegisteredId, address(ownable)));
+
+        address[3] memory denied = [holder, admin, stranger];
+        for (uint256 i; i < denied.length; ++i) {
+            _expectNotController(denied[i]);
+            vm.prank(denied[i]);
+            adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://denied");
+
+            _expectNotControllerOf(denied[i], ownerRegisteredId);
+            vm.prank(denied[i]);
+            adapter.setMetadata(ownerRegisteredId, "controller", bytes("denied"));
+        }
+    }
+
+    function testOwnableAuthorityFollowsTransferAndOldOwnerLosesControl() external {
+        address oldOwner = makeAddr("oldOwner");
+        address newOwner = makeAddr("newOwner");
+        OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, oldOwner);
+
+        vm.prank(oldOwner);
+        uint256 agentId = adapter.register(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://before-transfer"
+        );
+
+        vm.prank(oldOwner);
+        ownable.transferOwnership(newOwner);
+
+        assertFalse(adapter.isController(agentId, oldOwner));
+        assertTrue(adapter.isController(agentId, newOwner));
+        assertTrue(adapter.isController(agentId, address(ownable)));
+
+        _expectNotControllerOf(oldOwner, agentId);
+        vm.prank(oldOwner);
+        adapter.setMetadata(agentId, "controller", bytes("old"));
+
+        vm.prank(newOwner);
+        adapter.setMetadata(agentId, "controller", bytes("new"));
+        assertEq(registry.getMetadata(agentId, "controller"), bytes("new"));
+
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
+        assertEq(uint8(binding.standard), 6, "authority changes, binding does not");
+        assertEq(binding.tokenContract, address(ownable));
+        assertEq(binding.tokenId, 0);
+    }
+
+    function testRevertingOwnerFailsClosedButContractSelfStillWorks() external {
+        address allegedOwner = makeAddr("revertingOwner");
+        RevertingOwnerBinder ownable = new RevertingOwnerBinder(adapter, allegedOwner);
+        uint256 agentId = ownable.registerOwnable(0);
+
+        assertFalse(adapter.isController(agentId, allegedOwner));
+        assertTrue(adapter.isController(agentId, address(ownable)));
+
+        _expectNotControllerOf(allegedOwner, agentId);
+        vm.prank(allegedOwner);
+        adapter.setMetadata(agentId, "controller", bytes("owner"));
+
+        ownable.setOwnableMetadata(agentId, "controller", bytes("contract"));
+        assertEq(registry.getMetadata(agentId, "controller"), bytes("contract"));
+    }
+
+    function testDirtyAndWrongLengthOwnerResponsesFailClosed() external {
+        address allegedOwner = makeAddr("malformedOwner");
+        DirtyOwnerBinder dirty = new DirtyOwnerBinder(adapter, allegedOwner);
+        ShortOwnerBinder short = new ShortOwnerBinder(adapter, allegedOwner);
+
+        uint256 dirtyAgentId = dirty.registerOwnable(0);
+        uint256 shortAgentId = short.registerOwnable(0);
+
+        assertFalse(adapter.isController(dirtyAgentId, allegedOwner));
+        assertFalse(adapter.isController(shortAgentId, allegedOwner));
+        assertTrue(adapter.isController(dirtyAgentId, address(dirty)));
+        assertTrue(adapter.isController(shortAgentId, address(short)));
+    }
+
+    function testZeroOwnerGrantsNobodyAndContractSelfStillWorks() external {
+        OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, address(0));
+        uint256 agentId = ownable.registerOwnable(0);
+
+        assertFalse(adapter.isController(agentId, address(0)));
+        assertFalse(adapter.isController(agentId, stranger));
+        assertTrue(adapter.isController(agentId, address(ownable)));
+    }
+
+    function testOwnableNonZeroTokenIdRevertsAtBothAuthorityChokePoints() external {
+        address contractOwner = makeAddr("canonicalOwner");
+        OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, contractOwner);
+
+        _expectNonZeroTokenId(address(ownable), 1);
+        vm.prank(contractOwner);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 1, "ipfs://non-canonical");
+
+        vm.prank(contractOwner);
+        uint256 agentId = registry.register("ipfs://existing");
+        vm.prank(contractOwner);
+        registry.approve(address(adapter), agentId);
+
+        _expectNonZeroTokenId(address(ownable), 1);
+        vm.prank(contractOwner);
+        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 1);
+
+        assertEq(registry.ownerOf(agentId), contractOwner);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        adapter.bindingOf(agentId);
     }
 
     // -----------------------------------------------------------------
@@ -515,25 +727,69 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(keccak256(bound.data), keccak256(abi.encode(uint256(0), address(token))));
     }
 
+    function testCounterfactualRawLayoutIsUnchangedForOwnableContractBindings() external {
+        address contractOwner = makeAddr("rawCounterfactualOwner");
+        OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, contractOwner);
+
+        vm.recordLogs();
+        vm.prank(contractOwner);
+        bytes32 hash = adapter.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://raw-ownable"
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(logs.length, 1);
+        assertEq(
+            logs[0].topics[0],
+            keccak256(
+                "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)"
+            )
+        );
+        assertEq(logs[0].topics[1], hash);
+        assertEq(logs[0].topics[2], bytes32(uint256(uint160(address(ownable)))));
+        assertEq(logs[0].topics[3], bytes32(uint256(0)));
+        assertEq(_word(logs[0].data, 0), 1);
+        assertEq(_word(logs[0].data, 1), 6);
+    }
+
+    function testAgentBoundRawLayoutIsUnchangedForOwnableContractBindings() external {
+        address contractOwner = makeAddr("rawBoundOwner");
+        OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, contractOwner);
+
+        vm.recordLogs();
+        vm.prank(contractOwner);
+        uint256 agentId = adapter.register(
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://raw-ownable"
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        Vm.Log memory bound = _findLog(logs, keccak256("AgentBound(uint256,uint8,address,uint256,address)"));
+        assertEq(bound.topics[1], bytes32(agentId));
+        assertEq(bound.topics[2], bytes32(uint256(6)));
+        assertEq(bound.topics[3], bytes32(uint256(uint160(address(ownable)))));
+        assertEq(keccak256(bound.data), keccak256(abi.encode(uint256(0), contractOwner)));
+    }
+
     // -----------------------------------------------------------------
     //  Alias (the standard is deliberately excluded from registrationHash)
     // -----------------------------------------------------------------
 
-    function testHybridContractAliasesItsERC721AndContractClaimsOntoOneIdentity() external {
+    function testHybridContractAliasesERC721ContractAndOwnableClaimsOntoOneIdentity() external {
         HybridERC721Contract hybrid = new HybridERC721Contract(adapter);
         bytes32 expectedHash = adapter.registrationHash(address(hybrid), 0);
 
         vm.recordLogs();
-        // Authorized as an unminted single-owner id 0, then as the bound contract itself.
+        // Authorized as an unminted single-owner id 0, then under both contract authority models.
         assertEq(hybrid.counterfactualRegisterAsERC721(0, "ipfs://as-721"), expectedHash);
         assertEq(hybrid.counterfactualRegister(0), expectedHash);
+        assertEq(hybrid.counterfactualRegisterAsOwnable(0, "ipfs://as-ownable"), expectedHash);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        assertEq(logs.length, 2);
+        assertEq(logs.length, 3);
         bytes32 topic0 = keccak256(
             "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)"
         );
-        for (uint256 i; i < 2; ++i) {
+        for (uint256 i; i < 3; ++i) {
             assertEq(logs[i].emitter, address(adapter));
             assertEq(logs[i].topics[0], topic0);
             // Identical identity topics: the hash is standard-independent, and the standard is not
@@ -544,7 +800,8 @@ contract Adapter8004ContractBindingTest is Test {
         }
 
         // Only the non-indexed body distinguishes them, and log order decides the winner: the losing
-        // ERC-721 body is emitted first and the winning contract-binding body last, so last-event-wins
+        // ERC-721 and CONTRACT bodies are emitted first and the winning CONTRACT_OWNABLE body last,
+        // so last-event-wins
         // resolves the identity to that claim's content — standard *and* agentURI *and* emitter.
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         assertEq(
@@ -561,10 +818,24 @@ contract Adapter8004ContractBindingTest is Test {
                     uint8(1), IERCAgentBindings.TokenStandard.CONTRACT, "ipfs://erc20-agent", empty, address(hybrid)
                 )
             ),
-            "log 1 is the winning contract-binding claim"
+            "log 1 is the superseded contract-self claim"
+        );
+        assertEq(
+            keccak256(logs[2].data),
+            keccak256(
+                abi.encode(
+                    uint8(1),
+                    IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE,
+                    "ipfs://as-ownable",
+                    empty,
+                    address(hybrid)
+                )
+            ),
+            "log 2 is the winning ownable-contract claim"
         );
         assertEq(_word(logs[0].data, 1), uint8(IERCAgentBindings.TokenStandard.ERC721));
         assertEq(_word(logs[1].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(_word(logs[2].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE));
     }
 
     // -----------------------------------------------------------------
