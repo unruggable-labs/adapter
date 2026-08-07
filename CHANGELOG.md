@@ -30,6 +30,40 @@ upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
 on this summary; see the
 [last-deployed baseline audit](./deployments/upgrade-baseline-from-last-deployed.md).
 
+## [0.0.15] - Unreleased
+
+Breaking source release. Not deployed. Adds no storage slot and keeps the
+`0.0.14` layout, so it upgrades from the same deployed baselines with empty
+`upgradeToAndCall` data. This is the release train that also carries the
+unreleased `0.0.14` contract-binding work below; the two ship together in one
+implementation.
+
+### Changed
+
+- `bytes32 extraData` is folded into the counterfactual registration-hash
+  preimage, which is now
+  `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))`.
+  This implementation reserves `extraData` at `bytes32(0)` and has no way to
+  supply another value; a future implementation may return non-zero values to
+  distinguish subjects that share a `(tokenContract, tokenId)`. This is a hard
+  identity cutover: every counterfactual `registrationHash` changes, so
+  identities emitted by earlier implementations do not match anything recomputed
+  by this one. On-chain `Binding` rows and full ERC-8004 registrations are
+  unaffected.
+- `extraData` is emitted as the first non-indexed field on all six
+  counterfactual events (`CounterfactualAgentRegistered`,
+  `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
+  `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
+  `CounterfactualAgentWalletUnset`) and on `PrimaryCounterfactualAgentSet`, so
+  an indexer stores the field before any upgrade begins populating it. Adding a
+  field changes each event signature and therefore its `topic0`.
+
+### Removed
+
+- The `uint8 version` payload field on the counterfactual events and the
+  `counterfactualPayloadVersion()` getter. `topic0` already discriminates event
+  schema on its own, so an in-payload version restated what the topic guarantees.
+
 ## [0.0.14] - Unreleased
 
 Breaking source release. Not deployed. Upgrades directly from the active
