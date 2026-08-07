@@ -2,6 +2,7 @@
 .claude/
 cache/
 out/
+output/
 broadcast/
 .env
 .env.local
