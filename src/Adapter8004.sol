@@ -64,10 +64,13 @@ contract Adapter8004 is
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
-    /// @notice Reserved canonical-promotion metadata key. A write that targets this key would let a
-    /// caller fabricate a promotion back-link, so it has no legitimate caller-supplied writer. The
-    /// reservation is enforced on every write path that accepts caller metadata: all counterfactual
-    /// writes, and the canonical setters `register`, `setMetadata`, and `setMetadataBatch`.
+    /// @notice Reserved metadata key. Nothing writes it today, including this contract.
+    ///
+    /// It is held open for a possible future flow that records which counterfactual claim an
+    /// on-chain registration was promoted from. That flow does not exist and may never be built.
+    /// The key is reserved regardless, so that if it ever is, no caller has already written a false
+    /// provenance claim under it. Every write path that accepts caller metadata rejects this key:
+    /// all counterfactual writes, and the canonical `register`, `setMetadata` and `setMetadataBatch`.
     string public constant CF_REGISTRATION_KEY = "cf-registration";
     bytes32 private constant CF_REGISTRATION_KEY_HASH = keccak256(bytes(CF_REGISTRATION_KEY));
 
@@ -400,8 +403,8 @@ contract Adapter8004 is
         _requireController(agentId, msg.sender);
 
         // 2. Prevent callers from writing reserved metadata: the canonical binding record
-        //    (agent-binding) and the canonical-promotion key (cf-registration). No adapter
-        //    code path writes either legitimately, so neither is a valid controller write.
+        //    (agent-binding), which only this contract writes, and cf-registration, which
+        //    nothing writes today. Neither is a valid controller write.
         bytes32 keyHash = keccak256(bytes(metadataKey));
         if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
             revert ReservedMetadataKey(metadataKey);
@@ -1204,11 +1207,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @dev Rejects any metadata entry that targets a reserved key: the canonical binding record
-    /// (`agent-binding`) or the canonical-promotion key (`cf-registration`). Used on every adapter
-    /// write path that accepts a metadata array (register and the counterfactual surface). No adapter
-    /// path writes either key legitimately, so an emitter cannot fabricate a binding record or a
-    /// promotion back-link.
+    /// @dev Rejects any metadata entry targeting a reserved key, either the canonical binding record
+    /// (`agent-binding`, which only this contract writes) or `cf-registration` (which nothing writes
+    /// today). Used on every adapter write path that accepts a metadata array, meaning `register` and
+    /// the counterfactual surface, so a caller cannot forge a binding record or a provenance claim.
     function _requireNoReservedCounterfactualKeys(IERC8004IdentityRegistry.MetadataEntry[] memory metadata)
         internal
         pure
