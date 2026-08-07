@@ -14,6 +14,7 @@ import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
+import {MockERC6909F} from "./mocks/MockERC6909F.sol";
 import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 
 /// @dev Minimal test implementation with the exact regular storage baseline shared by the
@@ -130,6 +131,38 @@ contract Adapter8004StorageV014Test is Test {
 
         vm.store(proxy, _mappingSlot(account, 4), bytes32(uint256(11)));
         assertEq(adapter.primaryAgentNonces(account), 11);
+    }
+
+    /// @dev Appending `CONTRACT` and `CONTRACT_OWNABLE` to `TokenStandard` must not renumber the values
+    /// already persisted in live `Binding` rows. Pins `ERC6909F == 4` as the stored byte on both sides
+    /// of the upgrade and checks the upgraded implementation still routes it down the single-owner path.
+    function testAppendedContractStandardDoesNotRenumberStoredTokenStandards() external {
+        MockERC6909F token6909F = new MockERC6909F();
+        token6909F.mint(cold, 60);
+
+        Adapter8004LiveBaseline baseline = _deployBaseline(new Adapter8004MainnetBaseBaseline());
+        baseline.seedLiveBinding(7, IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60);
+        address proxy = address(baseline);
+
+        // `Binding` packs `standard` (uint8) into the low byte of the struct's first slot.
+        bytes32 bindingSlot = keccak256(abi.encode(uint256(7), uint256(1)));
+        assertEq(uint8(uint256(vm.load(proxy, bindingSlot))), 4, "pre-upgrade stored standard byte");
+
+        Adapter8004 adapter = _upgrade(baseline);
+
+        assertEq(uint8(uint256(vm.load(proxy, bindingSlot))), 4, "post-upgrade stored standard byte");
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909F), 4);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT), 5);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE), 6);
+
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(7);
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC6909F));
+        assertEq(binding.tokenContract, address(token6909F));
+        assertEq(binding.tokenId, 60);
+
+        // Value 4 still resolves through `ownerOf`, not through the appended contract-binding branch.
+        assertTrue(adapter.isController(7, cold));
+        assertFalse(adapter.isController(7, address(token6909F)));
     }
 
     function testDirectUpgradeFromSepoliaLiveBaselineRetainsDelegateXyzBehavior() external {
