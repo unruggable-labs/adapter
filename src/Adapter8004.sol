@@ -32,7 +32,18 @@ interface ISingleOwnerToken {
 /// upgrade requires no migration or reinitializer and must use empty `upgradeToAndCall` data.
 /// Sepolia's live delegate.xyz constants and authorization behavior are retained by this
 /// implementation.
-/// @custom:version 0.0.14
+///
+/// v0.0.15 folds a `bytes32 extraData` discriminator into the counterfactual registration hash and
+/// emits it on every counterfactual event. It is declared as a `constant`, so the storage layout is
+/// unchanged.
+///
+/// This is a breaking change. Every `registrationHash` changes and every counterfactual topic0
+/// moves, so it must be treated as a hard cutover. Document the cutover block, move the indexer to
+/// the new ABI, and reindex before upgrading a proxy. Only counterfactual identities and the
+/// `_primaryCounterfactualAgent` pointers are keyed by this hash, so `Binding` rows and full
+/// ERC-8004 registrations are unaffected. It is also the only such break, because everything that
+/// hashes with `extraData == bytes32(0)` will hash identically from here on.
+/// @custom:version 0.0.15
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -66,17 +77,18 @@ contract Adapter8004 is
     /// only. delegate.xyz v2 also accepts empty/full delegations when this nonzero rights value is checked.
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
 
-    /// @notice Schema version emitted as the first non-indexed field on every counterfactual event.
-    /// Bumped only on payload-structure breakage (re-ordered or removed fields).
+    /// @notice Identity discriminator folded into every counterfactual `registrationHash` and
+    /// emitted on every counterfactual event. It is reserved rather than used, and is zero in this
+    /// implementation.
     ///
-    /// !! BREAKING CHANGE WARNING !!
-    /// Adding, removing, or reordering any field in a counterfactual event (including this
-    /// `uint8 version` field itself) changes the event signature, which changes the keccak256
-    /// topic[0]. Indexers watching the old topic stop receiving events on the upgraded
-    /// implementation. Treat any change to this constant or to the surrounding event ABIs as
-    /// a hard cutover: bump the implementation, document the cutover block, and require every
-    /// downstream indexer to subscribe to the new topics from that block forward.
-    uint8 private constant COUNTERFACTUAL_PAYLOAD_VERSION = 1;
+    /// It exists so that a later implementation can separate tokens that share a
+    /// `(tokenContract, tokenId)`, such as a contract with classes of ids where Class A id 1 and
+    /// Class B id 1 are different tokens. The proxy is UUPS, so that implementation may compute
+    /// this value however it needs to. Fixing the preimage shape here is what allows it to do so
+    /// without breaking any identity again.
+    ///
+    /// @dev Never introduce a non-zero value for a pair that hashed with zero, as it re-keys a live identity.
+    bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
 
     /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
     /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
@@ -483,6 +495,12 @@ contract Adapter8004 is
     // Indexers consume the emitted events as soft-state claims (latest
     // event per `registrationHash` wins), enabling off-chain identities
     // that can later be promoted to on-chain registrations.
+    //
+    // The identity is the `registrationHash` and nothing else. Each token
+    // has exactly one identity, but `(tokenContract, tokenId)` is not
+    // considered a unique identifier, because one contract may have more
+    // than one set of ids. `extraData` is what separates those tokens.
+    // Consumers must key on `registrationHash`, never on the token pair.
     // -----------------------------------------------------------------
 
     /// @notice Computes the canonical counterfactual `registrationHash` for the given external token,
@@ -503,17 +521,12 @@ contract Adapter8004 is
         return _chainIdentifier();
     }
 
-    /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualPayloadVersion() external pure returns (uint8) {
-        return COUNTERFACTUAL_PAYLOAD_VERSION;
-    }
-
     /// @notice Counterfactual registration: claim an identity for an external token without minting in the
     /// ERC-8004 registry and without persisting any adapter storage. Authorized for a current controller,
     /// or for the directly calling token contract while an ERC-721/ERC-1155F/ERC-6909F id has no current
     /// owner. The same authority may re-emit any number of times; indexers MUST resolve the latest event
-    /// per `(tokenContract, tokenId)` as authoritative. Collection-authorized events use
-    /// `emitter = tokenContract`.
+    /// per `registrationHash` as authoritative, not per `(tokenContract, tokenId)`, which is not
+    /// considered a unique identifier. Collection-authorized events use `emitter = tokenContract`.
     function counterfactualRegister(
         TokenStandard standard,
         address tokenContract,
@@ -559,21 +572,15 @@ contract Adapter8004 is
 
         // 5. Emit the counterfactual claim — the only on-chain record produced by this function.
         emit CounterfactualAgentRegistered(
-            computedHash,
-            tokenContract,
-            tokenId,
-            COUNTERFACTUAL_PAYLOAD_VERSION,
-            standard,
-            agentURI,
-            metadata,
-            msg.sender
+            computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, agentURI, metadata, msg.sender
         );
     }
 
     /// @notice Counterfactual agent URI update. No registry write, no SSTORE. A current controller
     /// may call, as may the directly calling token contract while a supported single-owner id has no
     /// current owner. The emitted event is the single source of truth; indexers MUST treat the latest
-    /// event per token as authoritative.
+    /// event per `registrationHash` as authoritative, not per `(tokenContract, tokenId)`, which is
+    /// not considered a unique identifier.
     function counterfactualSetAgentURI(
         TokenStandard standard,
         address tokenContract,
@@ -592,7 +599,7 @@ contract Adapter8004 is
             _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
-            COUNTERFACTUAL_PAYLOAD_VERSION,
+            COUNTERFACTUAL_EXTRA_DATA,
             newURI,
             msg.sender
         );
@@ -628,7 +635,7 @@ contract Adapter8004 is
             _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
-            COUNTERFACTUAL_PAYLOAD_VERSION,
+            COUNTERFACTUAL_EXTRA_DATA,
             metadataKey,
             metadataValue,
             msg.sender
@@ -659,7 +666,7 @@ contract Adapter8004 is
             _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
-            COUNTERFACTUAL_PAYLOAD_VERSION,
+            COUNTERFACTUAL_EXTRA_DATA,
             metadata,
             msg.sender
         );
@@ -687,7 +694,7 @@ contract Adapter8004 is
             _registrationHash(tokenContract, tokenId),
             tokenContract,
             tokenId,
-            COUNTERFACTUAL_PAYLOAD_VERSION,
+            COUNTERFACTUAL_EXTRA_DATA,
             newWallet,
             msg.sender
         );
@@ -709,11 +716,7 @@ contract Adapter8004 is
 
         // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(tokenContract, tokenId),
-            tokenContract,
-            tokenId,
-            COUNTERFACTUAL_PAYLOAD_VERSION,
-            msg.sender
+            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
         );
     }
 
@@ -814,7 +817,9 @@ contract Adapter8004 is
             revert PrimaryCounterfactualAgentHashReserved(computedHash);
         }
         _primaryCounterfactualAgent[account] = ~computedHash;
-        emit PrimaryCounterfactualAgentSet(account, computedHash, tokenContract, tokenId, msg.sender);
+        emit PrimaryCounterfactualAgentSet(
+            account, computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
+        );
     }
 
     function _clearPrimaryCounterfactualAgent(address account) private {
@@ -1173,12 +1178,14 @@ contract Adapter8004 is
         // Otherwise the final byte remains zero: ERC-7930 AddressLength == 0.
     }
 
+    /// @dev The canonical counterfactual identity is
+    /// `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))`.
     function _registrationHashFor(bytes memory adapterInteroperableAddress, address tokenContract, uint256 tokenId)
         internal
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId));
+        return keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA));
     }
 
     /// @dev Stateless EIP-712 domain separator for the signed primary-agent surface. Computed inline

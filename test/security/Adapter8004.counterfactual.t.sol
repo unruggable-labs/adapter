@@ -148,9 +148,10 @@ contract CounterfactualSecurityTest is Test {
         vm.stopPrank();
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 topic = keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)");
-        bytes32 expectedHash =
-            keccak256(abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1)));
+        bytes32 topic = keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,string,address)");
+        bytes32 expectedHash = keccak256(
+            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+        );
         bytes32 expectedTokenContract = bytes32(uint256(uint160(address(token721))));
         bytes32 expectedTokenId = bytes32(uint256(1));
         uint256 matches;
@@ -159,20 +160,46 @@ contract CounterfactualSecurityTest is Test {
                 assertEq(logs[i].topics[1], expectedHash);
                 assertEq(logs[i].topics[2], expectedTokenContract);
                 assertEq(logs[i].topics[3], expectedTokenId);
-                // Decode the non-indexed payload (uint8 version, string newURI, address emitter)
-                // and confirm the schema version is the v1 baseline.
-                (uint8 version,,) = abi.decode(logs[i].data, (uint8, string, address));
-                assertEq(version, uint8(1), "version must be 1 on every counterfactual event");
+                // Decode the non-indexed payload (bytes32 extraData, string newURI, address
+                // emitter) and confirm the reserved discriminator rides on every event.
+                (bytes32 extraData,,) = abi.decode(logs[i].data, (bytes32, string, address));
+                assertEq(extraData, bytes32(0), "extraData must ride on every counterfactual event");
                 ++matches;
             }
         }
         assertEq(matches, 3, "every re-emit must produce a fresh log entry");
     }
 
-    /// The adapter's `counterfactualPayloadVersion()` view MUST return the same `1` that every
-    /// counterfactual event carries in its `uint8 version` field.
-    function testCounterfactualPayloadVersionIsOne() external view {
-        assertEq(adapter.counterfactualPayloadVersion(), uint8(1));
+    /// There is no in-payload schema version: `topic0` discriminates schema on its own. This pins
+    /// that the emitted topic is the keccak of the exact current signature, so any future field
+    /// change moves the topic and old subscribers stop matching, which is the property a version
+    /// field would otherwise have restated.
+    function testTopic0DiscriminatesSchemaWithoutAPayloadVersion() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://x");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(logs.length, 1);
+        assertEq(
+            logs[0].topics[0],
+            keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,string,address)"),
+            "topic0 is the keccak of the current signature"
+        );
+        // The superseded shapes must not match the emitted topic.
+        assertTrue(
+            logs[0].topics[0] != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)"),
+            "pre-extraData shape"
+        );
+        assertTrue(
+            logs[0].topics[0]
+                != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,bytes32,string,address)"),
+            "versioned extraData shape"
+        );
+
+        // No adapter function advertises a payload version any more.
+        (bool ok,) = address(adapter).staticcall(abi.encodeWithSignature("counterfactualPayloadVersion()"));
+        assertFalse(ok, "counterfactualPayloadVersion must be gone");
     }
 
     /// Counterfactual setter reentrancy: a malicious ERC-721 attempts to reenter

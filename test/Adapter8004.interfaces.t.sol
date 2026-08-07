@@ -100,7 +100,7 @@ contract Adapter8004InterfacesTest is Test {
         );
         assertEq(
             IERC8004AdapterCounterfactualPrimaryAgent.PrimaryCounterfactualAgentSet.selector,
-            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,address)")
+            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,address)")
         );
     }
 

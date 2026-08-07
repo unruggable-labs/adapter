@@ -439,11 +439,10 @@ Functions:
 - `registrationHash(tokenContract, tokenId)` (view)
 - `interoperableAddress(account)` (view)
 - `chainIdentifier()` (view)
-- `counterfactualPayloadVersion()` (pure)
 
 Indexer rules:
 
-- each event carries `uint8 version` as its first non-indexed field; this baseline emits `version == 1`
+- each event carries `bytes32 extraData` as its first non-indexed field; this baseline emits `bytes32(0)`. There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
 - the three indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`
 - the `registrationHash` is
   `keccak256(abi.encode(interoperableAddress(adapterProxy), tokenContract, tokenId))`,
@@ -465,7 +464,7 @@ Indexer rules:
 
 Reserved keys on the counterfactual write surface: `agent-binding` and `cf-registration`.
 
-> BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event (including the `uint8 version` field itself) changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to the payload version or to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
+> BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
 
 ### Independent primary-agent systems
 
@@ -559,7 +558,6 @@ Counterfactual (emit-only) functions:
 - `registrationHash(address tokenContract, uint256 tokenId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
-- `counterfactualPayloadVersion()`
 - `setPrimaryAgent(uint256 agentId)`
 - `setPrimaryAgentFor(address account, uint256 agentId)`
 - `clearPrimaryAgent()`
@@ -648,7 +646,7 @@ The Foundry suite currently covers:
 - control transfer after external token transfers
 - metadata and URI updates
 - wallet-binding pass-through with valid and invalid ERC-8004 signatures
-- the counterfactual register family, including reserved-key rejection and payload version
+- the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
 - proxy initialization
 - admin-only registry repointing
 - admin-only implementation upgrades

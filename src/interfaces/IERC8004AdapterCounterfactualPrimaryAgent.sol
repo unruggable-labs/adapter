@@ -7,11 +7,14 @@ pragma solidity ^0.8.24;
 interface IERC8004AdapterCounterfactualPrimaryAgent {
     function PRIMARY_COUNTERFACTUAL_AGENT_UNSET() external pure returns (bytes32);
 
+    /// @notice `extraData` is the discriminator folded into `registrationHash`. It is carried here
+    /// because `(tokenContract, tokenId)` alone is not unique. See `IERC8004AdapterCounterfactual`.
     event PrimaryCounterfactualAgentSet(
         address indexed account,
         bytes32 indexed registrationHash,
         address tokenContract,
         uint256 tokenId,
+        bytes32 extraData,
         address indexed setBy
     );
     event PrimaryCounterfactualAgentCleared(address indexed account, address indexed clearedBy);
