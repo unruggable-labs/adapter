@@ -88,6 +88,23 @@ contract PrimaryAgentWithSigTest is Test {
         assertEq(adapter.primaryAgentNonces(alice), 0);
     }
 
+    /// @dev A rejected signature must leave the nonce unspent. Without that, anyone watching the
+    /// mempool could retire a pending signed intent by replaying it after it expires, and the
+    /// account would have to sign again at a nonce it never intended to reach. The inclusive bounds
+    /// test below only asserts acceptance, so removing the expiry check cannot make it fail.
+    function testExpiredSignatureRevertsAndLeavesTheNonceUnspent() external {
+        uint256 deadline = block.timestamp + 5 minutes;
+        bytes memory signature =
+            _sign(alicePk, _digest(keccak256(abi.encode(SET_FULL_TYPEHASH, alice, 1, 0, deadline))));
+
+        vm.warp(deadline + 1);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.SignatureExpired.selector, deadline));
+        adapter.setPrimaryAgentWithSig(alice, 1, deadline, signature);
+
+        assertEq(adapter.primaryAgentNonces(alice), 0);
+        assertEq(adapter.primaryAgentOf(alice), adapter.PRIMARY_AGENT_UNSET());
+    }
+
     function testDeadlineBoundsRemainInclusive() external {
         bytes memory signature =
             _sign(alicePk, _digest(keccak256(abi.encode(SET_FULL_TYPEHASH, alice, 1, 0, block.timestamp))));

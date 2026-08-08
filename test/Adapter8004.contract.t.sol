@@ -125,6 +125,20 @@ contract ShortOwnerBinder is OwnableERC20Binder {
     }
 }
 
+/// @dev Returns a well formed owner address followed by a second word. The address itself is clean,
+/// so the response can only be denied on its length.
+contract LongOwnerBinder is OwnableERC20Binder {
+    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+
+    function owner() external view override returns (address) {
+        assembly ("memory-safe") {
+            mstore(0, sload(currentOwner.slot))
+            mstore(0x20, 0xdead)
+            return(0, 0x40)
+        }
+    }
+}
+
 contract Adapter8004ContractBindingTest is Test {
     bytes32 internal constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
@@ -418,6 +432,21 @@ contract Adapter8004ContractBindingTest is Test {
         assertFalse(adapter.isController(shortAgentId, allegedOwner));
         assertTrue(adapter.isController(dirtyAgentId, address(dirty)));
         assertTrue(adapter.isController(shortAgentId, address(short)));
+    }
+
+    /// @dev Both responses in the test above carry dirty upper bits, so the dirty word check denies
+    /// them before the length comparison is ever reached. An over long response is the only shape
+    /// that reaches the length check, which is why it needs its own binder and its own test. Folding
+    /// this back into the case above would leave the length check unverified while still looking
+    /// like it was covered.
+    function testOverlongOwnerResponseFailsClosedOnLengthAlone() external {
+        address allegedOwner = makeAddr("overlongOwner");
+        LongOwnerBinder long = new LongOwnerBinder(adapter, allegedOwner);
+
+        uint256 agentId = long.registerOwnable(0);
+
+        assertFalse(adapter.isController(agentId, allegedOwner));
+        assertTrue(adapter.isController(agentId, address(long)));
     }
 
     function testZeroOwnerGrantsNobodyAndContractSelfStillWorks() external {
