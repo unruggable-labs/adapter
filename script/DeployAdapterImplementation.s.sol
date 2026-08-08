@@ -29,7 +29,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 ///      `keccak256(eth_getCode(<implementation>))`.
 ///
 /// Upgrade data is empty: the active Mainnet/Base and Sepolia implementations both use only
-/// regular slots 0/1. Adapter8004 v0.0.14 appends four mappings directly at slots 2-5. New mappings
+/// regular slots 0/1. Adapter8004 v0.0.15 appends three mappings directly at slots 2-4. New mappings
 /// begin empty naturally; no migration or `reinitializer` is permitted.
 contract DeployAdapterImplementationScript is Script {
     /// @notice Thrown when this script runs on a chain id outside the production set
@@ -185,10 +185,10 @@ contract DeployAdapterImplementationScript is Script {
             vm.toString(block.timestamp * 1000),
             ",\n",
             '  "meta": {\n',
-            '    "name": "Adapter8004 v0.0.14 - split primaries + ERC-7930 hashes - ',
+            '    "name": "Adapter8004 v0.0.15 - split primaries + ERC-7930 hashes with reserved extraData - ',
             networkDisplayName,
             '",\n',
-            '    "description": "Upgrade the Adapter8004 UUPS proxy directly from its active deployed implementation to v0.0.14. Separates full uint256 and counterfactual bytes32 primary-agent mappings/nonces/events, and changes every counterfactual registration hash to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), tokenContract, tokenId)). Four mappings append directly after the live layout at slots 2-5. Implementation deployed at ',
+            '    "description": "Upgrade the Adapter8004 UUPS proxy directly from its active deployed implementation to v0.0.15. Separates full uint256 and counterfactual bytes32 primary-agent mappings/nonces/events, and changes every counterfactual registration hash to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), tokenContract, tokenId, extraData)), where extraData is a reserved discriminator fixed at bytes32(0) in this release. Three mappings append directly after the live layout at slots 2-4. Implementation deployed at ',
             vm.toString(implementation),
             " (bytecode hash ",
             vm.toString(implementationCodehash),
