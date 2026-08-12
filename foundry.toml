@@ -4,12 +4,11 @@ out = "out"
 libs = ["lib"]
 test = "test"
 script = "script"
-solc_version = "0.8.24"
+solc_version = "0.8.30"
 # Pinned rather than left to the compiler default, which tracks whatever the solc version happens to
-# target and so moves under us on any bump without showing up in a diff. This records the target the
-# project already compiles against, so a later change of EVM version has to be written down and
-# reviewed as its own edit.
-evm_version = "cancun"
+# target and so moves under us on any bump without showing up in a diff. Prague is live on Ethereum,
+# Base and Sepolia, the three chains carrying a proxy.
+evm_version = "prague"
 optimizer = true
 optimizer_runs = 200
 remappings = [
