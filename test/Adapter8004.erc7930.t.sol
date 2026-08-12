@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {InteroperableAddress} from "@openzeppelin/contracts/utils/draft-InteroperableAddress.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -310,5 +311,46 @@ contract Adapter8004ERC7930Test is Test {
 
     function _assertVector(bytes memory adapterAddress, bytes32 expected) internal view {
         assertEq(harness.registrationHashFor(adapterAddress, VECTOR_TOKEN, 42), expected);
+    }
+
+    /// @dev These two tests compare the local ERC-7930 encoder against OpenZeppelin's, which is used
+    /// nowhere in production and deliberately so. The encoding is the counterfactual identity
+    /// preimage, so taking it from a library would mean a routine dependency bump could re-key every
+    /// counterfactual identity that has ever been emitted. Keeping our own copy makes that
+    /// impossible, and these tests are what stops the copy drifting in silence: they hold it against
+    /// the ecosystem reference. If they ever fail, the question is not which implementation to
+    /// change. It is whether ERC-7930 itself moved, and every existing identity depends on the
+    /// answer. Do not delete these as unused, and do not resolve a failure by switching production
+    /// to the library.
+    function testEncodingMatchesOpenZeppelinReference() external view {
+        uint256[4] memory chainIds = [uint256(1), 8453, 11155111, 424242];
+        address account = 0x1111111111111111111111111111111111111111;
+
+        for (uint256 i = 0; i < chainIds.length; i++) {
+            assertEq(
+                harness.interoperableAddressFor(chainIds[i], account),
+                InteroperableAddress.formatEvmV1(chainIds[i], account)
+            );
+            assertEq(harness.chainIdentifierFor(chainIds[i]), InteroperableAddress.formatEvmV1(chainIds[i]));
+        }
+    }
+
+    function testFuzzEncodingMatchesOpenZeppelinReference(uint256 chainId, address account) external view {
+        vm.assume(chainId != 0);
+        bytes memory ozEncoded = InteroperableAddress.formatEvmV1(chainId, account);
+        assertEq(harness.interoperableAddressFor(chainId, account), ozEncoded);
+        assertEq(harness.chainIdentifierFor(chainId), InteroperableAddress.formatEvmV1(chainId));
+    }
+
+    /// @dev The one place the two implementations deliberately disagree, recorded so it is not later
+    /// mistaken for drift. A chain id of zero identifies no chain and `block.chainid` never returns
+    /// it, so the local encoder rejects it outright rather than producing an identity nothing could
+    /// ever own. OpenZeppelin encodes it. The fuzz case above excludes zero for this reason and no
+    /// other.
+    function testZeroChainIdIsRejectedLocallyButNotByOpenZeppelin() external {
+        vm.expectRevert(Adapter8004.InvalidChainId.selector);
+        harness.chainIdentifierFor(0);
+
+        assertGt(InteroperableAddress.formatEvmV1(uint256(0)).length, 0);
     }
 }
