@@ -1,0 +1,49 @@
+{
+  "name": "full-cf-independence",
+  "spec": [
+    "S7"
+  ],
+  "description": "D2: a full ERC-8004 registration (AgentBound) for the same coordinates does not affect the counterfactual identity in any way. Reducers must not apply AgentBound to the counterfactual projection.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://cf-identity",
+        "metadata": [],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 110,
+      "logIndex": 0,
+      "event": "AgentBound",
+      "args": {
+        "agentId": "42",
+        "standard": "ERC721",
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "tokenId": "1",
+        "registeredBy": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://cf-identity",
+        "metadata": {},
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

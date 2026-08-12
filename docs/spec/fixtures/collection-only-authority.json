@@ -1,0 +1,48 @@
+{
+  "name": "collection-only-authority",
+  "spec": [
+    "R-5"
+  ],
+  "description": "With no owner-authored event ever, contract-authored events remain fully authoritative, including updates.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000007",
+        "standard": "ERC721",
+        "agentURI": "ipfs://v1",
+        "metadata": [],
+        "emitter": "0x1000000000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 130,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000007",
+        "newURI": "ipfs://v2",
+        "emitter": "0x1000000000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:7": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://v2",
+        "metadata": {},
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

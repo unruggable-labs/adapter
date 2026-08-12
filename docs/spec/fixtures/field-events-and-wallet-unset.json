@@ -1,0 +1,93 @@
+{
+  "name": "field-events-and-wallet-unset",
+  "spec": [
+    "R-2"
+  ],
+  "description": "Field events act on their field alone: metadata upserts single keys, wallet unset clears only the wallet and leaves the registration, URI, and metadata intact.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-a",
+        "metadata": [],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 101,
+      "logIndex": 0,
+      "event": "CounterfactualMetadataSet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "metadataKey": "role",
+        "metadataValue": "0x01",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 102,
+      "logIndex": 0,
+      "event": "CounterfactualAgentWalletSet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newWallet": "0xFace000000000000000000000000000000000003",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 103,
+      "logIndex": 0,
+      "event": "CounterfactualMetadataBatchSet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "metadata": [
+          {
+            "metadataKey": "color",
+            "metadataValue": "0x02"
+          },
+          {
+            "metadataKey": "role",
+            "metadataValue": "0x03"
+          }
+        ],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 104,
+      "logIndex": 0,
+      "event": "CounterfactualAgentWalletUnset",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-a",
+        "metadata": {
+          "role": "0x03",
+          "color": "0x02"
+        },
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

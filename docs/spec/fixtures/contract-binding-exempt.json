@@ -1,0 +1,52 @@
+{
+  "name": "contract-binding-exempt",
+  "spec": [
+    "R-6",
+    "R-7"
+  ],
+  "description": "Contract-subject identities (empty identifier, keyed tokenContract:contract) treat emitter == tokenContract as permanent legitimate authority; R-5 never applies to them.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x2000000000000000000000000000000000000002",
+        "identifier": "0x",
+        "standard": "CONTRACT",
+        "agentURI": "ipfs://protocol-agent",
+        "metadata": [],
+        "emitter": "0x2000000000000000000000000000000000000002"
+      }
+    },
+    {
+      "block": 150,
+      "logIndex": 0,
+      "event": "CounterfactualMetadataSet",
+      "args": {
+        "tokenContract": "0x2000000000000000000000000000000000000002",
+        "identifier": "0x",
+        "metadataKey": "endpoint",
+        "metadataValue": "0x68747470733a2f2f6167656e742e6578616d706c65",
+        "emitter": "0x2000000000000000000000000000000000000002"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x2000000000000000000000000000000000000002:contract": {
+        "registered": true,
+        "standard": "CONTRACT",
+        "agentURI": "ipfs://protocol-agent",
+        "metadata": {
+          "endpoint": "0x68747470733a2f2f6167656e742e6578616d706c65"
+        },
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

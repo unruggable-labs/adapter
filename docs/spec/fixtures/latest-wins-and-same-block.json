@@ -1,0 +1,60 @@
+{
+  "name": "latest-wins-and-same-block",
+  "spec": [
+    "R-3",
+    "O-1"
+  ],
+  "description": "Within one authority class the latest event wins, ordered by (block, logIndex) \u2014 including two updates in the same block, where the higher logIndex is authoritative.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-a",
+        "metadata": [],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 101,
+      "logIndex": 3,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newURI": "ipfs://uri-b",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 101,
+      "logIndex": 7,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newURI": "ipfs://uri-c",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-c",
+        "metadata": {},
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "basic-register",
+  "spec": [
+    "I-1",
+    "R-1"
+  ],
+  "description": "A single owner-authored registration produces a registered identity with its URI and metadata.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://agent/1",
+        "metadata": [
+          {
+            "metadataKey": "name",
+            "metadataValue": "0x616c706861"
+          }
+        ],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://agent/1",
+        "metadata": {
+          "name": "0x616c706861"
+        },
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

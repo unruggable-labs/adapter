@@ -1,0 +1,67 @@
+{
+  "name": "reregistration-resets",
+  "spec": [
+    "R-1"
+  ],
+  "description": "A later registration is a full re-statement: it replaces the URI and the whole metadata map (an empty metadata array clears previously accumulated keys).",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-a",
+        "metadata": [
+          {
+            "metadataKey": "role",
+            "metadataValue": "0x01"
+          }
+        ],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 105,
+      "logIndex": 0,
+      "event": "CounterfactualMetadataSet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "metadataKey": "color",
+        "metadataValue": "0x02",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 110,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-b",
+        "metadata": [],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://uri-b",
+        "metadata": {},
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

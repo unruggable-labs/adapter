@@ -1,0 +1,73 @@
+{
+  "name": "primary-agent-projections",
+  "spec": [
+    "P-1",
+    "P-2",
+    "P-3"
+  ],
+  "description": "The two primary projections are independent; agent id 0 is a real settable id; WithSig events are provenance only and never a second transition; a clear removes the row.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "PrimaryAgentSet",
+      "args": {
+        "account": "0xA11ce00000000000000000000000000000000001",
+        "agentId": "0",
+        "setBy": "0xFee1000000000000000000000000000000000005"
+      }
+    },
+    {
+      "block": 100,
+      "logIndex": 1,
+      "event": "PrimaryAgentSetWithSig",
+      "args": {
+        "account": "0xA11ce00000000000000000000000000000000001",
+        "agentId": "0",
+        "relayer": "0xFee1000000000000000000000000000000000005",
+        "nonce": "0"
+      }
+    },
+    {
+      "block": 101,
+      "logIndex": 0,
+      "event": "PrimaryCounterfactualAgentSet",
+      "args": {
+        "account": "0xA11ce00000000000000000000000000000000001",
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "setBy": "0xA11ce00000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 102,
+      "logIndex": 0,
+      "event": "PrimaryAgentSet",
+      "args": {
+        "account": "0xB0B0000000000000000000000000000000000002",
+        "agentId": "5",
+        "setBy": "0xB0B0000000000000000000000000000000000002"
+      }
+    },
+    {
+      "block": 103,
+      "logIndex": 0,
+      "event": "PrimaryAgentCleared",
+      "args": {
+        "account": "0xB0B0000000000000000000000000000000000002",
+        "clearedBy": "0xB0B0000000000000000000000000000000000002"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {},
+    "primaryAgents": {
+      "0xA11ce00000000000000000000000000000000001": "0"
+    },
+    "primaryCounterfactualAgents": {
+      "0xA11ce00000000000000000000000000000000001": "0x1000000000000000000000000000000000000001:1"
+    }
+  }
+}

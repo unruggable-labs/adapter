@@ -1,0 +1,49 @@
+{
+  "name": "unregistered-field-events",
+  "spec": [
+    "R-2"
+  ],
+  "description": "OPEN-2 resolution: field events with no prior registration build retained, surfaced state with registered: false and a null standard. Consumers filter on the flag; indexers never hide the rows.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000005",
+        "newURI": "ipfs://unregistered",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 110,
+      "logIndex": 0,
+      "event": "CounterfactualMetadataSet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000005",
+        "metadataKey": "role",
+        "metadataValue": "0x01",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:5": {
+        "registered": false,
+        "standard": null,
+        "agentURI": "ipfs://unregistered",
+        "metadata": {
+          "role": "0x01"
+        },
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

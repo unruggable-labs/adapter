@@ -1,0 +1,69 @@
+{
+  "name": "subject-split",
+  "spec": [
+    "I-2",
+    "R-6"
+  ],
+  "description": "D6: the ERC-721 claim on token #0 of X (identifier 0x00||0) and X's own contract-subject claim (empty identifier) share a coordinate but are two distinct identities that never contest each other. The owner's later URI update touches only the token subject.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x3000000000000000000000000000000000000003",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000000",
+        "standard": "ERC721",
+        "agentURI": "ipfs://token-zero-agent",
+        "metadata": [],
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 105,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x3000000000000000000000000000000000000003",
+        "identifier": "0x",
+        "standard": "CONTRACT",
+        "agentURI": "ipfs://collection-agent",
+        "metadata": [],
+        "emitter": "0x3000000000000000000000000000000000000003"
+      }
+    },
+    {
+      "block": 110,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x3000000000000000000000000000000000000003",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000000",
+        "newURI": "ipfs://token-zero-updated",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x3000000000000000000000000000000000000003:0": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://token-zero-updated",
+        "metadata": {},
+        "agentWallet": null
+      },
+      "0x3000000000000000000000000000000000000003:contract": {
+        "registered": true,
+        "standard": "CONTRACT",
+        "agentURI": "ipfs://collection-agent",
+        "metadata": {},
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

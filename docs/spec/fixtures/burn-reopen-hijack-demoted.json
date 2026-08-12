@@ -1,0 +1,70 @@
+{
+  "name": "burn-reopen-hijack-demoted",
+  "spec": [
+    "R-5"
+  ],
+  "description": "D3 core case: after the first owner-authored event, contract-authored events are ignored forever. A post-burn collection URI rewrite and wallet claim do not supersede the owner's state.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://minted-default",
+        "metadata": [],
+        "emitter": "0x1000000000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 110,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newURI": "ipfs://owner-real",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 120,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newURI": "ipfs://post-burn-hostile",
+        "emitter": "0x1000000000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 120,
+      "logIndex": 1,
+      "event": "CounterfactualAgentWalletSet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newWallet": "0xBad0000000000000000000000000000000000004",
+        "emitter": "0x1000000000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://owner-real",
+        "metadata": {},
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "name": "collection-premint-then-owner",
+  "spec": [
+    "R-4",
+    "R-5"
+  ],
+  "description": "The collection registers pre-mint (emitter == tokenContract, valid: no owner-authored event exists yet). The owner's later update applies on top. State established by the collection is retained; the owner's field wins.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "standard": "ERC721",
+        "agentURI": "ipfs://minted-default",
+        "metadata": [
+          {
+            "metadataKey": "series",
+            "metadataValue": "0x01"
+          }
+        ],
+        "emitter": "0x1000000000000000000000000000000000000001"
+      }
+    },
+    {
+      "block": 120,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x1000000000000000000000000000000000000001",
+        "identifier": "0x000000000000000000000000000000000000000000000000000000000000000001",
+        "newURI": "ipfs://owner-custom",
+        "emitter": "0xA11ce00000000000000000000000000000000001"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x1000000000000000000000000000000000000001:1": {
+        "registered": true,
+        "standard": "ERC721",
+        "agentURI": "ipfs://owner-custom",
+        "metadata": {
+          "series": "0x01"
+        },
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}

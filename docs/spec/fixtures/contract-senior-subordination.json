@@ -1,0 +1,97 @@
+{
+  "name": "contract-senior-subordination",
+  "spec": [
+    "R-7"
+  ],
+  "description": "D6/R-7: an owner() may bootstrap a silent contract's identity, but once the contract itself has emitted, later owner-authored events are ignored \u2014 a stale owner() key cannot supersede the contract's own claim.",
+  "chainId": 11155111,
+  "adapter": "0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92",
+  "events": [
+    {
+      "block": 100,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x4000000000000000000000000000000000000004",
+        "identifier": "0x",
+        "standard": "CONTRACT_OWNABLE",
+        "agentURI": "ipfs://bootstrap-by-owner",
+        "metadata": [],
+        "emitter": "0x0DDC0FFEE00000000000000000000000000000A1"
+      }
+    },
+    {
+      "block": 150,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x4000000000000000000000000000000000000004",
+        "identifier": "0x",
+        "newURI": "ipfs://owner-update",
+        "emitter": "0x0DDC0FFEE00000000000000000000000000000A1"
+      }
+    },
+    {
+      "block": 200,
+      "logIndex": 0,
+      "event": "CounterfactualAgentRegistered",
+      "args": {
+        "tokenContract": "0x4000000000000000000000000000000000000004",
+        "identifier": "0x",
+        "standard": "CONTRACT_OWNABLE",
+        "agentURI": "ipfs://contract-official",
+        "metadata": [],
+        "emitter": "0x4000000000000000000000000000000000000004"
+      }
+    },
+    {
+      "block": 250,
+      "logIndex": 0,
+      "event": "CounterfactualAgentURISet",
+      "args": {
+        "tokenContract": "0x4000000000000000000000000000000000000004",
+        "identifier": "0x",
+        "newURI": "ipfs://stale-owner-hijack",
+        "emitter": "0x0DDC0FFEE00000000000000000000000000000A1"
+      }
+    },
+    {
+      "block": 250,
+      "logIndex": 1,
+      "event": "CounterfactualAgentWalletSet",
+      "args": {
+        "tokenContract": "0x4000000000000000000000000000000000000004",
+        "identifier": "0x",
+        "newWallet": "0xBad0000000000000000000000000000000000004",
+        "emitter": "0x0DDC0FFEE00000000000000000000000000000A1"
+      }
+    },
+    {
+      "block": 300,
+      "logIndex": 0,
+      "event": "CounterfactualMetadataSet",
+      "args": {
+        "tokenContract": "0x4000000000000000000000000000000000000004",
+        "identifier": "0x",
+        "metadataKey": "endpoint",
+        "metadataValue": "0x01",
+        "emitter": "0x4000000000000000000000000000000000000004"
+      }
+    }
+  ],
+  "expected": {
+    "identities": {
+      "0x4000000000000000000000000000000000000004:contract": {
+        "registered": true,
+        "standard": "CONTRACT_OWNABLE",
+        "agentURI": "ipfs://contract-official",
+        "metadata": {
+          "endpoint": "0x01"
+        },
+        "agentWallet": null
+      }
+    },
+    "primaryAgents": {},
+    "primaryCounterfactualAgents": {}
+  }
+}
