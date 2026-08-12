@@ -28,14 +28,14 @@ contract MockContractBinder {
     //  Adapter calls made by the binder contract itself
     // ---------------------------------------------------------------
 
-    function register(uint256 tokenId) external returns (uint256) {
+    function register() external returns (uint256) {
         return
-            ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://contract-agent");
+            ADAPTER.registerContract(IERCAgentBindings.TokenStandard.CONTRACT, address(this), "ipfs://contract-agent");
     }
 
-    function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://contract-agent"
+    function counterfactualRegister() external returns (bytes32) {
+        return ADAPTER.counterfactualRegisterContract(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), "ipfs://contract-agent"
         );
     }
 
@@ -44,8 +44,8 @@ contract MockContractBinder {
         IERC721(address(registry)).approve(address(ADAPTER), agentId);
     }
 
-    function bindExisting(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId);
+    function bindExisting(uint256 agentId) external {
+        ADAPTER.bindExistingContract(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(this));
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

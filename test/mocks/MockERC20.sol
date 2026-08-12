@@ -66,69 +66,62 @@ contract MockERC20 {
     //  Adapter calls made by the token contract itself
     // ---------------------------------------------------------------
 
-    function register(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent");
+    function register() external returns (uint256) {
+        return ADAPTER.registerContract(IERCAgentBindings.TokenStandard.CONTRACT, address(this), "ipfs://erc20-agent");
     }
 
-    function registerAndSetPrimary(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.registerAndSetPrimary(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent"
+    function registerAndSetPrimary() external returns (uint256) {
+        return ADAPTER.registerContractAndSetPrimary(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), "ipfs://erc20-agent"
         );
     }
 
-    function registerWithMetadata(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
+    function registerWithMetadata(IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         returns (uint256)
     {
-        return ADAPTER.register(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent", metadata
+        return ADAPTER.registerContract(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), "ipfs://erc20-agent", metadata
         );
     }
 
-    function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent"
+    function counterfactualRegister() external returns (bytes32) {
+        return ADAPTER.counterfactualRegisterContract(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), "ipfs://erc20-agent"
         );
     }
 
     function counterfactualRegisterWithMetadata(
-        uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, agentURI, metadata
+        return ADAPTER.counterfactualRegisterContract(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), agentURI, metadata
         );
     }
 
-    function counterfactualSetAgentURI(uint256 tokenId, string calldata newURI) external {
-        ADAPTER.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, newURI);
+    function counterfactualSetAgentURI(string calldata newURI) external {
+        ADAPTER.counterfactualSetContractAgentURI(IERCAgentBindings.TokenStandard.CONTRACT, address(this), newURI);
     }
 
-    function counterfactualSetMetadata(uint256 tokenId, string calldata metadataKey, bytes calldata metadataValue)
-        external
-    {
-        ADAPTER.counterfactualSetMetadata(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, metadataKey, metadataValue
+    function counterfactualSetMetadata(string calldata metadataKey, bytes calldata metadataValue) external {
+        ADAPTER.counterfactualSetContractMetadata(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), metadataKey, metadataValue
         );
     }
 
-    function counterfactualSetMetadataBatch(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
-        external
-    {
-        ADAPTER.counterfactualSetMetadataBatch(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, metadata
+    function counterfactualSetMetadataBatch(IERC8004IdentityRegistry.MetadataEntry[] calldata metadata) external {
+        ADAPTER.counterfactualSetContractMetadataBatch(
+            IERCAgentBindings.TokenStandard.CONTRACT, address(this), metadata
         );
     }
 
-    function counterfactualSetAgentWallet(uint256 tokenId, address newWallet) external {
-        ADAPTER.counterfactualSetAgentWallet(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, newWallet
-        );
+    function counterfactualSetAgentWallet(address newWallet) external {
+        ADAPTER.counterfactualSetContractAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(this), newWallet);
     }
 
-    function counterfactualUnsetAgentWallet(uint256 tokenId) external {
-        ADAPTER.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId);
+    function counterfactualUnsetAgentWallet() external {
+        ADAPTER.counterfactualUnsetContractAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(this));
     }
 
     function prepareExistingAgent(MockIdentityRegistry registry) external returns (uint256 agentId) {
@@ -136,8 +129,8 @@ contract MockERC20 {
         IERC721(address(registry)).approve(address(ADAPTER), agentId);
     }
 
-    function bindExisting(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId);
+    function bindExisting(uint256 agentId) external {
+        ADAPTER.bindExistingContract(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(this));
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

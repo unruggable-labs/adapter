@@ -576,7 +576,11 @@ contract Adapter8004Test is Test {
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "name", metadataValue: bytes("alpha")});
 
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         vm.prank(alice);
@@ -584,12 +588,11 @@ contract Adapter8004Test is Test {
         emit IERC8004AdapterCounterfactual.CounterfactualAgentRegistered(
             expectedHash,
             address(token721),
-            1,
-            bytes32(0),
+            alice,
+            abi.encodePacked(uint8(0), uint256(1)),
             IERCAgentBindings.TokenStandard.ERC721,
             "ipfs://agent/cf",
-            metadata,
-            alice
+            metadata
         );
         bytes32 registrationHash = adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata
@@ -601,7 +604,11 @@ contract Adapter8004Test is Test {
     function testRegistrationHashViewMatchesEncodingAndCounterfactualEventTopic() external {
         bytes32 viewHash = adapter.registrationHash(address(token721), 1);
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
         assertEq(viewHash, expectedHash);
 
@@ -619,7 +626,11 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualRegisterEmptyMetadataOverload() external {
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         vm.prank(alice);
@@ -678,13 +689,17 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentURIEmits() external {
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentURISet(
-            expectedHash, address(token721), 1, bytes32(0), "ipfs://updated", alice
+            expectedHash, address(token721), alice, abi.encodePacked(uint8(0), uint256(1)), "ipfs://updated"
         );
         adapter.counterfactualSetAgentURI(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://updated"
@@ -705,13 +720,22 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetMetadataEmits() external {
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataSet(
-            expectedHash, address(token721), 1, bytes32(0), "description", bytes("hello"), alice
+            expectedHash,
+            address(token721),
+            alice,
+            abi.encodePacked(uint8(0), uint256(1)),
+            "description",
+            bytes("hello")
         );
         adapter.counterfactualSetMetadata(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "description", bytes("hello")
@@ -752,7 +776,11 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetMetadataBatchEmits() external {
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](2);
@@ -762,7 +790,7 @@ contract Adapter8004Test is Test {
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataBatchSet(
-            expectedHash, address(token721), 1, bytes32(0), metadata, alice
+            expectedHash, address(token721), alice, abi.encodePacked(uint8(0), uint256(1)), metadata
         );
         adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, metadata);
     }
@@ -810,13 +838,17 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentWalletEmits() external {
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletSet(
-            expectedHash, address(token721), 1, bytes32(0), wallet, alice
+            expectedHash, address(token721), alice, abi.encodePacked(uint8(0), uint256(1)), wallet
         );
         adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, wallet);
     }
@@ -835,13 +867,17 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualUnsetAgentWalletEmits() external {
         bytes32 expectedHash = keccak256(
-            abi.encode(adapter.interoperableAddress(address(adapter)), address(token721), uint256(1), bytes32(0))
+            abi.encode(
+                adapter.interoperableAddress(address(adapter)),
+                address(token721),
+                abi.encodePacked(uint8(0), uint256(1))
+            )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletUnset(
-            expectedHash, address(token721), 1, bytes32(0), alice
+            expectedHash, address(token721), alice, abi.encodePacked(uint8(0), uint256(1))
         );
         adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
     }

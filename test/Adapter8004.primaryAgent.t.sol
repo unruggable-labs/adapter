@@ -38,10 +38,9 @@ contract Adapter8004PrimaryAgentTest is Test {
     event PrimaryCounterfactualAgentSet(
         address indexed account,
         bytes32 indexed registrationHash,
+        address indexed setBy,
         address tokenContract,
-        uint256 tokenId,
-        bytes32 extraData,
-        address indexed setBy
+        bytes identifier
     );
     event PrimaryCounterfactualAgentCleared(address indexed account, address indexed clearedBy);
 
@@ -109,7 +108,7 @@ contract Adapter8004PrimaryAgentTest is Test {
 
         bytes32 hash = adapter.registrationHash(token, 7);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit PrimaryCounterfactualAgentSet(alice, hash, token, 7, bytes32(0), alice);
+        emit PrimaryCounterfactualAgentSet(alice, hash, alice, token, abi.encodePacked(uint8(0), uint256(7)));
         vm.prank(alice);
         adapter.setPrimaryCounterfactualAgent(token, 7);
     }

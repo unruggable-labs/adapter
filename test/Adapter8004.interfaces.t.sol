@@ -57,10 +57,15 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(full.primaryAgentOf(alice), type(uint256).max);
         assertEq(cf.primaryCounterfactualAgentOf(alice), bytes32(type(uint256).max));
         assertEq(IERC8004AdapterPrimaryAgent.setPrimaryAgent.selector, bytes4(keccak256("setPrimaryAgent(uint256)")));
-        assertEq(
-            IERC8004AdapterCounterfactualPrimaryAgent.setPrimaryCounterfactualAgent.selector,
-            bytes4(keccak256("setPrimaryCounterfactualAgent(address,uint256)"))
+        // Overloaded since the subject split, so `.selector` is ambiguous; probe that the adapter
+        // exposes both concrete signatures instead.
+        (bool tokenSubjectSetter,) = address(adapter).call(
+            abi.encodeWithSignature("setPrimaryCounterfactualAgent(address,uint256)", address(token721), 1)
         );
+        assertTrue(tokenSubjectSetter);
+        (bool contractSubjectSetter,) =
+            address(adapter).call(abi.encodeWithSignature("setPrimaryCounterfactualAgent(address)", address(token721)));
+        assertTrue(contractSubjectSetter);
         (bool oldNonceGetter,) = address(adapter).staticcall(abi.encodeWithSignature("nonces(address)", alice));
         assertFalse(oldNonceGetter);
         (bool counterfactualNonceGetter,) =
@@ -102,7 +107,7 @@ contract Adapter8004InterfacesTest is Test {
         );
         assertEq(
             IERC8004AdapterCounterfactualPrimaryAgent.PrimaryCounterfactualAgentSet.selector,
-            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,address)")
+            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,address,bytes)")
         );
     }
 
