@@ -6,3 +6,4 @@ output/scratch/
 broadcast/
 .env
 .env.local
+node_modules/

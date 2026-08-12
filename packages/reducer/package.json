@@ -1,0 +1,20 @@
+{
+  "name": "@unruggable/adapter8004-reducer-reference",
+  "version": "0.0.16",
+  "private": true,
+  "description": "Reference reducer for the Adapter8004 counterfactual indexing spec (docs/spec/indexing.md). Folds adapter events into identity state per rules R-1..R-7 / P-1..P-3; the conformance fixtures in docs/spec/fixtures are its test suite.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
