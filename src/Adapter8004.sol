@@ -890,10 +890,10 @@ contract Adapter8004 is
     }
 
     /// @notice Clear `account`'s primary agent id from an EIP-712 signature by `account` itself. Same
-    /// account-self authorization, full-system nonce stream, and deadline bounds as `setPrimaryAgentWithSig`,
-    /// so a signed clear supersedes an earlier signed set (and vice versa). Afterwards `primaryAgentOf`
-    /// returns `PRIMARY_AGENT_UNSET`. Emits the legacy `PrimaryAgentCleared(account, relayer)` then
-    /// `PrimaryAgentClearedWithSig(account, relayer, nonce)`.
+    /// account-self authorization, full-system nonce stream, and deadline bounds as `setPrimaryAgentWithSig`.
+    /// A set and a clear sharing a nonce are mutually exclusive, and the one mined first wins.
+    /// Afterwards `primaryAgentOf` returns `PRIMARY_AGENT_UNSET`. Emits the legacy
+    /// `PrimaryAgentCleared(account, relayer)` then `PrimaryAgentClearedWithSig(account, relayer, nonce)`.
     function clearPrimaryAgentWithSig(address account, uint256 deadline, bytes calldata signature) external {
         // 1. Enforce the bounded, unexpired deadline.
         _requirePrimaryAgentDeadline(deadline);
