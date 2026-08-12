@@ -53,4 +53,32 @@ interface IERC8004AdapterRegistration {
         address tokenContract,
         uint256 tokenId
     ) external;
+
+    /// @notice Full ERC-8004 registration for `tokenContract` ITSELF (`CONTRACT` /
+    /// `CONTRACT_OWNABLE`). No tokenId parameter; the stored binding's tokenId stays at its zero
+    /// struct default and the counterfactual identity of the same subject uses the empty identifier.
+    function registerContract(
+        IERCAgentBindings.TokenStandard standard,
+        address tokenContract,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata
+    ) external returns (uint256 agentId);
+
+    /// @notice Convenience overload equivalent to `registerContract(...)` with an empty metadata array.
+    function registerContract(IERCAgentBindings.TokenStandard standard, address tokenContract, string calldata agentURI)
+        external
+        returns (uint256 agentId);
+
+    /// @notice `registerContract` (empty metadata) followed by recording the new agent as the
+    /// CALLER's own primary agent, mirroring `registerAndSetPrimary`.
+    function registerContractAndSetPrimary(
+        IERCAgentBindings.TokenStandard standard,
+        address tokenContract,
+        string calldata agentURI
+    ) external returns (uint256 agentId);
+
+    /// @notice Contract-subject `bindExisting`: same ownership and prior-approval requirements, no
+    /// tokenId parameter.
+    function bindExistingContract(uint256 agentId, IERCAgentBindings.TokenStandard standard, address tokenContract)
+        external;
 }

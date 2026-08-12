@@ -1,10 +1,10 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.14`
+## Version `0.0.16`
 
-![version](https://img.shields.io/badge/version-0.0.14-blue)
+![version](https://img.shields.io/badge/version-0.0.16-blue)
 
-The current contract version is **`0.0.14`** (`@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol)). This is unreleased repo source and is not yet live on-chain (see [Deployments](#deployments)).
+The current contract version is **`0.0.16`** (`@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol)). This is unreleased repo source and is not yet live on-chain (see [Deployments](#deployments)).
 
 ---
 
@@ -79,8 +79,8 @@ What the unreleased source adds over the active deployments (on-chain status var
 - delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
 - Direct collection register-at-mint for ownerless ERC-721/ERC-1155F/ERC-6909F ids through the existing unsigned counterfactual selectors.
-- Contract bindings (`CONTRACT`): any deployed contract can register and manage agents for itself, at the fixed `tokenId` `0`, with no holder or admin authority. An ERC-20 claiming its own identity is the motivating example.
-- Ownable contract bindings (`CONTRACT_OWNABLE`): the bound contract retains authority and its current canonical nonzero `owner()` gains dynamic authority, also at `tokenId` `0`.
+- Contract bindings (`CONTRACT`): any deployed contract can register and manage agents for itself through dedicated tokenId-free `...Contract` entry points, with no holder or admin authority. An ERC-20 claiming its own identity is the motivating example.
+- Ownable contract bindings (`CONTRACT_OWNABLE`): the bound contract retains authority and its current canonical nonzero `owner()` gains dynamic authority, on the same tokenId-free surface.
 - Primary-agent reverse resolution: an `address => agent id` mapping so any consumer can go from a wallet address (or any address recorded in agent metadata) to the agent it claims to belong to, on this chain.
 
 ## What The Adapter Does
@@ -104,8 +104,8 @@ Each ERC-8004 `agentId` is bound once to exactly one external token:
 - ERC-6909: controller is any account with `balanceOf(account, tokenId) > 0`
 - ERC-1155F: controller is `ownerOf(tokenId)`, or a hot wallet that holds a delegate.xyz v2 ERC-721-style delegation from the current owner
 - ERC-6909F: controller is `ownerOf(tokenId)`, or a hot wallet that holds a delegate.xyz v2 ERC-721-style delegation from the current owner
-- `CONTRACT`: controller is the bound `tokenContract` itself, and only that contract, permanently; `tokenId` must be `0`
-- `CONTRACT_OWNABLE`: controllers are the bound `tokenContract` and the current canonical nonzero address returned by its `owner()`; `tokenId` must be `0`
+- `CONTRACT`: controller is the bound `tokenContract` itself, and only that contract, permanently. Contract subjects use the dedicated tokenId-free `...Contract` entry points; the stored `Binding.tokenId` is the zero struct default, never a caller value
+- `CONTRACT_OWNABLE`: controllers are the bound `tokenContract` and the current canonical nonzero address returned by its `owner()`, on the same tokenId-free surface
 
 The binding is immutable at the agent level:
 
@@ -138,7 +138,7 @@ ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path bec
 
 Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(tokenContract, tokenId)`. Values `5` and `6` name the deployed contract itself, any contract, not only a token, so there is no token to identify:
 
-- `tokenId` MUST be `0` for both values. A contract-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForContract(tokenContract, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
+- Both values use the dedicated `...Contract` entry points — `registerContract`, `registerContractAndSetPrimary`, `bindExistingContract`, `counterfactualRegisterContract`, and the `counterfactualSetContract*` / `counterfactualUnsetContractAgentWallet` writers — which take **no `tokenId` parameter at all**. The token surface rejects contract standards (`NotTokenStandard`) and the contract surface rejects token standards (`NotContractStandard`), so no path anywhere accepts a placeholder id. The stored `Binding.tokenId` for a contract binding is the zero struct default, documented on `bindingOf`, never a caller value and never part of any identity; the counterfactual identity is the empty-identifier hash `registrationHash(tokenContract)`.
 - Under `CONTRACT` (value `5`), the controller is the bound `tokenContract` itself, and only that contract. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound contract never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is **both** the bound `tokenContract` and the contract's current `owner()`. Choosing value `6` is the binding contract's explicit opt-in to that probe; the contract itself never loses authority.
 - Value-6 owner authority is dynamic. A successful ownership transfer immediately gives control over every existing value-6 binding to the new owner and removes it from the previous owner. This is deliberately different from value 5's permanent sole-controller guarantee.
@@ -153,8 +153,9 @@ Calling rules:
 - For `CONTRACT_OWNABLE`, the immediate caller may instead be the current canonical nonzero `owner()` returned by the bound contract. Holders, the adapter admin, roles, and strangers gain nothing from this model.
 - A call from the bound contract's constructor fails: the adapter requires deployed runtime code at `tokenContract`.
 - Do not `delegatecall` into `Adapter8004`. That is unsupported and dangerous. The adapter is a UUPS proxy implementation with its own storage layout, and borrowing its code into another contract's storage is not a supported integration. This is about calling *into* the adapter; how the bound contract is implemented internally is its own business, and a contract that is itself a proxy binds fine because its proxy address is the caller the adapter sees.
-- `bindExisting` additionally requires the authorized caller to already own the ERC-8004 agent in the registry and to have approved the adapter to transfer it (`approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`).
-- `registerAndSetPrimary` remains caller-scoped: it records the new agent as the immediate caller's primary agent.
+- `bindExistingContract` additionally requires the authorized caller to already own the ERC-8004 agent in the registry and to have approved the adapter to transfer it (`approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`).
+- `registerContractAndSetPrimary` remains caller-scoped: it records the new agent as the immediate caller's primary agent.
+- Indexers rank contract-authored counterfactual events (`emitter == tokenContract`) above owner-authored ones for contract subjects (spec rule R-7): an `owner()` may bootstrap the identity of a contract with no outbound call path, but once the contract itself has emitted, a stale or hostile `owner()` key can never supersede it.
 
 That value-5 call requirement has a design consequence worth stating plainly: **permanent contract-self authority is worth nothing unless the bound contract has a repeatable outbound path to the adapter.** A contract with no way to call out cannot bind under value 5, and one with only a one-shot post-deployment hook can bind once and then freezes. An owner-driven contract that intentionally wants direct external-owner management should choose `CONTRACT_OWNABLE` at bind time instead.
 
@@ -484,32 +485,35 @@ Functions:
 
 Indexer rules:
 
-- each event carries `bytes32 extraData` as its first non-indexed field; this baseline emits `bytes32(0)`. There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
-- the three indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`
+- each event carries the canonical subject `identifier` (`bytes`) as its first non-indexed field, and the three indexed topics are `(registrationHash, tokenContract, emitter)`; any single event is self-verifying (recompute the hash from the adapter, the tokenContract topic, and the identifier). There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
 - the `registrationHash` is
-  `keccak256(abi.encode(interoperableAddress(adapterProxy), tokenContract, tokenId))`,
-  using standard `(bytes,address,uint256)` ABI encoding (not packed); the adapter proxy carries the
-  full local ERC-7930 envelope, `tokenContract` remains a naked EVM address, and the token standard
-  remains excluded
-- `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
-  chain plus AddressLength `20` and the raw EVM address
+  `keccak256(abi.encode(interoperableAddress(adapterProxy), tokenContract, identifier))`,
+  using standard `(bytes,address,bytes)` ABI encoding (not packed); the adapter proxy carries the
+  full local ERC-7930 v1 envelope (version bytes included, frozen in the preimage — see
+  [`docs/decisions/phase1-freeze.md`](./docs/decisions/phase1-freeze.md) D1 revised),
+  `tokenContract` remains a naked EVM address, and the token standard remains excluded
+- `interoperableAddress(account)` is the standard ERC-7930 v1 / CAIP-350 `eip155` encoding of the
+  local chain plus AddressLength `20` and the raw EVM address — compatible with OpenZeppelin's
+  Interoperable Address library and stock 7930 tooling
 - `chainIdentifier()` returns the same local chain envelope with AddressLength `0`; it remains a
   useful chain diagnostic but is not one of the canonical hash fields
 - chain binding comes from the adapter proxy's Interoperable Address alone; do not encode
   `tokenContract` as an Interoperable Address
-- indexers MUST treat the latest event per `(tokenContract, tokenId)` as authoritative
+- indexers MUST key identities on `registrationHash` and treat the latest event per hash as
+  authoritative; `(tokenContract, tokenId)` is an attribute, not a unique key
 - order state transitions by `(blockNumber, transactionIndex, logIndex)`; a later full registration
   replaces the earlier full payload and later setters update individual fields
 - ownerless collection events carry `emitter == tokenContract`; this records the authorizing caller,
   but is not a permanent proof that the token was pre-mint because the collection may later be a
   normal owner or delegate
-- the token standard is excluded from `registrationHash`, so **any two standards** claiming the same
-  `(tokenContract, tokenId)` alias onto one `registrationHash`. The worked example is a contract at
-  `(X, 0)` that claims as ERC-721 token `#0`, `CONTRACT`, and `CONTRACT_OWNABLE`. All three alias.
-  This is accepted, not a bug:
-  adding the standard to the hash would change every existing hash. They are deliberately one
-  identity with one current claim, not two identities to be told apart. Read the latest
-  `CounterfactualAgentRegistered.standard` in log order to see which claim currently wins
+- the `identifier` is the canonical subject identifier (decision D6 in
+  [`docs/decisions/phase1-freeze.md`](./docs/decisions/phase1-freeze.md)): EMPTY for a contract
+  subject (`CONTRACT` / `CONTRACT_OWNABLE` — the subject is the contract itself), `0x00 || tokenId`
+  (full-width 32 bytes) for a plain token under any token standard, and future subject kinds behind
+  append-only kind bytes. A contract's own identity and its token id `0` are therefore **distinct
+  identities** that cannot contest each other; within a token identity, the standard remains
+  excluded from the hash and the latest `CounterfactualAgentRegistered.standard` in log order names
+  the current claim
 - `CounterfactualAgentRegistered.standard` is a non-indexed body field, so it cannot be filtered by
   topic; it is the only counterfactual event that carries the standard at all. The on-chain
   `AgentBound.standard` is indexed. Both layouts are unchanged. `CONTRACT` (`5`) and
@@ -695,7 +699,7 @@ The Foundry suite currently covers:
 - registration for ERC-721, ERC-1155, ERC-6909, ERC-1155F, and ERC-6909F bindings
 - contract bindings (`CONTRACT`), for both a non-token binder and an ERC-20 fixture: bound-contract-only
   authority, the `tokenId == 0` rule at every write entry point, absence of any `ownerOf` /
-  `balanceOf` probe, the `(X, 0)` standard alias, and raw `AgentBound` /
+  `balanceOf` probe, the token-vs-contract subject split at `(X, 0)`, and raw `AgentBound` /
   `CounterfactualAgentRegistered` layout compatibility
 - opt-in ownable contract bindings (`CONTRACT_OWNABLE`): owner and contract-self authority, dynamic
   ownership transfer, fail-closed reverting/malformed/zero `owner()` responses, holder/admin/stranger
@@ -708,7 +712,7 @@ The Foundry suite currently covers:
 - control transfer after external token transfers
 - metadata and URI updates
 - wallet-binding pass-through with valid and invalid ERC-8004 signatures
-- the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
+- the counterfactual register family, including reserved-key rejection and the canonical subject identifier on every event
 - proxy initialization
 - admin-only registry repointing
 - admin-only implementation upgrades

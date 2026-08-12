@@ -37,17 +37,16 @@ interface IOwnableContract {
 /// Sepolia's live delegate.xyz constants and authorization behavior are retained by this
 /// implementation.
 ///
-/// v0.0.15 folds a `bytes32 extraData` discriminator into the counterfactual registration hash and
-/// emits it on every counterfactual event. It is declared as a `constant`, so the storage layout is
-/// unchanged.
-///
-/// This is a breaking change. Every `registrationHash` changes and every counterfactual topic0
-/// moves, so it must be treated as a hard cutover. Document the cutover block, move the indexer to
-/// the new ABI, and reindex before upgrading a proxy. Only counterfactual identities and the
-/// `_primaryCounterfactualAgent` pointers are keyed by this hash, so `Binding` rows and full
-/// ERC-8004 registrations are unaffected. It is also the only such break, because everything that
-/// hashes with `extraData == bytes32(0)` will hash identically from here on.
-/// @custom:version 0.0.15
+/// v0.0.16 (Phase-1 freeze decisions D1-D6, docs/decisions/phase1-freeze.md) reworks the counterfactual
+/// identity: `registrationHash = keccak256(abi.encode(adapterInteroperableAddress, tokenContract,
+/// identifier))`, where `identifier` is the canonical subject identifier — EMPTY for a contract
+/// subject, `0x00 || tokenId` (full-width) for a plain token. The reserved `extraData` field is
+/// removed (future subject kinds extend the identifier grammar instead), every counterfactual
+/// topic0 moves (identifier-bearing events, `emitter` indexed, no `tokenId` field), and contract
+/// subjects gain dedicated tokenId-free entry points. Hard cutover; nothing is deployed on this
+/// ABI. Only counterfactual identities and `_primaryCounterfactualAgent` pointers are keyed by the
+/// hash; `Binding` rows and full ERC-8004 registrations are unaffected.
+/// @custom:version 0.0.16
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -84,19 +83,6 @@ contract Adapter8004 is
     /// only. delegate.xyz v2 also accepts empty/full delegations when this nonzero rights value is checked.
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
 
-    /// @notice Identity discriminator folded into every counterfactual `registrationHash` and
-    /// emitted on every counterfactual event. It is reserved rather than used, and is zero in this
-    /// implementation.
-    ///
-    /// It exists so that a later implementation can separate tokens that share a
-    /// `(tokenContract, tokenId)`, such as a contract with classes of ids where Class A id 1 and
-    /// Class B id 1 are different tokens. The proxy is UUPS, so that implementation may compute
-    /// this value however it needs to. Fixing the preimage shape here is what allows it to do so
-    /// without breaking any identity again.
-    ///
-    /// @dev Never introduce a non-zero value for a pair that hashed with zero, as it re-keys a live identity.
-    bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
-
     /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
     /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
     /// inline from `block.chainid` and `address(this)` so no storage slot or cached separator is
@@ -128,14 +114,12 @@ contract Adapter8004 is
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
     /// through `_hasBindingControl`.
     error InvalidTokenContractIsRegistry();
-    /// @notice Thrown by any `CONTRACT` or `CONTRACT_OWNABLE` adapter operation called with a nonzero `tokenId` —
-    /// registration, `bindExisting`, and the emit-only counterfactual calls alike, since all of them
-    /// pass through the same authority choke points. A contract-level binding names the contract
-    /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
-    /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
-    /// its `registrationHash`, and any pointer derived from it can never disagree with the id the
-    /// caller submitted.
-    error NonZeroTokenIdForContract(address tokenContract, uint256 tokenId);
+    /// @notice Thrown when a token-surface entry point (register, bindExisting, or a
+    /// tokenId-bearing counterfactual writer) is passed a contract standard. Contract subjects have
+    /// no tokenId; use the dedicated `...Contract` entry points.
+    error NotTokenStandard(TokenStandard standard);
+    /// @notice Thrown when a contract-surface entry point is passed a token standard.
+    error NotContractStandard(TokenStandard standard);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
     /// @notice Thrown when `setPrimaryAgentFor` / `clearPrimaryAgentFor` is called by an address that
@@ -284,8 +268,10 @@ contract Adapter8004 is
         nonReentrant
     {
         // 1. Reject an unusable external token contract address (matches `register` taxonomy) and
-        //    reject the registry itself, which would lock the agent permanently post-bind.
+        //    reject the registry itself, which would lock the agent permanently post-bind. This is
+        //    the token surface: contract standards use `bindExistingContract`.
         _requireValidTokenContract(tokenContract);
+        _requireTokenStandard(standard);
 
         // 2. Reject an already-bound agent so adapter bindings remain immutable post-bind.
         if (_bindings[agentId].tokenContract != address(0)) {
@@ -301,8 +287,7 @@ contract Adapter8004 is
         }
 
         // 4. Require external binding control under the existing authority model: single-owner
-        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `CONTRACT`
-        //    requires the bound contract itself, and `CONTRACT_OWNABLE` also accepts its current owner.
+        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance.
         //    The authorized caller must also own the agent (step 3) and approve the adapter (step 5).
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
@@ -325,6 +310,91 @@ contract Adapter8004 is
 
         // 9. Emit the existing binding event so indexers do not need a separate event family.
         emit AgentBound(agentId, standard, tokenContract, tokenId, msg.sender);
+    }
+
+    /// @notice Full ERC-8004 registration for `tokenContract` ITSELF (`CONTRACT` /
+    /// `CONTRACT_OWNABLE`). No tokenId parameter exists on this surface: a contract-level binding
+    /// names the contract, and the stored `Binding.tokenId` is left at its zero struct default —
+    /// a storage placeholder documented on `bindingOf`, never a caller-supplied value and never
+    /// part of the counterfactual identity.
+    function registerContract(
+        TokenStandard standard,
+        address tokenContract,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata
+    ) public nonReentrant returns (uint256 agentId) {
+        return _registerContract(standard, tokenContract, agentURI, metadata);
+    }
+
+    /// @notice Convenience overload equivalent to `registerContract(...)` with an empty metadata array.
+    function registerContract(TokenStandard standard, address tokenContract, string calldata agentURI)
+        external
+        nonReentrant
+        returns (uint256 agentId)
+    {
+        return _registerContract(standard, tokenContract, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
+    }
+
+    /// @notice Caller-paid wrapper mirroring `registerAndSetPrimary`: `registerContract` (empty
+    /// metadata) then record the new agent as the CALLER's own primary agent.
+    function registerContractAndSetPrimary(TokenStandard standard, address tokenContract, string calldata agentURI)
+        external
+        nonReentrant
+        returns (uint256 agentId)
+    {
+        agentId = _registerContract(standard, tokenContract, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
+        _setPrimaryAgent(msg.sender, agentId);
+    }
+
+    function _registerContract(
+        TokenStandard standard,
+        address tokenContract,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata
+    ) private returns (uint256 agentId) {
+        // 1. Reject an unusable contract address and the registry itself, then require contract
+        //    authority: the contract itself, or its current owner() under CONTRACT_OWNABLE.
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+
+        // 2. Reject user-supplied metadata entries that target reserved keys.
+        _requireNoReservedCounterfactualKeys(metadata);
+
+        // 3. Register, bind, write the canonical binding metadata, and clear the default wallet —
+        //    identical to the token path except the binding carries the zero struct-default id.
+        if (metadata.length == 0) {
+            agentId = identityRegistry.register(agentURI);
+        } else {
+            agentId = identityRegistry.register(agentURI, metadata);
+        }
+        _bindings[agentId] = Binding({standard: standard, tokenContract: tokenContract, tokenId: 0});
+        identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
+        identityRegistry.unsetAgentWallet(agentId);
+        emit AgentBound(agentId, standard, tokenContract, 0, msg.sender);
+    }
+
+    /// @notice Contract-subject `bindExisting`: pull an already-minted ERC-8004 agent under a
+    /// contract-level binding. Same ownership and prior-approval requirements as `bindExisting`;
+    /// no tokenId parameter.
+    function bindExistingContract(uint256 agentId, TokenStandard standard, address tokenContract)
+        external
+        nonReentrant
+    {
+        _requireValidTokenContract(tokenContract);
+        _requireContractStandard(standard);
+        if (_bindings[agentId].tokenContract != address(0)) {
+            revert AlreadyBound(agentId);
+        }
+        address owner = identityRegistry.ownerOf(agentId);
+        if (owner != msg.sender) {
+            revert NotAgentOwner(agentId, owner);
+        }
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        _requireAgentTransferApproval(agentId, msg.sender);
+        IERC721(address(identityRegistry)).transferFrom(msg.sender, address(this), agentId);
+        _bindings[agentId] = Binding({standard: standard, tokenContract: tokenContract, tokenId: 0});
+        identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
+        emit AgentBound(agentId, standard, tokenContract, 0, msg.sender);
     }
 
     function _register(
@@ -518,22 +588,33 @@ contract Adapter8004 is
     // There is no whole-claim tombstone: a claim can only be superseded by a later
     // event, and unsetting the wallet clears that field alone.
     // Indexers consume the emitted events as soft-state claims (latest
-    // event per `registrationHash` wins), enabling off-chain identities
-    // that can later be promoted to on-chain registrations.
+    // event per `registrationHash` wins). This is the primary identity
+    // system; full ERC-8004 registration is a parallel, independent one.
     //
     // The identity is the `registrationHash` and nothing else. Each token
     // has exactly one identity, but `(tokenContract, tokenId)` is not
-    // considered a unique identifier, because one contract may have more
-    // than one set of ids. `extraData` is what separates those tokens.
+    // considered a unique identifier: one contract may have more than one
+    // set of ids (future identifier kinds separate those tokens), and contract
+    // subjects hash WITHOUT the tokenId, so a contract's own identity and
+    // its token id 0 share a coordinate while being distinct identities.
     // Consumers must key on `registrationHash`, never on the token pair.
     // -----------------------------------------------------------------
 
-    /// @notice Computes the canonical counterfactual `registrationHash` for the given external token,
-    /// scoped to this chain and this adapter proxy. Mirrors the internal `_registrationHash`
-    /// used by every counterfactual emitter. Useful for off-chain consumers that need to
-    /// derive the hash without reimplementing the encoding rules.
+    /// @notice Computes the canonical counterfactual `registrationHash` for a TOKEN subject: a
+    /// token within `tokenContract`, identified by the canonical token identifier
+    /// `0x00 || tokenId` (full-width 32-byte big-endian). Scoped to this chain and this adapter
+    /// proxy. For a contract-subject identity (`CONTRACT` / `CONTRACT_OWNABLE`), use the
+    /// single-argument overload — the contract subject's identifier is empty.
     function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32) {
         return _registrationHash(tokenContract, tokenId);
+    }
+
+    /// @notice Computes the canonical counterfactual `registrationHash` for a CONTRACT subject:
+    /// `tokenContract` itself. The preimage is `(adapterInteroperableAddress, tokenContract, "")`
+    /// — the empty identifier, reserved for the contract subject forever, so a contract's identity
+    /// can never collide with any of its own token ids.
+    function registrationHash(address tokenContract) external view returns (bytes32) {
+        return _contractRegistrationHash(tokenContract);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -592,12 +673,14 @@ contract Adapter8004 is
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
         _requireNoReservedCounterfactualKeys(metadata);
 
-        // 4. Compute the deterministic registration hash used as the indexer key for this claim.
-        computedHash = _registrationHash(tokenContract, tokenId);
+        // 4. Build the canonical token identifier and derive the identity hash from it, so the
+        //    emitted identifier and the hashed identifier can never disagree.
+        bytes memory identifier = _tokenIdentifier(tokenId);
+        computedHash = _registrationHashFor(_interoperableAddress(address(this)), tokenContract, identifier);
 
         // 5. Emit the counterfactual claim — the only on-chain record produced by this function.
         emit CounterfactualAgentRegistered(
-            computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, agentURI, metadata, msg.sender
+            computedHash, tokenContract, msg.sender, identifier, standard, agentURI, metadata
         );
     }
 
@@ -620,13 +703,13 @@ contract Adapter8004 is
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual URI update — the only on-chain record produced by this function.
+        bytes memory identifier = _tokenIdentifier(tokenId);
         emit CounterfactualAgentURISet(
-            _registrationHash(tokenContract, tokenId),
+            _registrationHashFor(_interoperableAddress(address(this)), tokenContract, identifier),
             tokenContract,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            newURI,
-            msg.sender
+            msg.sender,
+            identifier,
+            newURI
         );
     }
 
@@ -656,14 +739,14 @@ contract Adapter8004 is
         }
 
         // 4. Emit the counterfactual metadata write — the only on-chain record produced by this function.
+        bytes memory identifier = _tokenIdentifier(tokenId);
         emit CounterfactualMetadataSet(
-            _registrationHash(tokenContract, tokenId),
+            _registrationHashFor(_interoperableAddress(address(this)), tokenContract, identifier),
             tokenContract,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
+            msg.sender,
+            identifier,
             metadataKey,
-            metadataValue,
-            msg.sender
+            metadataValue
         );
     }
 
@@ -687,13 +770,13 @@ contract Adapter8004 is
         _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Emit the counterfactual batch — the only on-chain record produced by this function.
+        bytes memory identifier = _tokenIdentifier(tokenId);
         emit CounterfactualMetadataBatchSet(
-            _registrationHash(tokenContract, tokenId),
+            _registrationHashFor(_interoperableAddress(address(this)), tokenContract, identifier),
             tokenContract,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            metadata,
-            msg.sender
+            msg.sender,
+            identifier,
+            metadata
         );
     }
 
@@ -715,13 +798,13 @@ contract Adapter8004 is
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet assignment — the only on-chain record produced by this function.
+        bytes memory identifier = _tokenIdentifier(tokenId);
         emit CounterfactualAgentWalletSet(
-            _registrationHash(tokenContract, tokenId),
+            _registrationHashFor(_interoperableAddress(address(this)), tokenContract, identifier),
             tokenContract,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            newWallet,
-            msg.sender
+            msg.sender,
+            identifier,
+            newWallet
         );
     }
 
@@ -740,9 +823,127 @@ contract Adapter8004 is
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
         // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
+        bytes memory identifier = _tokenIdentifier(tokenId);
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
+            _registrationHashFor(_interoperableAddress(address(this)), tokenContract, identifier),
+            tokenContract,
+            msg.sender,
+            identifier
         );
+    }
+
+    // -----------------------------------------------------------------
+    //  Contract-subject counterfactual surface (no tokenId anywhere)
+    // -----------------------------------------------------------------
+    //  The subject is the contract itself; its canonical identifier is
+    //  the EMPTY bytes string, so its identity excludes any token
+    //  coordinate. Authorized for the bound contract, or — under
+    //  CONTRACT_OWNABLE — its current fail-closed-probed owner().
+    //  Indexers rank contract-authored events (emitter == tokenContract)
+    //  above owner-authored ones (spec rule R-7), so a stale owner() key
+    //  can never supersede what the contract itself has said.
+    // -----------------------------------------------------------------
+
+    /// @notice Counterfactual registration for `tokenContract` ITSELF. Empty identifier; no tokenId.
+    function counterfactualRegisterContract(
+        TokenStandard standard,
+        address tokenContract,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata
+    ) public nonReentrant returns (bytes32 computedHash) {
+        return _counterfactualRegisterContractImpl(standard, tokenContract, agentURI, metadata);
+    }
+
+    /// @notice Convenience overload equivalent to `counterfactualRegisterContract(...)` with an
+    /// empty metadata array.
+    function counterfactualRegisterContract(TokenStandard standard, address tokenContract, string calldata agentURI)
+        external
+        nonReentrant
+        returns (bytes32 computedHash)
+    {
+        return _counterfactualRegisterContractImpl(
+            standard, tokenContract, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0)
+        );
+    }
+
+    function _counterfactualRegisterContractImpl(
+        TokenStandard standard,
+        address tokenContract,
+        string calldata agentURI,
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata
+    ) private returns (bytes32 computedHash) {
+        // 1. Same contract validity, contract authority, and reserved-key rules as the full path.
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        _requireNoReservedCounterfactualKeys(metadata);
+
+        // 2. The contract subject's identity: the empty identifier.
+        computedHash = _contractRegistrationHash(tokenContract);
+        emit CounterfactualAgentRegistered(computedHash, tokenContract, msg.sender, "", standard, agentURI, metadata);
+    }
+
+    /// @notice Contract-subject counterfactual URI update.
+    function counterfactualSetContractAgentURI(TokenStandard standard, address tokenContract, string calldata newURI)
+        external
+        nonReentrant
+    {
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        emit CounterfactualAgentURISet(_contractRegistrationHash(tokenContract), tokenContract, msg.sender, "", newURI);
+    }
+
+    /// @notice Contract-subject counterfactual single-key metadata write.
+    function counterfactualSetContractMetadata(
+        TokenStandard standard,
+        address tokenContract,
+        string calldata metadataKey,
+        bytes calldata metadataValue
+    ) external nonReentrant {
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        bytes32 keyHash = keccak256(bytes(metadataKey));
+        if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
+            revert ReservedMetadataKey(metadataKey);
+        }
+        emit CounterfactualMetadataSet(
+            _contractRegistrationHash(tokenContract), tokenContract, msg.sender, "", metadataKey, metadataValue
+        );
+    }
+
+    /// @notice Contract-subject counterfactual batch metadata write.
+    function counterfactualSetContractMetadataBatch(
+        TokenStandard standard,
+        address tokenContract,
+        IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
+    ) external nonReentrant {
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        _requireNoReservedCounterfactualKeys(metadata);
+        emit CounterfactualMetadataBatchSet(
+            _contractRegistrationHash(tokenContract), tokenContract, msg.sender, "", metadata
+        );
+    }
+
+    /// @notice Contract-subject counterfactual wallet assignment (a claim; no consent signature).
+    function counterfactualSetContractAgentWallet(TokenStandard standard, address tokenContract, address newWallet)
+        external
+        nonReentrant
+    {
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        emit CounterfactualAgentWalletSet(
+            _contractRegistrationHash(tokenContract), tokenContract, msg.sender, "", newWallet
+        );
+    }
+
+    /// @notice Contract-subject counterfactual wallet clear.
+    function counterfactualUnsetContractAgentWallet(TokenStandard standard, address tokenContract)
+        external
+        nonReentrant
+    {
+        _requireValidTokenContract(tokenContract);
+        _requireContractAuthority(standard, tokenContract, msg.sender);
+        emit CounterfactualAgentWalletUnset(_contractRegistrationHash(tokenContract), tokenContract, msg.sender, "");
     }
 
     // -----------------------------------------------------------------
@@ -804,11 +1005,20 @@ contract Adapter8004 is
     //  Counterfactual primary agent (reverse resolution: address -> registration hash)
     // -----------------------------------------------------------------
 
+    /// @notice Set the caller's primary counterfactual agent to the TOKEN-subject identity of
+    /// `(tokenContract, tokenId)`.
     function setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)
         external
         returns (bytes32 computedHash)
     {
         return _setPrimaryCounterfactualAgent(msg.sender, tokenContract, tokenId);
+    }
+
+    /// @notice Set the caller's primary counterfactual agent to the CONTRACT-subject identity of
+    /// `tokenContract` itself (the hash with no `tokenId`). The emitted event carries `tokenId == 0`
+    /// as a placeholder attribute only.
+    function setPrimaryCounterfactualAgent(address tokenContract) external returns (bytes32 computedHash) {
+        return _setPrimaryCounterfactualContractAgent(msg.sender, tokenContract);
     }
 
     function setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)
@@ -817,6 +1027,16 @@ contract Adapter8004 is
     {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
         return _setPrimaryCounterfactualAgent(account, tokenContract, tokenId);
+    }
+
+    /// @notice Contract-subject variant of `setPrimaryCounterfactualAgentFor`, under the same
+    /// account-controller authorization.
+    function setPrimaryCounterfactualAgentFor(address account, address tokenContract)
+        external
+        returns (bytes32 computedHash)
+    {
+        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
+        return _setPrimaryCounterfactualContractAgent(account, tokenContract);
     }
 
     function clearPrimaryCounterfactualAgent() external {
@@ -838,13 +1058,30 @@ contract Adapter8004 is
         returns (bytes32 computedHash)
     {
         computedHash = _registrationHash(tokenContract, tokenId);
+        _recordPrimaryCounterfactualAgent(account, computedHash, tokenContract, _tokenIdentifier(tokenId));
+    }
+
+    function _setPrimaryCounterfactualContractAgent(address account, address tokenContract)
+        private
+        returns (bytes32 computedHash)
+    {
+        computedHash = _contractRegistrationHash(tokenContract);
+        _recordPrimaryCounterfactualAgent(account, computedHash, tokenContract, "");
+    }
+
+    /// @dev Shared store-and-emit for both subject types. The identity is `computedHash`; the
+    /// subject coordinates travel as `(tokenContract, identifier)`.
+    function _recordPrimaryCounterfactualAgent(
+        address account,
+        bytes32 computedHash,
+        address tokenContract,
+        bytes memory identifier
+    ) private {
         if (computedHash == bytes32(type(uint256).max)) {
             revert PrimaryCounterfactualAgentHashReserved(computedHash);
         }
         _primaryCounterfactualAgent[account] = ~computedHash;
-        emit PrimaryCounterfactualAgentSet(
-            account, computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
-        );
+        emit PrimaryCounterfactualAgentSet(account, computedHash, msg.sender, tokenContract, identifier);
     }
 
     function _clearPrimaryCounterfactualAgent(address account) private {
@@ -1025,11 +1262,7 @@ contract Adapter8004 is
         internal
         view
     {
-        // 1. Pin contract-level bindings to the canonical id 0 in the same call that decides control,
-        //    so no write path can reach storage or an event with a nonzero contract-binding id.
-        _requireCanonicalTokenId(standard, tokenContract, tokenId);
-
-        // 2. Reuse the token-standard-specific control check before first registration.
+        // 1. Reuse the standard-specific control check before first registration.
         if (!_hasBindingControl(standard, tokenContract, tokenId, account)) {
             revert NotController(account, type(uint256).max);
         }
@@ -1054,9 +1287,9 @@ contract Adapter8004 is
         internal
         view
     {
-        // 1. Pin contract-level bindings to the canonical id 0 before any authority branch is taken,
-        //    so the ownerless window cannot be entered and no emit-only path can escape the check.
-        _requireCanonicalTokenId(standard, tokenContract, tokenId);
+        // 1. This is the token surface: contract standards use the dedicated `...Contract` entry
+        //    points, so reject them before any authority branch is taken.
+        _requireTokenStandard(standard);
 
         // 2. Temporary single-owner collection authority, then the shared current-control chain.
         if (account == tokenContract && _isSingleOwnerStandard(standard) && _hasNoCurrentOwner(tokenContract, tokenId))
@@ -1066,16 +1299,36 @@ contract Adapter8004 is
         _requireBindingControl(standard, tokenContract, tokenId, account);
     }
 
-    /// @dev `CONTRACT` and `CONTRACT_OWNABLE` name the contract itself rather than a token within it, so each has
-    /// exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
-    /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
-    /// a contract-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
-    /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
-    /// id they submitted. No-op for every other standard.
-    function _requireCanonicalTokenId(TokenStandard standard, address tokenContract, uint256 tokenId) internal pure {
-        if ((standard == TokenStandard.CONTRACT || standard == TokenStandard.CONTRACT_OWNABLE) && tokenId != 0) {
-            revert NonZeroTokenIdForContract(tokenContract, tokenId);
+    /// @dev The token surface (register, bindExisting, and every tokenId-bearing counterfactual
+    /// writer) accepts only token standards. Contract standards use the dedicated `...Contract`
+    /// entry points, which have no tokenId parameter at all.
+    function _requireTokenStandard(TokenStandard standard) internal pure {
+        if (_isContractStandard(standard)) {
+            revert NotTokenStandard(standard);
         }
+    }
+
+    /// @dev The contract surface accepts only `CONTRACT` and `CONTRACT_OWNABLE`.
+    function _requireContractStandard(TokenStandard standard) internal pure {
+        if (!_isContractStandard(standard)) {
+            revert NotContractStandard(standard);
+        }
+    }
+
+    /// @dev Authority for the contract-subject surface: the bound contract itself, or — under
+    /// `CONTRACT_OWNABLE` — its current fail-closed-probed `owner()`. The shared control check's
+    /// `tokenId` argument is irrelevant on the contract branches and passed as zero.
+    function _requireContractAuthority(TokenStandard standard, address tokenContract, address account) internal view {
+        _requireContractStandard(standard);
+        if (!_hasBindingControl(standard, tokenContract, 0, account)) {
+            revert NotController(account, type(uint256).max);
+        }
+    }
+
+    /// @dev True for the contract-subject standards, whose binding names `tokenContract` itself.
+    /// Their counterfactual identity is the contract-subject hash (no `tokenId` in the preimage).
+    function _isContractStandard(TokenStandard standard) internal pure returns (bool) {
+        return standard == TokenStandard.CONTRACT || standard == TokenStandard.CONTRACT_OWNABLE;
     }
 
     /// @dev Probes `ownerOf` without assuming a universal nonexistent-token revert selector.
@@ -1224,8 +1477,25 @@ contract Adapter8004 is
         }
     }
 
+    /// @dev Canonical identifier for a plain token subject: kind byte 0x00 followed by the
+    /// FULL-WIDTH 32-byte big-endian token id (33 bytes total). Never minimal-length — a canonical
+    /// encoding must be unique per subject or identity forks. Kind bytes are append-only, and the
+    /// EMPTY identifier is reserved for the contract subject, so every non-empty identifier begins
+    /// with a kind byte and future subject kinds can never collide with either existing form.
+    function _tokenIdentifier(uint256 tokenId) internal pure returns (bytes memory) {
+        return abi.encodePacked(uint8(0), tokenId);
+    }
+
+    /// @dev Token-subject identity: `(adapter, tokenContract, 0x00 || tokenId)`.
     function _registrationHash(address tokenContract, uint256 tokenId) internal view virtual returns (bytes32) {
-        return _registrationHashFor(_interoperableAddress(address(this)), tokenContract, tokenId);
+        return _registrationHashFor(_interoperableAddress(address(this)), tokenContract, _tokenIdentifier(tokenId));
+    }
+
+    /// @dev Contract-subject identity: the subject is `tokenContract` itself, expressed as the
+    /// EMPTY identifier — the one true null `bytes` offers. No tokenId, no sentinel, no
+    /// discriminator: `(adapter, tokenContract, "")`.
+    function _contractRegistrationHash(address tokenContract) internal view virtual returns (bytes32) {
+        return _registrationHashFor(_interoperableAddress(address(this)), tokenContract, "");
     }
 
     /// @dev ERC-7930 v1 Chain Identifier using the CAIP-350 `eip155` profile:
@@ -1235,8 +1505,8 @@ contract Adapter8004 is
         return _chainIdentifierFor(block.chainid);
     }
 
-    /// @dev Full ERC-7930 v1 Interoperable Address using the local CAIP-350 `eip155` chain reference
-    /// and the raw 20-byte EVM address.
+    /// @dev Full ERC-7930 v1 Interoperable Address using the local CAIP-350 `eip155` chain
+    /// reference and the raw 20-byte EVM address.
     function _interoperableAddress(address account) internal view virtual returns (bytes memory identifier) {
         return _interoperableAddressFor(block.chainid, account);
     }
@@ -1267,6 +1537,11 @@ contract Adapter8004 is
             remaining >>= 8;
         }
 
+        // ERC-7930 v1 layout (phase1-freeze.md D1, revised): Version(0x0001) || ChainType(2) ||
+        // RefLen(1) || Ref || AddrLen(1) [|| Address(20)]. The ChainType bytes stay zero for the
+        // CAIP-350 `eip155` profile. INV-1: the v1 encoding is frozen in the hash preimage
+        // permanently; any future ERC-7930 version may only affect the public views via a
+        // deliberate, documented split, never this preimage.
         identifier = new bytes(referenceLength + 6 + (includeAddress ? 20 : 0));
         identifier[1] = 0x01;
         identifier[4] = bytes1(uint8(referenceLength));
@@ -1283,14 +1558,17 @@ contract Adapter8004 is
         // Otherwise the final byte remains zero: ERC-7930 AddressLength == 0.
     }
 
-    /// @dev The canonical counterfactual identity is
-    /// `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))`.
-    function _registrationHashFor(bytes memory adapterInteroperableAddress, address tokenContract, uint256 tokenId)
-        internal
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA));
+    /// @dev The canonical counterfactual identity:
+    /// `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, identifier))`. One preimage
+    /// shape for every subject kind, discriminated by the identifier grammar alone. `abi.encode` of
+    /// `bytes` is length-prefixed, so the encoding is injective and the shape never changes again:
+    /// future subject kinds extend the identifier grammar, never this formula.
+    function _registrationHashFor(
+        bytes memory adapterInteroperableAddress,
+        address tokenContract,
+        bytes memory identifier
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encode(adapterInteroperableAddress, tokenContract, identifier));
     }
 
     /// @dev Stateless EIP-712 domain separator for the signed primary-agent surface. Computed inline

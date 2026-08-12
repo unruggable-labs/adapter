@@ -7,22 +7,29 @@ pragma solidity ^0.8.24;
 interface IERC8004AdapterCounterfactualPrimaryAgent {
     function PRIMARY_COUNTERFACTUAL_AGENT_UNSET() external pure returns (bytes32);
 
-    /// @notice `extraData` is the discriminator folded into `registrationHash`. It is carried here
-    /// because `(tokenContract, tokenId)` alone is not unique. See `IERC8004AdapterCounterfactual`.
+    /// @notice The subject coordinates travel as `(tokenContract, identifier)` — the canonical
+    /// identifier hashed into `registrationHash` (empty for a contract subject, `0x00 || tokenId`
+    /// for a token). See `IERC8004AdapterCounterfactual`.
     event PrimaryCounterfactualAgentSet(
         address indexed account,
         bytes32 indexed registrationHash,
+        address indexed setBy,
         address tokenContract,
-        uint256 tokenId,
-        bytes32 extraData,
-        address indexed setBy
+        bytes identifier
     );
     event PrimaryCounterfactualAgentCleared(address indexed account, address indexed clearedBy);
 
     function setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)
         external
         returns (bytes32 registrationHash);
+    /// @notice Contract-subject overload: points the caller at the identity of `tokenContract`
+    /// itself (the empty-identifier hash). The event carries the empty identifier.
+    function setPrimaryCounterfactualAgent(address tokenContract) external returns (bytes32 registrationHash);
     function setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)
+        external
+        returns (bytes32 registrationHash);
+    /// @notice Contract-subject overload of `setPrimaryCounterfactualAgentFor`.
+    function setPrimaryCounterfactualAgentFor(address account, address tokenContract)
         external
         returns (bytes32 registrationHash);
     function clearPrimaryCounterfactualAgent() external;

@@ -9,17 +9,20 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// declarations so off-chain consumers and tests can depend on a stable type without importing
 /// the full contract.
 ///
-/// Every counterfactual event below carries `bytes32 extraData` as its first non-indexed field.
-/// The three indexed slots are fixed across every event and already spent on
-/// `(registrationHash, tokenContract, tokenId)`. There is deliberately no in-payload schema
-/// version, because `topic0` is the keccak of the full event signature and so already discriminates
-/// schema on its own.
+/// Every counterfactual event below carries the canonical subject `identifier` (`bytes`) as its
+/// first non-indexed field, making each event self-verifying against its indexed hash. The three
+/// indexed slots are fixed across every event: `(registrationHash, tokenContract, emitter)` — the
+/// identity, the contract coordinate, and the authorizing caller. There is deliberately no
+/// in-payload schema version, because `topic0` is the keccak of the full event signature and so
+/// already discriminates schema on its own.
 ///
 /// The identity is the `registrationHash`. Each token has exactly one identity, but
 /// `(tokenContract, tokenId)` is not considered a unique identifier, because one contract may have
 /// more than one set of ids. An example is a contract with classes of ids, where Class A id 1 and
-/// Class B id 1 are different tokens. `extraData` is what separates them, so consumers must key on
-/// `registrationHash` and must not collapse rows by `(tokenContract, tokenId)`.
+/// Class B id 1 are different tokens; a future identifier kind separates them. Consumers must key
+/// on `registrationHash` and must not collapse rows by coordinates. Contract subjects
+/// (`CONTRACT` / `CONTRACT_OWNABLE`) hash the EMPTY identifier — the subject is the contract
+/// itself — so a contract's own identity and its token id `0` are distinct identities.
 ///
 /// Adapter8004's existing unsigned counterfactual functions accept either ordinary current-controller
 /// authority or, for ERC-721/ERC-1155F/ERC-6909F only, temporary authority from the directly calling
@@ -31,10 +34,11 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// the existing schema and carry `emitter = tokenContract`; later owner/delegate events overwrite
 /// them by normal log ordering.
 ///
-/// `CONTRACT` (`TokenStandard` value 5; values 0-4 unchanged) uses the same unsigned
-/// functions under a different authority. It names a deployed contract itself rather than a token
-/// within it, so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForContract`. The bound
-/// contract itself is the only authorized emitter: the adapter's immediate EVM caller must be
+/// `CONTRACT` (`TokenStandard` value 5; values 0-4 unchanged) uses the dedicated
+/// `...Contract` entry points, which take no `tokenId` at all (the token surface rejects contract
+/// standards with `NotTokenStandard`, and the contract surface rejects token standards with
+/// `NotContractStandard`). It names a deployed contract itself rather than a token within it. The
+/// bound contract itself is the only authorized emitter: the adapter's immediate EVM caller must be
 /// `tokenContract`. A router, forwarder, or multicall that calls the adapter itself fails, since the
 /// adapter sees that contract as `msg.sender`; an external owner or governance address may instead
 /// call an entry point on the bound contract that makes the outbound adapter call. `delegatecall`
@@ -56,15 +60,17 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
-/// wallet field alone. The event schema, indexed topics, `registrationHash`, and `version == 1`
-/// are unchanged by either contract standard. `CounterfactualAgentRegistered.standard` — the only counterfactual
+/// wallet field alone. `CounterfactualAgentRegistered.standard` — the only counterfactual
 /// event that carries a standard — remains non-indexed (the on-chain `AgentBound.standard` keeps its
-/// own indexed slot). Because the standard is excluded from the hash, any two standards claiming the
-/// same `(tokenContract, tokenId)` alias onto one `registrationHash`; a contract that is also an
-/// ERC-721 collection claiming token `#0`, `CONTRACT`, and `CONTRACT_OWNABLE` at `(X, 0)` is the worked example.
-/// That is accepted and documented: they are deliberately one identity with one current claim, and
-/// consumers read the latest `CounterfactualAgentRegistered.standard` in log order to see which
-/// claim currently wins.
+/// own indexed slot). Subjects split the hash namespace through the identifier grammar: token
+/// standards hash the token identifier (`0x00 || tokenId`) while the contract standards hash the
+/// empty identifier, so a contract that is also an ERC-721 collection claiming token `#0` and
+/// claiming itself produces two distinct, non-contesting identities. Within the token subject the
+/// standard remains excluded from the hash, and consumers read the latest
+/// `CounterfactualAgentRegistered.standard` in log order to see which claim currently wins.
+/// For contract subjects, indexers rank contract-authored events (`emitter == tokenContract`) above
+/// owner-authored ones (spec rule R-7), so a stale or hostile `owner()` key can never supersede
+/// what the contract itself has said.
 interface IERC8004AdapterCounterfactual {
     /// @notice Local ERC-7930 v1 Chain Identifier using CAIP-350 `eip155`: version 1, ChainType 0,
     /// shortest non-empty big-endian `block.chainid`, and zero AddressLength.
@@ -74,74 +80,71 @@ interface IERC8004AdapterCounterfactual {
     /// envelope as `chainIdentifier()`, followed by AddressLength 20 and the raw address bytes.
     function interoperableAddress(address account) external view returns (bytes memory);
 
-    /// @notice Computes the canonical counterfactual registration hash. The identity is
-    /// `keccak256(abi.encode(interoperableAddress(adapter), tokenContract, tokenId, extraData))`,
-    /// where `extraData` is `bytes32(0)` for every implementation of this baseline.
-    /// @dev `extraData` is deliberately not a parameter anywhere on this surface, because it is
-    /// reserved rather than used. Read its value from the `extraData` field on any counterfactual
-    /// event.
+    /// @notice Computes the canonical counterfactual registration hash for a TOKEN subject:
+    /// `keccak256(abi.encode(interoperableAddress(adapter), tokenContract, identifier))` with the
+    /// canonical token identifier `0x00 || tokenId` (full-width 32-byte big-endian id; 33 bytes).
+    /// Contract subjects (`CONTRACT` / `CONTRACT_OWNABLE`) use the single-argument overload: their
+    /// identifier is EMPTY, because the subject is the contract itself and there is no token. The
+    /// empty identifier is reserved for the contract subject forever, and every non-empty
+    /// identifier begins with an append-only kind byte, so subject kinds can never collide.
+    /// @dev The identifier is emitted on every counterfactual event, so any single event is
+    /// self-verifying against its indexed hash.
     function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32);
+
+    /// @notice Contract-subject overload: the canonical registration hash of `tokenContract` itself.
+    function registrationHash(address tokenContract) external view returns (bytes32);
 
     /// @notice Counterfactual registration claim. No registry write, no SSTORE.
     /// Indexers MUST treat the latest event per `registrationHash` as authoritative.
     event CounterfactualAgentRegistered(
         bytes32 indexed registrationHash,
         address indexed tokenContract,
-        uint256 indexed tokenId,
-        bytes32 extraData,
+        address indexed emitter,
+        bytes identifier,
         IERCAgentBindings.TokenStandard standard,
         string agentURI,
-        IERC8004IdentityRegistry.MetadataEntry[] metadata,
-        address emitter
+        IERC8004IdentityRegistry.MetadataEntry[] metadata
     );
 
     /// @notice Counterfactual agent URI update. No registry write, no SSTORE.
     event CounterfactualAgentURISet(
         bytes32 indexed registrationHash,
         address indexed tokenContract,
-        uint256 indexed tokenId,
-        bytes32 extraData,
-        string newURI,
-        address emitter
+        address indexed emitter,
+        bytes identifier,
+        string newURI
     );
 
     /// @notice Counterfactual metadata write. No registry write, no SSTORE.
     event CounterfactualMetadataSet(
         bytes32 indexed registrationHash,
         address indexed tokenContract,
-        uint256 indexed tokenId,
-        bytes32 extraData,
+        address indexed emitter,
+        bytes identifier,
         string metadataKey,
-        bytes metadataValue,
-        address emitter
+        bytes metadataValue
     );
 
     /// @notice Counterfactual batch metadata write. No registry write, no SSTORE.
     event CounterfactualMetadataBatchSet(
         bytes32 indexed registrationHash,
         address indexed tokenContract,
-        uint256 indexed tokenId,
-        bytes32 extraData,
-        IERC8004IdentityRegistry.MetadataEntry[] metadata,
-        address emitter
+        address indexed emitter,
+        bytes identifier,
+        IERC8004IdentityRegistry.MetadataEntry[] metadata
     );
 
     /// @notice Counterfactual agent wallet assignment. No signature, no registry write.
     event CounterfactualAgentWalletSet(
         bytes32 indexed registrationHash,
         address indexed tokenContract,
-        uint256 indexed tokenId,
-        bytes32 extraData,
-        address newWallet,
-        address emitter
+        address indexed emitter,
+        bytes identifier,
+        address newWallet
     );
 
     /// @notice Counterfactual agent wallet clear. No registry write, no SSTORE.
     event CounterfactualAgentWalletUnset(
-        bytes32 indexed registrationHash,
-        address indexed tokenContract,
-        uint256 indexed tokenId,
-        bytes32 extraData,
-        address emitter
+        bytes32 indexed registrationHash, address indexed tokenContract, address indexed emitter, bytes identifier
     );
 }

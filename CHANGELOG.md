@@ -24,45 +24,83 @@ the live implementation on a block explorer before relying on a version.
 - **Mainnet** (`0xde15…`): the counterfactual implementation
   (`0xa6D23f27…`). delegate.xyz is NOT live (its impl was never deployed here).
 
-Numbered source versions `0.0.6`-`0.0.13` are not live on any chain. In
+Numbered source versions `0.0.6`-`0.0.16` are not live on any chain. In
 particular, the primary-agent layouts in `0.0.9`-`0.0.13` are not production
-upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
+upgrade baselines, and `0.0.15` was superseded by `0.0.16` before ever being
+a deploy candidate. Re-verify the EIP-1967 implementation slot before relying
 on this summary; see the
 [last-deployed baseline audit](./deployments/upgrade-baseline-from-last-deployed.md).
 
-## [0.0.15] - Unreleased
+## [0.0.16] - Unreleased
 
-Breaking source release. Not deployed. Adds no storage slot and keeps the
-`0.0.14` layout, so it upgrades from the same deployed baselines with empty
-`upgradeToAndCall` data. This is the release train that also carries the
-unreleased `0.0.14` contract-binding work below; the two ship together in one
-implementation.
+Breaking source release. Not deployed. Supersedes and absorbs the unreleased
+`0.0.15` (whose interim `extraData` scheme existed only in unreleased source;
+it is retained in the hash-fixture doc's superseded tables for reimplementer
+identification). No storage change: the layout is `0.0.14`'s, so this upgrades
+from the deployed baselines with empty `upgradeToAndCall` data and ships in one
+implementation together with the unreleased `0.0.14` work below. Hash values
+and every counterfactual `topic0` move; hard cutover, and nothing is deployed
+on any prior counterfactual ABI. Phase-1 freeze decisions D1-D6
+([`docs/decisions/phase1-freeze.md`](./docs/decisions/phase1-freeze.md)) were
+signed off 2026-08-12, including ratification of the R-7 indexing rule.
 
 ### Changed
 
-- `bytes32 extraData` is folded into the counterfactual registration-hash
-  preimage, which is now
-  `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))`.
-  This implementation reserves `extraData` at `bytes32(0)` and has no way to
-  supply another value; a future implementation may return non-zero values to
-  distinguish subjects that share a `(tokenContract, tokenId)`. This is a hard
-  identity cutover: every counterfactual `registrationHash` changes, so
-  identities emitted by earlier implementations do not match anything recomputed
-  by this one. On-chain `Binding` rows and full ERC-8004 registrations are
-  unaffected.
-- `extraData` is emitted as the first non-indexed field on all six
-  counterfactual events (`CounterfactualAgentRegistered`,
-  `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
-  `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
-  `CounterfactualAgentWalletUnset`) and on `PrimaryCounterfactualAgentSet`, so
-  an indexer stores the field before any upgrade begins populating it. Adding a
-  field changes each event signature and therefore its `topic0`.
+- **ERC-7930 v1 encoding confirmed and frozen in the counterfactual hash preimage**
+  (decision D1, revised, in [`docs/decisions/phase1-freeze.md`](./docs/decisions/phase1-freeze.md)).
+  ERC-7930 stays as published (OpenZeppelin and the interop ecosystem use it as-is), so the
+  adapter keeps the standard versioned encoding
+  (`Version(0x0001) || ChainType(2) || RefLen(1) || Ref || AddrLen(1) [|| Address(20)]`) in the
+  public views AND the hash preimage — byte-identical to the deployed/0.0.15 encoding, and
+  computable with stock ERC-7930 encoders. Spec invariant INV-1: the v1 encoding is frozen in the
+  preimage permanently; any future ERC-7930 version may affect the views only via a deliberate,
+  documented split, never `_registrationHash`. (An interim version-free encoding existed briefly
+  in the working tree and was reverted; no version-free hash was ever published or deployed.)
+- **Canonical subject identifiers; `extraData` removed; counterfactual event ABIs reworked;
+  dedicated contract-subject entry points**
+  (decision D6 in [`docs/decisions/phase1-freeze.md`](./docs/decisions/phase1-freeze.md),
+  superseding the interim D5 mechanism).
+  - One preimage for every subject kind:
+    `registrationHash = keccak256(abi.encode(adapterInteroperableAddress, tokenContract, identifier))`,
+    where `identifier` is `bytes` with a frozen grammar: EMPTY for a contract subject
+    (`CONTRACT` / `CONTRACT_OWNABLE`), `0x00 || tokenId` (full-width 32-byte big-endian) for a
+    plain token under any token standard, and future kinds behind append-only kind bytes. A
+    contract's identity and its token id `0` are distinct by construction; the old `(X, 0)`
+    aliasing is gone.
+  - `COUNTERFACTUAL_EXTRA_DATA` is deleted from the preimage, the contract, and every event. Its
+    use case (subjects sharing a coordinate) is served natively by identifier kinds, and its
+    activation invariant is replaced by the simpler encoding-freeze rules (spec INV-2).
+  - All six counterfactual events and `PrimaryCounterfactualAgentSet` change `topic0`: indexed
+    topics are now `(registrationHash, tokenContract, emitter)` (the freed `tokenId` slot indexes
+    the authorizing caller), the canonical `identifier` rides as the first body field (every event
+    is self-verifying against its own hash topic), and no counterfactual event carries a `tokenId`
+    or `extraData` field.
+  - Contract subjects get dedicated tokenId-free entry points — `registerContract` (+ metadata
+    overload), `registerContractAndSetPrimary`, `bindExistingContract`,
+    `counterfactualRegisterContract` (+ overload), `counterfactualSetContractAgentURI` /
+    `...Metadata` / `...MetadataBatch` / `...AgentWallet` / `counterfactualUnsetContractAgentWallet`
+    — while the token surface rejects contract standards (`NotTokenStandard`) and the contract
+    surface rejects token standards (`NotContractStandard`). `NonZeroTokenIdForContract` is
+    removed. The one residual zero is `Binding.tokenId` for contract bindings: a storage struct
+    default, documented on `bindingOf`, never caller-supplied and never part of any identity.
+  - Spec rule R-7 (contract-senior subordination): for contract-subject identities, indexers rank
+    contract-authored events (`emitter == tokenContract`) above owner-authored ones, so an
+    `owner()` may bootstrap a silent contract's identity but can never supersede a contract that
+    has spoken for itself. This corrects the `CONTRACT_OWNABLE` "opt-in, never assumed" claim on
+    the counterfactual surface, where the authority model is chosen per call rather than stored.
+- Stale doc fixes: removed a leftover `version == 1` reference in
+  `IERC8004AdapterCounterfactual` and corrected the README indexer rules to the
+  per-hash identity model.
 
 ### Removed
 
 - The `uint8 version` payload field on the counterfactual events and the
-  `counterfactualPayloadVersion()` getter. `topic0` already discriminates event
-  schema on its own, so an in-payload version restated what the topic guarantees.
+  `counterfactualPayloadVersion()` getter (absorbed from the superseded
+  unreleased `0.0.15`). `topic0` already discriminates event schema on its own,
+  so an in-payload version restated what the topic guarantees.
+- The interim `bytes32 extraData` preimage field and event field from the
+  superseded unreleased `0.0.15`, together with its reserved-value activation
+  invariant — replaced by the canonical subject-identifier grammar above.
 
 ## [0.0.14] - Unreleased
 

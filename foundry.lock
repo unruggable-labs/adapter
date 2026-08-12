@@ -2,13 +2,13 @@
   "lib/erc-8004-contracts": {
     "rev": "c7ce292f405b692374f8c5ff3febfaececec3a8b"
   },
-  "lib/forge-std": {
-    "rev": "4540e4aadda88eeb19a54d2b5ad2117c2c7632ec"
+  "lib/openzeppelin-contracts-upgradeable": {
+    "rev": "25780dbcea4d5124fd517f002f0f8984881c5198"
   },
   "lib/openzeppelin-contracts": {
     "rev": "9cfdccd35350f7bcc585cf2ede08cd04e7f0ec10"
   },
-  "lib/openzeppelin-contracts-upgradeable": {
-    "rev": "25780dbcea4d5124fd517f002f0f8984881c5198"
+  "lib/forge-std": {
+    "rev": "4540e4aadda88eeb19a54d2b5ad2117c2c7632ec"
   }
 }
