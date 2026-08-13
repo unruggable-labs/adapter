@@ -254,15 +254,6 @@ contract Adapter8004 is
         return _register(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
     }
 
-    /// @notice Caller-paid convenience wrapper: register a new adapter-managed ERC-8004 agent bound to
-    /// the caller's external token, then record that new `agentId` as the caller's own primary agent —
-    /// in one transaction, with no signature or relayer. Equivalent to `register(...)` (no-metadata
-    /// overload) immediately followed by the caller calling `setPrimaryAgent(agentId)`
-    /// themselves: identical control/auth (the caller must control the token), identical `AgentBound`
-    /// event and returned `agentId`, plus the standard `PrimaryAgentSet(caller, agentId,
-    /// caller)`. No new storage, authorization, or event families. Caller-scoped everywhere: a
-    /// `CONTRACT` binding records the primary for the bound contract; a `CONTRACT_OWNABLE` binding
-    /// records it for whichever authorized account made this call.
     function registerAndSetPrimary(
         TokenStandard standard,
         address tokenContract,
@@ -530,10 +521,6 @@ contract Adapter8004 is
     // Consumers must key on `registrationHash`, never on the token pair.
     // -----------------------------------------------------------------
 
-    /// @notice Computes the canonical counterfactual `registrationHash` for the given external token,
-    /// scoped to this chain and this adapter proxy. Mirrors the internal `_registrationHash`
-    /// used by every counterfactual emitter. Useful for off-chain consumers that need to
-    /// derive the hash without reimplementing the encoding rules.
     function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32) {
         return _registrationHash(tokenContract, tokenId);
     }
@@ -858,16 +845,6 @@ contract Adapter8004 is
     //  Signed (gasless, account-self) primary agent surface
     // -----------------------------------------------------------------
 
-    /// @notice Set `account`'s primary agent id from an EIP-712 signature by `account` itself, so any
-    /// relayer can submit it (gasless UX). Strictly account-self: the signature is validated against
-    /// `account` via `SignatureChecker` (EOA or the account's ERC-1271 policy); there is deliberately
-    /// no owner/admin/controller signature route here (that authority stays on the paid
-    /// `setPrimaryAgentFor`). The `nonce` is not a calldata argument — the signed payload embeds the
-    /// current `primaryAgentNonces(account)`, read on-chain immediately before verification. Reverts
-    /// `SignatureDeadlineTooFar` / `SignatureExpired` on deadline bounds and `InvalidSignature` on a bad
-    /// or stale signature; `agentId == PRIMARY_AGENT_UNSET` reverts `PrimaryAgentIdReserved` and `0` is a
-    /// valid id. Emits the legacy `PrimaryAgentSet(account, agentId, msg.sender=relayer)` then
-    /// `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)`.
     function setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes calldata signature)
         external
     {
@@ -891,11 +868,6 @@ contract Adapter8004 is
         emit PrimaryAgentSetWithSig(account, agentId, msg.sender, nonce);
     }
 
-    /// @notice Clear `account`'s primary agent id from an EIP-712 signature by `account` itself. Same
-    /// account-self authorization, full-system nonce stream, and deadline bounds as `setPrimaryAgentWithSig`.
-    /// A set and a clear sharing a nonce are mutually exclusive, and the one mined first wins.
-    /// Afterwards `primaryAgentOf` returns `PRIMARY_AGENT_UNSET`. Emits the legacy
-    /// `PrimaryAgentCleared(account, relayer)` then `PrimaryAgentClearedWithSig(account, relayer, nonce)`.
     function clearPrimaryAgentWithSig(address account, uint256 deadline, bytes calldata signature) external {
         // 1. Enforce the bounded, unexpired deadline.
         _requirePrimaryAgentDeadline(deadline);

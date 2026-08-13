@@ -74,7 +74,9 @@ interface IERC8004AdapterCounterfactual {
     /// envelope as `chainIdentifier()`, followed by AddressLength 20 and the raw address bytes.
     function interoperableAddress(address account) external view returns (bytes memory);
 
-    /// @notice Computes the canonical counterfactual registration hash. The identity is
+    /// @notice Computes the canonical counterfactual registration hash, scoped to this chain and this
+    /// adapter proxy, so off-chain consumers can derive it without reimplementing the rules. The
+    /// identity is
     /// `keccak256(abi.encode(interoperableAddress(adapter), tokenContract, tokenId, extraData))`,
     /// where `extraData` is `bytes32(0)` for every implementation of this baseline.
     /// @dev `extraData` is deliberately not a parameter anywhere on this surface, because it is
