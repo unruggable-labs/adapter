@@ -43,6 +43,33 @@ contract MockDelegateRegistry {
         return false;
     }
 
+    /// @notice Contract-scoped check. It folds in wallet-level delegations but deliberately ignores
+    /// token-level ones, which is the difference that makes it correct for a contract binding.
+    function checkDelegateForContract(address to, address from, address contract_, bytes32 rights)
+        external
+        view
+        returns (bool)
+    {
+        if (_matchesContract(to, from, contract_, bytes32(0))) {
+            return true;
+        }
+
+        if (rights != bytes32(0) && _matchesContract(to, from, contract_, rights)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function _matchesContract(address to, address from, address contract_, bytes32 rights)
+        private
+        view
+        returns (bool)
+    {
+        return _contractLevel[keccak256(abi.encode(to, from, contract_, rights))]
+            || _allLevel[keccak256(abi.encode(to, from, rights))];
+    }
+
     function _matches(address to, address from, address contract_, uint256 tokenId, bytes32 rights)
         private
         view

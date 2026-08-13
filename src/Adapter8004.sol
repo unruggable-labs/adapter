@@ -503,10 +503,18 @@ contract Adapter8004 is
     /// who owns something.
     /// @dev Authority is resolved live from the bound token on every call and is not stored, so the
     /// answer can change in the same block that a token transfers or a bound contract's `owner()`
-    /// changes. A consumer must not cache it. What counts as control depends on the bound standard:
-    /// current ownership or a delegate.xyz delegation for the single-owner standards, any positive
-    /// balance for ERC-1155 and ERC-6909, the contract itself for `CONTRACT`, and additionally its
-    /// live `owner()` for `CONTRACT_OWNABLE`.
+    /// changes. A consumer must not cache it.
+    ///
+    /// Four standards share one rule. `ERC721`, `ERC1155F`, `ERC6909F` and `CONTRACT_OWNABLE` each
+    /// have an owner that can be identified and can change, so each resolves that owner live and
+    /// accepts either the owner acting directly or a delegate.xyz delegate of that owner. The
+    /// remaining standards have no such owner: `ERC1155` and `ERC6909` grant control to any positive
+    /// balance, and `CONTRACT` grants it to the bound contract alone.
+    ///
+    /// Delegation carries a consequence worth knowing before relying on it. A wallet holding a
+    /// blanket delegate.xyz delegation from the owner, one that names no rights at all, is accepted
+    /// here even though the owner never named `adapter8004.manage`. The registry offers no way to ask
+    /// for a scoped-only match, so this cannot be narrowed on-chain.
     function isController(uint256 agentId, address account) external view returns (bool) {
         // 1. Load the binding that defines who controls this agent.
         Binding memory binding = _bindings[agentId];
@@ -1125,25 +1133,53 @@ contract Adapter8004 is
         //    there is no token whose ownership could change hands, so the bound contract is the
         //    permanent controller of the agents it binds, before and after binding, and its latest
         //    write to a mutable registry field wins. Deliberately not part of
-        //    `_isSingleOwnerStandard`, so it gets no ownerless-window probe and no delegate.xyz
-        //    ERC-721 delegation route. (An ERC-20 binding its own contract-level identity through
-        //    `CONTRACT` is the motivating example, but nothing here is specific to tokens.)
+        //    `_isSingleOwnerStandard`, so it gets no ownerless-window probe.
+        //    It is also the one standard with an identifiable controller that is offered no
+        //    delegation route. Delegation is offered where the delegator is an ordinary account,
+        //    which is what delegate.xyz is built for. A contract delegating on its own behalf cannot
+        //    revoke without the same executor it used to delegate, so a single governance action
+        //    could grant authority that nobody can later withdraw. Bind `CONTRACT_OWNABLE` instead
+        //    if delegation is wanted, where the delegator is the owner account.
+        //    (An ERC-20 binding its own contract-level identity through `CONTRACT` is the motivating
+        //    example, but nothing here is specific to tokens.)
         if (standard == TokenStandard.CONTRACT) {
             return account == tokenContract;
         }
 
-        // 2. The explicit ownable contract model retains contract-self authority and additionally
-        //    follows the contract's live `owner()`. The probe is a fail-closed STATICCALL: a revert,
-        //    wrong-length response, dirty upper bits, or zero owner grants no external authority.
-        //    This standard remains outside the single-owner token set, so it gets neither an
-        //    ownerless-collection window nor delegate.xyz authority.
+        // 2. `CONTRACT_OWNABLE` is the fourth member of the owner-and-delegate pattern described at
+        //    step 3. It retains contract-self authority, and otherwise resolves the contract's live
+        //    `owner()` and accepts either that owner acting directly or a delegate of that owner.
+        //    The owner probe is a fail-closed STATICCALL, so a revert, a wrong-length response, dirty
+        //    upper bits or a zero owner resolves to no owner and grants nobody. Resolving live means a
+        //    former owner's delegation stops conferring authority in the same transaction that
+        //    ownership moves.
+        //    The delegation check is contract-scoped rather than token-scoped. A contract binding
+        //    pins `tokenId` to 0, where it exists only as an input to the counterfactual hash and
+        //    never as a reference to a token. A token-scoped check would therefore test a delegation
+        //    against something that does not exist, and for a bound contract that is also an NFT
+        //    collection it would let a delegation covering token id 0 confer authority over the whole
+        //    contract. `checkDelegateForContract` still cascades up to wallet-level delegations,
+        //    which is the case this wants.
+        //    This standard remains outside the single-owner token set, so it gets no
+        //    ownerless-collection window.
         if (standard == TokenStandard.CONTRACT_OWNABLE) {
-            return account == tokenContract || _isCurrentContractOwner(tokenContract, account);
+            if (account == tokenContract) {
+                return true;
+            }
+            address contractOwner = _currentContractOwner(tokenContract);
+            if (contractOwner == address(0)) {
+                return false;
+            }
+            if (account == contractOwner) {
+                return true;
+            }
+            return _isOwnerDelegate(account, contractOwner, tokenContract);
         }
 
-        // 3. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
-        //    delegation from the current owner. Direct ownership is checked first so current owners
-        //    never incur a registry call.
+        // 3. Single-owner standards are the other three members of the owner-and-delegate pattern.
+        //    Control means current token ownership, or a valid delegate.xyz delegation from the
+        //    current owner. Direct ownership is checked first so current owners never incur a
+        //    registry call.
         if (_isSingleOwnerStandard(standard)) {
             address owner = ISingleOwnerToken(tokenContract).ownerOf(tokenId);
             if (account == owner) {
@@ -1170,12 +1206,14 @@ contract Adapter8004 is
 
     /// @dev Fail-closed EIP-173 owner probe for the opt-in `CONTRACT_OWNABLE` standard. The typed
     /// interface pins `owner()` as `view`, and the low-level `staticcall` makes that read-only at the
-    /// EVM level. Only exactly one clean ABI address word is accepted. A zero owner never matches,
-    /// including when `account` is also zero.
-    function _isCurrentContractOwner(address tokenContract, address account) private view returns (bool) {
+    /// EVM level. Only exactly one clean ABI address word is accepted. Returns the zero address when
+    /// the contract reports no usable owner, which every caller must read as nobody rather than as an
+    /// owner of zero. In particular the delegation check must never run with a zero delegator, since
+    /// that would ask the registry about an account nobody controls.
+    function _currentContractOwner(address tokenContract) private view returns (address) {
         (bool success, bytes memory result) = tokenContract.staticcall(abi.encodeCall(IOwnableContract.owner, ()));
         if (!success || result.length != 32) {
-            return false;
+            return address(0);
         }
 
         uint256 ownerWord;
@@ -1183,11 +1221,23 @@ contract Adapter8004 is
             ownerWord := mload(add(result, 0x20))
         }
         if (ownerWord >> 160 != 0) {
+            return address(0);
+        }
+
+        return address(uint160(ownerWord));
+    }
+
+    /// @dev Consults the delegate.xyz v2 registry for a contract-scoped delegation from the bound
+    /// contract's current `owner` to `account`. Fails closed in the same way as the token-scoped
+    /// check: if the registry has no code on this chain, only direct authority applies.
+    function _isOwnerDelegate(address account, address owner, address tokenContract) private view returns (bool) {
+        if (DELEGATE_REGISTRY.code.length == 0) {
             return false;
         }
 
-        address currentOwner = address(uint160(ownerWord));
-        return currentOwner != address(0) && account == currentOwner;
+        return IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForContract(
+            account, owner, tokenContract, DELEGATE_RIGHTS
+        );
     }
 
     /// @dev Consults the immutable delegate.xyz v2 registry for an ERC-721 delegation from the current

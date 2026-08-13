@@ -11,7 +11,9 @@ interface IERCAgentBindings {
     /// tokenId)`. Both contract standards name the contract itself: there is no token to identify,
     /// so the binding has exactly one canonical coordinate, `tokenId == 0`. `CONTRACT` grants
     /// authority only to the contract itself. `CONTRACT_OWNABLE` additionally grants authority to
-    /// the current canonical nonzero address returned by `owner()`.
+    /// the current canonical nonzero address returned by `owner()`, and to a delegate.xyz delegate of
+    /// that owner. `CONTRACT` is offered no delegation route, because a contract delegating on its
+    /// own behalf cannot revoke without the same executor it used to delegate.
     enum TokenStandard {
         ERC721,
         ERC1155,

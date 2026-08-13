@@ -51,8 +51,11 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// `owner()` is authorized dynamically. The probe is a STATICCALL and fails closed: a revert,
 /// returndata whose length is not exactly 32 bytes, dirty upper bits, or a zero owner grants nobody.
 /// Ownership transfers therefore give existing claims to the new owner and remove authority from
-/// the old owner without changing the immutable binding. Like `CONTRACT`, this value is outside the
-/// single-owner token set and gets neither an ownerless window nor delegate.xyz authority.
+/// the old owner without changing the immutable binding, and they also end any delegation the former
+/// owner had granted. A delegate of the current owner is authorized as well, through a
+/// contract-scoped delegate.xyz check rather than a token-scoped one, because the binding names a
+/// contract rather than a token. Like `CONTRACT`, this value is outside the single-owner token set
+/// and gets no ownerless window.
 ///
 /// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
