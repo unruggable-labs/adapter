@@ -34,7 +34,7 @@ interface IERC8004AdapterRegistration {
         string calldata agentURI
     ) external returns (uint256 agentId);
 
-    /// @notice Caller-paid one-transaction wrapper: `register(standard, tokenContract, tokenId,
+    /// @notice One-transaction wrapper: `register(standard, tokenContract, tokenId,
     /// agentURI)` (empty metadata) immediately followed by recording the returned `agentId` as the
     /// CALLER's own full primary agent (`setPrimaryAgent(agentId)`). No signature or relayer. Same
     /// token-authority rules and `AgentBound` event/return as `register`, plus a

@@ -1138,7 +1138,7 @@ contract Adapter8004 is
 
         // 3. Single-owner standards mean current token ownership, or a valid delegate.xyz ERC-721-style
         //    delegation from the current owner. Direct ownership is checked first so current owners
-        //    never pay a registry call.
+        //    never incur a registry call.
         if (_isSingleOwnerStandard(standard)) {
             address owner = ISingleOwnerToken(tokenContract).ownerOf(tokenId);
             if (account == owner) {

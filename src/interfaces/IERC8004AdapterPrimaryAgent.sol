@@ -28,7 +28,8 @@ interface IERC8004AdapterPrimaryAgent {
     /// `SetPrimary8004Agent(address account,uint256 agentId,uint256 nonce,uint256 deadline)`.
     /// Strictly account-self. The signature is validated against `account`, whether an EOA or the
     /// account's ERC-1271 policy, and there is deliberately no owner, admin or controller signature
-    /// route. That authority stays on the paid `setPrimaryAgentFor`. The nonce is not a calldata
+    /// route. That authority stays on `setPrimaryAgentFor`, which a controller calls directly. The
+    /// nonce is not a calldata
     /// argument. The signed payload embeds the current `primaryAgentNonces(account)`, read on-chain
     /// immediately before verification. Reverts `SignatureDeadlineTooFar` or `SignatureExpired` on the
     /// deadline bounds, and `InvalidSignature` on a bad or stale signature. An `agentId` of
