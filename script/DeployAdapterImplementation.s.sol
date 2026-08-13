@@ -55,6 +55,26 @@ contract DeployAdapterImplementationScript is Script {
     /// @notice Canonical Adapter8004 UUPS proxy on Sepolia (chainId 11155111).
     address internal constant ADAPTER_PROXY_SEPOLIA = 0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92;
 
+    /// @notice Event signature strings printed by `run()` so operators can subscribe to the right
+    /// topics after the upgrade. They are constants rather than inline literals so a test can hold
+    /// them against the compiler's own event selectors. There is exactly one copy of each string,
+    /// and `DeployAdapterImplementationEventSignatures.t.sol` fails if any drifts from the contract.
+    string internal constant SIG_PRIMARY_AGENT_SET = "PrimaryAgentSet(address,uint256,address)";
+    string internal constant SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET =
+        "PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,address)";
+    string internal constant SIG_CF_REGISTERED =
+        "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)";
+    string internal constant SIG_CF_URI_SET = "CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)";
+    string internal constant SIG_CF_METADATA_SET =
+        "CounterfactualMetadataSet(bytes32,address,uint256,uint8,string,bytes,address)";
+    string internal constant SIG_CF_METADATA_BATCH_SET =
+        "CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)";
+    string internal constant SIG_CF_WALLET_SET =
+        "CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)";
+    string internal constant SIG_CF_WALLET_UNSET =
+        "CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)";
+    string internal constant SIG_AGENT_BOUND = "AgentBound(uint256,uint8,address,uint256,address)";
+
     function run() external returns (address proxy, address implementation, bytes memory upgradeCalldata) {
         proxy = vm.envAddress("ADAPTER_PROXY_ADDRESS");
 
@@ -93,60 +113,42 @@ contract DeployAdapterImplementationScript is Script {
         console2.log("ERC-7930 Interoperable Address for proxy:");
         console2.logBytes(proxyInteroperableAddress);
         console2.log("Sample registrationHash(proxy, tokenContract=0x1, tokenId=0):");
-        console2.logBytes32(keccak256(abi.encode(proxyInteroperableAddress, address(1), uint256(0))));
+        console2.logBytes32(_sampleRegistrationHash(proxyInteroperableAddress, address(1), 0));
 
         console2.log("=== New primary-agent event topic[0] hashes ===");
-        console2.logBytes32(keccak256(bytes("PrimaryAgentSet(address,uint256,address)")));
-        console2.logBytes32(keccak256(bytes("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,address)")));
+        console2.logBytes32(keccak256(bytes(SIG_PRIMARY_AGENT_SET)));
+        console2.logBytes32(keccak256(bytes(SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET)));
 
         console2.log("=== Counterfactual event topic[0] hashes (subscribe to these post-upgrade) ===");
-        console2.log(
-            "CounterfactualAgentRegistered signature: CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)"
-        );
-        console2.log("CounterfactualAgentRegistered:");
-        console2.logBytes32(
-            keccak256(
-                bytes(
-                    "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)"
-                )
-            )
-        );
-        console2.log(
-            "CounterfactualAgentURISet signature: CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)"
-        );
-        console2.log("CounterfactualAgentURISet:");
-        console2.logBytes32(keccak256(bytes("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)")));
-        console2.log(
-            "CounterfactualMetadataSet signature: CounterfactualMetadataSet(bytes32,address,uint256,uint8,string,bytes,address)"
-        );
-        console2.log("CounterfactualMetadataSet:");
-        console2.logBytes32(
-            keccak256(bytes("CounterfactualMetadataSet(bytes32,address,uint256,uint8,string,bytes,address)"))
-        );
-        console2.log(
-            "CounterfactualMetadataBatchSet signature: CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)"
-        );
-        console2.log("CounterfactualMetadataBatchSet:");
-        console2.logBytes32(
-            keccak256(bytes("CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)"))
-        );
-        console2.log(
-            "CounterfactualAgentWalletSet signature: CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)"
-        );
-        console2.log("CounterfactualAgentWalletSet:");
-        console2.logBytes32(
-            keccak256(bytes("CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)"))
-        );
-        console2.log(
-            "CounterfactualAgentWalletUnset signature: CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)"
-        );
-        console2.log("CounterfactualAgentWalletUnset:");
-        console2.logBytes32(keccak256(bytes("CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)")));
+        _logSignature("CounterfactualAgentRegistered", SIG_CF_REGISTERED);
+        _logSignature("CounterfactualAgentURISet", SIG_CF_URI_SET);
+        _logSignature("CounterfactualMetadataSet", SIG_CF_METADATA_SET);
+        _logSignature("CounterfactualMetadataBatchSet", SIG_CF_METADATA_BATCH_SET);
+        _logSignature("CounterfactualAgentWalletSet", SIG_CF_WALLET_SET);
+        _logSignature("CounterfactualAgentWalletUnset", SIG_CF_WALLET_UNSET);
         console2.log("AgentBound (existing, also emitted by bindExisting):");
-        console2.logBytes32(keccak256(bytes("AgentBound(uint256,uint8,address,uint256,address)")));
+        console2.logBytes32(keccak256(bytes(SIG_AGENT_BOUND)));
 
         // 4. Persist a Safe Transaction Builder JSON next to the existing per-chain artifacts.
         _writeSafeTxJson(proxy, implementation, upgradeCalldata, networkSlug, networkDisplayName);
+    }
+
+    /// @dev Prints one event's signature and its topic[0], so an operator can paste either into a
+    /// subscription without deriving the hash themselves.
+    function _logSignature(string memory name, string memory signature) internal pure {
+        console2.log(string.concat(name, " signature: ", signature));
+        console2.log(string.concat(name, ":"));
+        console2.logBytes32(keccak256(bytes(signature)));
+    }
+
+    /// @dev The sample counterfactual identity printed by `run()`. It mirrors the contract's own
+    /// preimage, and the accompanying test holds it against the contract so the two cannot diverge.
+    function _sampleRegistrationHash(bytes memory proxyInteroperableAddress, address tokenContract, uint256 tokenId)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(proxyInteroperableAddress, tokenContract, tokenId));
     }
 
     /// @dev Writes the Safe Transaction Builder JSON for this chain. The chain id is
