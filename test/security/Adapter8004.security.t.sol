@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -39,7 +39,6 @@ contract SecurityAdapter8004Test is Test {
         uint256 tokenId,
         address registeredBy
     );
-    event MetadataBatchSet(uint256 indexed agentId, uint256 count, address indexed updatedBy);
     event IdentityRegistryUpdated(
         address indexed previousRegistry, address indexed newRegistry, address indexed updatedBy
     );
@@ -198,25 +197,48 @@ contract SecurityAdapter8004Test is Test {
         adapter.setMetadataBatch(77, _emptyMetadata());
     }
 
-    function testSetMetadataBatchEmptyEmitsEvent() external {
+    /// @dev An empty batch writes nothing, so it now says nothing. The removed summary event was the
+    /// only way to observe a caller passing zero entries, and that carried no information a consumer
+    /// could act on.
+    function testSetMetadataBatchEmptyEmitsNothingFromTheAdapter() external {
         uint256 agentId = _register721(alice, 1);
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit MetadataBatchSet(agentId, 0, alice);
+        vm.recordLogs();
         vm.prank(alice);
         adapter.setMetadataBatch(agentId, _emptyMetadata());
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            assertTrue(logs[i].emitter != address(adapter), "empty batch must emit no adapter event");
+        }
     }
 
-    function testSetMetadataBatchEmitsCount() external {
+    /// @dev Asserts the key and value of every entry, and their order, not just how many were
+    /// emitted. A count assertion cannot tell a correct batch from one that wrote the right number
+    /// of wrong things.
+    function testSetMetadataBatchEmitsMetadataSetPerEntryInOrder() external {
         uint256 agentId = _register721(alice, 1);
         IERC8004IdentityRegistry.MetadataEntry[] memory entries = new IERC8004IdentityRegistry.MetadataEntry[](3);
         entries[0] = IERC8004IdentityRegistry.MetadataEntry("a", bytes("1"));
         entries[1] = IERC8004IdentityRegistry.MetadataEntry("b", bytes("2"));
         entries[2] = IERC8004IdentityRegistry.MetadataEntry("c", bytes("3"));
 
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit MetadataBatchSet(agentId, 3, alice);
+        vm.recordLogs();
         vm.prank(alice);
         adapter.setMetadataBatch(agentId, entries);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 topic = keccak256("MetadataSet(uint256,string,bytes,address)");
+        uint256 seen;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter != address(adapter) || logs[i].topics[0] != topic) continue;
+            assertEq(uint256(logs[i].topics[1]), agentId);
+            assertEq(address(uint160(uint256(logs[i].topics[2]))), alice);
+            (string memory key, bytes memory value) = abi.decode(logs[i].data, (string, bytes));
+            assertEq(key, entries[seen].metadataKey, "key must match its entry, in order");
+            assertEq(value, entries[seen].metadataValue, "value must match its entry, in order");
+            seen++;
+        }
+        assertEq(seen, 3, "one MetadataSet per entry");
     }
 
     function testSetAgentWalletNonControllerReverts() external {

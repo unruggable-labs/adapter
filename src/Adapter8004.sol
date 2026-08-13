@@ -173,7 +173,6 @@ contract Adapter8004 is
         address registeredBy
     );
 
-    event MetadataBatchSet(uint256 indexed agentId, uint256 count, address indexed updatedBy);
     event IdentityRegistryUpdated(
         address indexed previousRegistry, address indexed newRegistry, address indexed updatedBy
     );
@@ -427,14 +426,17 @@ contract Adapter8004 is
         // 2. Prevent callers from writing reserved metadata (agent-binding and cf-registration).
         _requireNoReservedCounterfactualKeys(metadata);
 
-        // 3. Replay each metadata write through the ERC-8004 registry one by one.
+        // 3. Replay each metadata write through the ERC-8004 registry one by one, emitting the same
+        //    event the single-write path emits. A batch is therefore indistinguishable from a run of
+        //    individual writes on the event surface, so a consumer that already handles `MetadataSet`
+        //    needs no batch-specific code. The emit sits inside the loop rather than after it so each
+        //    adapter event lands next to the registry write it describes, which is what an indexer
+        //    applying events in log order depends on.
         uint256 length = metadata.length;
         for (uint256 i; i < length; ++i) {
             identityRegistry.setMetadata(agentId, metadata[i].metadataKey, metadata[i].metadataValue);
+            emit MetadataSet(agentId, metadata[i].metadataKey, metadata[i].metadataValue, msg.sender);
         }
-
-        // 4. Emit one adapter-level event describing the batch operation.
-        emit MetadataBatchSet(agentId, length, msg.sender);
     }
 
     /// @notice Owner-only migration helper to rewrite legacy `agent-binding` rows into the ERC-8217 20-byte format.
