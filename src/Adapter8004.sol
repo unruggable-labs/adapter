@@ -128,9 +128,9 @@ contract Adapter8004 is
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
     /// through `_hasBindingControl`.
     error InvalidTokenContractIsRegistry();
-    /// @notice Thrown by any `CONTRACT` or `CONTRACT_OWNABLE` adapter operation called with a nonzero `tokenId` —
-    /// registration, `bindExisting`, and the emit-only counterfactual calls alike, since all of them
-    /// pass through the same authority choke points. A contract-level binding names the contract
+    /// @notice Thrown by any `CONTRACT` or `CONTRACT_OWNABLE` adapter operation called with a nonzero
+    /// `tokenId`. This covers registration, `bindExisting` and the emit-only counterfactual calls
+    /// alike, since all of them pass through the same authority choke points. A contract-level binding names the contract
     /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
     /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
     /// its `registrationHash`, and any pointer derived from it can never disagree with the id the
@@ -302,8 +302,8 @@ contract Adapter8004 is
         //    The authorized caller must also own the agent (step 3) and approve the adapter (step 5).
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
-        // 5. Require the adapter to have prior ERC-721 transfer approval for `agentId` —
-        //    either per-token (`approve`) or operator-level (`setApprovalForAll`).
+        // 5. Require the adapter to have prior ERC-721 transfer approval for `agentId`, either
+        //    per-token through `approve` or operator-level through `setApprovalForAll`.
         _requireAgentTransferApproval(agentId, msg.sender);
 
         // 6. Transfer the ERC-8004 identity into the adapter before any adapter storage or
@@ -343,7 +343,7 @@ contract Adapter8004 is
         _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Register the ERC-8004 identity so the adapter becomes the registry owner.
-        //    Skip the metadata-array overload when there is nothing to write — saves the
+        //    Skip the metadata-array overload when there is nothing to write, which saves the
         //    empty-array calldata + memory copy on the registry side.
         if (metadata.length == 0) {
             agentId = identityRegistry.register(agentURI);
@@ -528,15 +528,16 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     // COUNTERFACTUAL FUNCTIONS
     // -----------------------------------------------------------------
-    // Emit-only mirrors of the on-chain register surface. No SSTORE, no
-    // ERC-8004 registry calls; gated by current bound-token control, the temporary
-    // direct ownerless-collection authority documented below, or a contract binding's
-    // value-5 contract-self / value-6 contract-self-or-current-owner authority at `tokenId 0`.
-    // There is no whole-claim tombstone: a claim can only be superseded by a later
-    // event, and unsetting the wallet clears that field alone.
-    // Indexers consume the emitted events as soft-state claims (latest
-    // event per `registrationHash` wins), enabling off-chain identities
-    // that can later be promoted to on-chain registrations.
+    // Emit-only mirrors of the on-chain register surface. They write nothing to adapter storage and
+    // make no ERC-8004 registry calls. Each is gated by current bound-token control, by the temporary
+    // direct ownerless-collection authority documented below, or by a contract binding's authority,
+    // which is contract-self for value 5 and contract-self or current owner for value 6, always at
+    // `tokenId 0`.
+    //
+    // There is no whole-claim tombstone. A claim can only be superseded by a later event, and
+    // unsetting the wallet clears that field alone. Indexers consume the emitted events as
+    // soft-state claims, where the latest event per `registrationHash` wins, which is what allows an
+    // off-chain identity to be promoted to an on-chain registration later.
     //
     // The identity is the `registrationHash` and nothing else. Each token
     // has exactly one identity, but `(tokenContract, tokenId)` is not
@@ -608,15 +609,16 @@ contract Adapter8004 is
         // 4. Compute the deterministic registration hash used as the indexer key for this claim.
         computedHash = _registrationHash(tokenContract, tokenId);
 
-        // 5. Emit the counterfactual claim — the only on-chain record produced by this function.
+        // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
         emit CounterfactualAgentRegistered(
             computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, agentURI, metadata, msg.sender
         );
     }
 
-    /// @notice Counterfactual agent URI update. No registry write, no SSTORE. A current controller
-    /// may call, as may the directly calling token contract while a supported single-owner id has no
-    /// current owner. The emitted event is the single source of truth; indexers MUST treat the latest
+    /// @notice Updates the agent URI for a counterfactual identity. The update is recorded only as an
+    /// event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage. A current
+    /// controller may call it, as may the token contract itself while a supported single-owner id has
+    /// no current owner. The emitted event is the single source of truth; indexers MUST treat the latest
     /// event per `registrationHash` as authoritative, not per `(tokenContract, tokenId)`, which is
     /// not considered a unique identifier.
     function counterfactualSetAgentURI(
@@ -632,7 +634,7 @@ contract Adapter8004 is
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Emit the counterfactual URI update — the only on-chain record produced by this function.
+        // 3. Emit the URI update, which is the only on-chain record this function produces.
         emit CounterfactualAgentURISet(
             _registrationHash(tokenContract, tokenId),
             tokenContract,
@@ -643,9 +645,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual single-key metadata write. No registry write, no SSTORE. Accepts
-    /// current-controller authority or direct ownerless collection authority for supported
-    /// single-owner standards.
+    /// @notice Records one metadata entry for a counterfactual identity. The entry is carried only by
+    /// the emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A
+    /// current controller may call it, as may the token contract itself while a supported
+    /// single-owner id has no current owner.
     function counterfactualSetMetadata(
         TokenStandard standard,
         address tokenContract,
@@ -668,7 +671,7 @@ contract Adapter8004 is
             revert ReservedMetadataKey(metadataKey);
         }
 
-        // 4. Emit the counterfactual metadata write — the only on-chain record produced by this function.
+        // 4. Emit the metadata write, which is the only on-chain record this function produces.
         emit CounterfactualMetadataSet(
             _registrationHash(tokenContract, tokenId),
             tokenContract,
@@ -680,9 +683,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual batch metadata write. No registry write, no SSTORE. Accepts
-    /// current-controller authority or direct ownerless collection authority for supported
-    /// single-owner standards.
+    /// @notice Records several metadata entries for a counterfactual identity in one event. The
+    /// entries are carried only by that event, so nothing is written to the ERC-8004 registry or to
+    /// adapter storage. A current controller may call it, as may the token contract itself while a
+    /// supported single-owner id has no current owner.
     function counterfactualSetMetadataBatch(
         TokenStandard standard,
         address tokenContract,
@@ -699,7 +703,7 @@ contract Adapter8004 is
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         _requireNoReservedCounterfactualKeys(metadata);
 
-        // 4. Emit the counterfactual batch — the only on-chain record produced by this function.
+        // 4. Emit the batch, which is the only on-chain record this function produces.
         emit CounterfactualMetadataBatchSet(
             _registrationHash(tokenContract, tokenId),
             tokenContract,
@@ -710,10 +714,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual agent-wallet assignment. Deliberately accepts no signature because no
-    /// ERC-8004 wallet binding is being created — the event is purely an off-chain claim, gated by
-    /// current-controller authority or direct ownerless collection authority for supported
-    /// single-owner standards.
+    /// @notice Assigns the agent wallet for a counterfactual identity. It deliberately accepts no
+    /// signature, because no ERC-8004 wallet binding is created and the event is only an off-chain
+    /// claim. A current controller may call it, as may the token contract itself while a supported
+    /// single-owner id has no current owner.
     function counterfactualSetAgentWallet(
         TokenStandard standard,
         address tokenContract,
@@ -727,7 +731,7 @@ contract Adapter8004 is
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Emit the counterfactual wallet assignment — the only on-chain record produced by this function.
+        // 3. Emit the wallet assignment, which is the only on-chain record this function produces.
         emit CounterfactualAgentWalletSet(
             _registrationHash(tokenContract, tokenId),
             tokenContract,
@@ -738,9 +742,10 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Counterfactual agent-wallet clear. No registry write, no SSTORE. Accepts
-    /// current-controller authority or direct ownerless collection authority for supported
-    /// single-owner standards.
+    /// @notice Clears the agent wallet on a counterfactual identity. The clear is carried only by the
+    /// emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A current
+    /// controller may call it, as may the token contract itself while a supported single-owner id has
+    /// no current owner.
     function counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)
         external
         nonReentrant
@@ -752,7 +757,7 @@ contract Adapter8004 is
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
 
-        // 3. Emit the counterfactual wallet clear — the only on-chain record produced by this function.
+        // 3. Emit the wallet clear, which is the only on-chain record this function produces.
         emit CounterfactualAgentWalletUnset(
             _registrationHash(tokenContract, tokenId), tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
         );
@@ -793,8 +798,8 @@ contract Adapter8004 is
     }
 
     /// @notice Reverse-resolve an address to its primary agent id. Returns `PRIMARY_AGENT_UNSET` (all
-    /// ones) when the account has never set an id or has cleared it. Every real id — including agent
-    /// id `0` — is returned as itself.
+    /// ones) when the account has never set an id or has cleared it. Every real id, including agent
+    /// id `0`, is returned as itself.
     function primaryAgentOf(address account) external view returns (uint256) {
         uint256 stored = _primaryAgent[account];
         return stored == 0 ? PRIMARY_AGENT_UNSET : ~stored;
@@ -806,7 +811,7 @@ contract Adapter8004 is
         emit PrimaryAgentSet(account, agentId, msg.sender);
     }
 
-    /// @dev Reset the account's complement slot to zero — which reads back as `PRIMARY_AGENT_UNSET` —
+    /// @dev Reset the account's complement slot to zero, which reads back as `PRIMARY_AGENT_UNSET`,
     /// and emit `PrimaryAgentCleared`. `delete` restores the exact "unwritten == unset" invariant.
     function _clearPrimaryAgent(address account) private {
         delete _primaryAgent[account];
@@ -1034,8 +1039,8 @@ contract Adapter8004 is
     }
 
     /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
-    /// (1) the existing current-controller model — which for contract bindings always includes the
-    /// bound contract itself — or (2) temporary collection authority when the direct caller is
+    /// (1) the existing current-controller model, which for contract bindings always includes the
+    /// bound contract itself, or (2) temporary collection authority when the direct caller is
     /// the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
     /// The latter window reopens after a burn if `ownerOf` again reverts or returns zero; preventing
     /// that would require historical-existence storage.
@@ -1112,11 +1117,11 @@ contract Adapter8004 is
         //    the bound contract is the controller and nobody else is. There is no per-token owner or
         //    holder to resolve, and the adapter asks the contract nothing: `ownerOf` and both
         //    `balanceOf` shapes are never probed on this branch, and `tokenId` is not consulted (it is
-        //    pinned to 0 at the choke points above). Anything the contract exposes itself — an
-        //    `owner()`, a token balance, a role — carries no authority here, and neither does the
+        //    pinned to 0 at the choke points above). Anything the contract exposes itself, whether an
+        //    `owner()`, a token balance or a role, carries no authority here, and neither does the
         //    adapter admin.
-        //    Unlike the transient single-owner collection window in `_requireTokenAuthority` — which
-        //    closes as soon as the id is minted and can reopen on burn — this authority never closes:
+        //    The transient single-owner collection window in `_requireTokenAuthority` closes as soon
+        //    as the id is minted and can reopen on burn. This authority never closes:
         //    there is no token whose ownership could change hands, so the bound contract is the
         //    permanent controller of the agents it binds, before and after binding, and its latest
         //    write to a mutable registry field wins. Deliberately not part of
