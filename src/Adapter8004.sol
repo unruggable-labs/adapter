@@ -962,13 +962,23 @@ contract Adapter8004 is
         if (_staticReturnsAddress(account, abi.encodeWithSignature("owner()"), caller)) return true;
         if (_staticReturnsAddress(account, abi.encodeWithSignature("getOwner()"), caller)) return true;
 
-        // AccessControl: DEFAULT_ADMIN_ROLE (0x00). Decode as a raw word so a dirty (non 0/1) bool
-        // cannot revert; any non-zero result is treated as "has role".
-        (bool ok, bytes memory ret) =
-            account.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), caller));
-        if (ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0) return true;
+        // AccessControl: DEFAULT_ADMIN_ROLE.
+        return _hasDefaultAdminRole(account, caller);
+    }
 
-        return false;
+    /// @dev Fail-closed AccessControl probe for `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`. Shared by
+    /// the account-control check above and the `CONTRACT_ADMIN` binding standard, so both agree on
+    /// what holding the role means.
+    ///
+    /// The result is decoded as a raw word rather than as a `bool` because a contract may return a
+    /// value outside `0` and `1` for a `bool` return. `abi.decode(ret, (bool))` reverts on such a
+    /// value, which would let a non-conforming contract break the authority check rather than simply
+    /// fail it. Any non-zero word is treated as holding the role. A contract that does not implement
+    /// `hasRole` at all, or answers with the wrong length, grants nobody.
+    function _hasDefaultAdminRole(address target, address account) private view returns (bool) {
+        (bool ok, bytes memory ret) =
+            target.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), account));
+        return ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0;
     }
 
     /// @dev Static-call `account` with `callData` and return true iff it yields exactly a clean
@@ -1077,14 +1087,14 @@ contract Adapter8004 is
         _requireBindingControl(standard, tokenContract, tokenId, account);
     }
 
-    /// @dev `CONTRACT` and `CONTRACT_OWNABLE` name the contract itself rather than a token within it, so each has
-    /// exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
+    /// @dev The three contract standards name the contract itself rather than a token within it, so
+    /// each has exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
     /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
     /// a contract-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
     /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
     /// id they submitted. No-op for every other standard.
     function _requireCanonicalTokenId(TokenStandard standard, address tokenContract, uint256 tokenId) internal pure {
-        if ((standard == TokenStandard.CONTRACT || standard == TokenStandard.CONTRACT_OWNABLE) && tokenId != 0) {
+        if (_isContractStandard(standard) && tokenId != 0) {
             revert NonZeroTokenIdForContract(tokenContract, tokenId);
         }
     }
@@ -1176,7 +1186,28 @@ contract Adapter8004 is
             return _isOwnerDelegate(account, contractOwner, tokenContract);
         }
 
-        // 3. Single-owner standards are the other three members of the owner-and-delegate pattern.
+        // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Such a
+        //    contract can otherwise only bind as plain `CONTRACT`, which means every identity update
+        //    has to originate from the contract itself. The bound contract keeps its own authority,
+        //    and any holder of `DEFAULT_ADMIN_ROLE` is additionally authorized. The role is read on
+        //    every call, so revoking it removes authority immediately.
+        //    This closes an asymmetry the contract already had. `_controlsAccount`, which gates the
+        //    primary-agent surface, has always accepted a `DEFAULT_ADMIN_ROLE` holder, so an admin
+        //    could set that contract's primary agent while being unable to manage an identity bound
+        //    to it.
+        //    It is deliberately not a member of the owner-and-delegate pattern at step 2 and step 4.
+        //    Delegation there means resolving one owner and then asking the registry about that
+        //    owner. A role is a membership predicate that many addresses can satisfy and none can
+        //    enumerate, so there is no well-defined delegator to name. Direct authority only, by
+        //    design rather than by omission.
+        if (standard == TokenStandard.CONTRACT_ADMIN) {
+            if (account == tokenContract) {
+                return true;
+            }
+            return _hasDefaultAdminRole(tokenContract, account);
+        }
+
+        // 4. Single-owner standards are the other three members of the owner-and-delegate pattern.
         //    Control means current token ownership, or a valid delegate.xyz delegation from the
         //    current owner. Direct ownership is checked first so current owners never incur a
         //    registry call.
@@ -1188,15 +1219,22 @@ contract Adapter8004 is
             return _isERC721Delegate(account, owner, tokenContract, tokenId);
         }
 
-        // 4. ERC-1155 control means any positive balance for the bound id.
+        // 5. ERC-1155 control means any positive balance for the bound id.
         //    No delegate.xyz check: the no-vault API cannot soundly map a delegation to a holder.
         if (standard == TokenStandard.ERC1155) {
             return IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
         }
 
-        // 5. ERC-6909 control also means any positive balance for the bound id.
+        // 6. ERC-6909 control also means any positive balance for the bound id.
         //    No delegate.xyz check: v2 has no ERC-6909 token-id delegation primitive.
         return IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
+    }
+
+    /// @dev The three standards that name a contract rather than a token within it. They share the
+    /// canonical `tokenId == 0` coordinate and none of them is a single-owner token standard.
+    function _isContractStandard(TokenStandard standard) internal pure returns (bool) {
+        return standard == TokenStandard.CONTRACT || standard == TokenStandard.CONTRACT_OWNABLE
+            || standard == TokenStandard.CONTRACT_ADMIN;
     }
 
     function _isSingleOwnerStandard(TokenStandard standard) internal pure returns (bool) {
