@@ -1,10 +1,8 @@
 # ERC-8004 Identity Adapter
 
-## Version `0.0.15`
+## Version
 
-![version](https://img.shields.io/badge/version-0.0.15-blue)
-
-The current contract version is **`0.0.15`** (`@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol)). This is unreleased repo source and is not yet live on-chain (see [Deployments](#deployments)).
+The contract version is recorded once, as `@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol). Repo source is unreleased and not live on-chain; see [Deployments](#deployments).
 
 ---
 
@@ -228,14 +226,14 @@ Users and integrators should interact with the proxy addresses, not the implemen
 
 Implementation upgrades are governed by the Safe multisig through UUPS. The [`deployments/`](./deployments) folder records executed upgrades, implementation-only deployments, and prepared Safe payloads; those are different states. The `0.0.6` payloads were not executed, and the purported Mainnet implementation address came from a dry run and has no code. Confirm the live EIP-1967 implementation slot before relying on a version on any chain.
 
-The unreleased `0.0.15` implementation upgrades directly from the active
+The unreleased implementation upgrades directly from the active
 Mainnet/Base May 15 build or the active Sepolia delegate.xyz build—not from
 unreleased numbered source versions. Both live layouts populate only regular
 slots 0 and 1. The three new primary-agent mappings append directly at slots
 2-4. Existing proxies must use empty
 `upgradeToAndCall` data; `initialize(...)` is only for a new proxy. No storage
 migration or reinitializer is required. Sepolia's delegate.xyz getters and
-authorization remain present in `0.0.15`.
+authorization remain present.
 
 ## Flow
 
@@ -522,7 +520,7 @@ Reserved keys on the counterfactual write surface: `agent-binding` and `cf-regis
 
 ### Independent primary-agent systems
 
-`0.0.15` has two structurally separate reverse claims. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 registrationHash`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
+The adapter has two structurally separate reverse claims. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 registrationHash`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
 
 Full ERC-8004:
 

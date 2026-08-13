@@ -29,7 +29,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 ///      `keccak256(eth_getCode(<implementation>))`.
 ///
 /// Upgrade data is empty: the active Mainnet/Base and Sepolia implementations both use only
-/// regular slots 0/1. Adapter8004 v0.0.15 appends three mappings directly at slots 2-4. New mappings
+/// regular slots 0/1. Adapter8004 appends three mappings directly at slots 2-4. New mappings
 /// begin empty naturally; no migration or `reinitializer` is permitted.
 contract DeployAdapterImplementationScript is Script {
     /// @notice Thrown when this script runs on a chain id outside the production set
@@ -72,8 +72,8 @@ contract DeployAdapterImplementationScript is Script {
         vm.stopBroadcast();
 
         // 2. Build the calldata the Safe must execute against the proxy. Empty upgrade data:
-        //    v0.0.15 upgrades directly from the active slot-0/1 baselines and uses naturally empty
-        //    append-only mappings, with no initializer, reinitializer, or migration.
+        //    The implementation upgrades directly from the active slot-0/1 baselines and uses
+        //    naturally empty append-only mappings, with no initializer, reinitializer, or migration.
         upgradeCalldata = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (implementation, bytes("")));
 
         // 3. Print the Safe Transaction Builder parameters for this chain.
