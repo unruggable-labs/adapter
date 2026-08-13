@@ -61,18 +61,19 @@ contract DeployAdapterImplementationScript is Script {
     /// and `DeployAdapterImplementationEventSignatures.t.sol` fails if any drifts from the contract.
     string internal constant SIG_PRIMARY_AGENT_SET = "PrimaryAgentSet(address,uint256,address)";
     string internal constant SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET =
-        "PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,address)";
+        "PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,address)";
     string internal constant SIG_CF_REGISTERED =
-        "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,uint8,string,(string,bytes)[],address)";
-    string internal constant SIG_CF_URI_SET = "CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)";
+        "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)";
+    string internal constant SIG_CF_URI_SET =
+        "CounterfactualAgentURISet(bytes32,address,uint256,bytes32,string,address)";
     string internal constant SIG_CF_METADATA_SET =
-        "CounterfactualMetadataSet(bytes32,address,uint256,uint8,string,bytes,address)";
+        "CounterfactualMetadataSet(bytes32,address,uint256,bytes32,string,bytes,address)";
     string internal constant SIG_CF_METADATA_BATCH_SET =
-        "CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)";
+        "CounterfactualMetadataBatchSet(bytes32,address,uint256,bytes32,(string,bytes)[],address)";
     string internal constant SIG_CF_WALLET_SET =
-        "CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)";
+        "CounterfactualAgentWalletSet(bytes32,address,uint256,bytes32,address,address)";
     string internal constant SIG_CF_WALLET_UNSET =
-        "CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)";
+        "CounterfactualAgentWalletUnset(bytes32,address,uint256,bytes32,address)";
     string internal constant SIG_AGENT_BOUND = "AgentBound(uint256,uint8,address,uint256,address)";
 
     function run() external returns (address proxy, address implementation, bytes memory upgradeCalldata) {
@@ -148,7 +149,7 @@ contract DeployAdapterImplementationScript is Script {
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(proxyInteroperableAddress, tokenContract, tokenId));
+        return keccak256(abi.encode(proxyInteroperableAddress, tokenContract, tokenId, bytes32(0)));
     }
 
     /// @dev Writes the Safe Transaction Builder JSON for this chain. The chain id is
