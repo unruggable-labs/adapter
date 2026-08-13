@@ -11,6 +11,13 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// ERC-6909 remain positive-balance controlled. Differs from `IERC8004IdentityRegistry.register`,
 /// which mints an identity directly from URI + metadata only.
 interface IERC8004AdapterRegistration {
+    /// @notice Mint a new ERC-8004 identity owned by the adapter and bind it permanently to the given
+    /// external token. The caller must hold authority over that token under the rules above. The
+    /// binding is immutable once set, so a token pair and standard identify the same agent for the
+    /// life of the identity, and control follows the token rather than the registering address. The
+    /// adapter writes its own `agent-binding` record, so `metadata` may not contain that key or
+    /// `cf-registration`, and a caller-supplied entry for either reverts `ReservedMetadataKey`.
+    /// Emits `AgentBound` and returns the new `agentId`.
     function register(
         IERCAgentBindings.TokenStandard standard,
         address tokenContract,

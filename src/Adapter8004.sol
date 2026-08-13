@@ -220,6 +220,12 @@ contract Adapter8004 is
         identityRegistry = IERC8004IdentityRegistry(identityRegistry_);
     }
 
+    /// @notice Repoint the ERC-8004 registry that every adapter write forwards into. Owner only.
+    /// @dev This is the highest-impact administrative action on the contract. Existing bindings are
+    /// untouched, but they name agent ids that only mean anything in the old registry, so every
+    /// already-bound agent resolves against a registry that may not know it. Point this at a registry
+    /// that does not hold the existing identities and the bound agents become unreachable through the
+    /// adapter. Emits `IdentityRegistryUpdated`.
     function setIdentityRegistry(address newIdentityRegistry) external onlyOwner nonReentrant {
         // 1. Reject an unusable registry target.
         if (newIdentityRegistry == address(0)) {
@@ -407,6 +413,15 @@ contract Adapter8004 is
         emit MetadataSet(agentId, metadataKey, metadataValue, msg.sender);
     }
 
+    /// @notice Write several metadata entries for one agent, in the order given. The caller must
+    /// control the bound token, and no entry may target the reserved `agent-binding` or
+    /// `cf-registration` keys. Entries are applied one at a time and are not atomic in any sense
+    /// beyond the transaction reverting as a whole.
+    /// @dev Each entry emits its own `MetadataSet`, identical to what the single-write path emits, so
+    /// a batch is indistinguishable from a run of individual writes on the event surface. There is no
+    /// batch-specific event. An earlier version emitted one `MetadataBatchSet` carrying only a count,
+    /// which told a consumer that something changed without saying what. An empty batch writes
+    /// nothing and therefore emits nothing.
     function setMetadataBatch(uint256 agentId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         nonReentrant
@@ -483,6 +498,15 @@ contract Adapter8004 is
         return binding;
     }
 
+    /// @notice Whether `account` may act for `agentId` right now. This is the same check every
+    /// adapter write performs, so it answers whether a write would be authorized rather than merely
+    /// who owns something.
+    /// @dev Authority is resolved live from the bound token on every call and is not stored, so the
+    /// answer can change in the same block that a token transfers or a bound contract's `owner()`
+    /// changes. A consumer must not cache it. What counts as control depends on the bound standard:
+    /// current ownership or a delegate.xyz delegation for the single-owner standards, any positive
+    /// balance for ERC-1155 and ERC-6909, the contract itself for `CONTRACT`, and additionally its
+    /// live `owner()` for `CONTRACT_OWNABLE`.
     function isController(uint256 agentId, address account) external view returns (bool) {
         // 1. Load the binding that defines who controls this agent.
         Binding memory binding = _bindings[agentId];

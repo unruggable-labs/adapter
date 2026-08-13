@@ -19,13 +19,36 @@ interface IERC8004AdapterCounterfactualPrimaryAgent {
     );
     event PrimaryCounterfactualAgentCleared(address indexed account, address indexed clearedBy);
 
+    /// @notice Record the caller's own primary counterfactual agent, named by token coordinates. The
+    /// adapter derives the `registrationHash` itself, so a caller cannot assert a hash it did not
+    /// compute from a real token pair. This is a self-assertion and is not proof: nothing here checks
+    /// that the caller holds the token, so a consumer must verify the claim reciprocally before
+    /// treating it as identity. Emits `PrimaryCounterfactualAgentSet` and returns the derived hash.
     function setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)
         external
         returns (bytes32 registrationHash);
+
+    /// @notice Record `account`'s primary counterfactual agent on its behalf. Authorized when the
+    /// caller is the account itself, its `owner()` or `getOwner()`, or a holder of its
+    /// `DEFAULT_ADMIN_ROLE`, and reverts `NotAccountController` otherwise. An account that misreports
+    /// its controller can only affect its own entry.
     function setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)
         external
         returns (bytes32 registrationHash);
+
+    /// @notice Clear the caller's own primary counterfactual agent. Idempotent, and clearing an
+    /// account that never set one still emits `PrimaryCounterfactualAgentCleared`.
     function clearPrimaryCounterfactualAgent() external;
+
+    /// @notice Clear `account`'s primary counterfactual agent, under the same authorization rules as
+    /// `setPrimaryCounterfactualAgentFor`.
     function clearPrimaryCounterfactualAgentFor(address account) external;
+
+    /// @notice Reverse-resolve an address to the registration hash it claims. Returns
+    /// `PRIMARY_COUNTERFACTUAL_AGENT_UNSET` when the account has never set one or has cleared it.
+    /// @dev Anyone reading the mapping directly rather than through this getter needs two facts. The
+    /// stored word is the bitwise complement of the hash, not the hash, so that an unwritten slot and
+    /// a real value can never be confused. An all-ones hash is rejected on write for the same reason,
+    /// since its complement is zero.
     function primaryCounterfactualAgentOf(address account) external view returns (bytes32 registrationHash);
 }
