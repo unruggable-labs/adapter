@@ -72,7 +72,7 @@ contract DeployAdapterImplementationScript is Script {
         vm.stopBroadcast();
 
         // 2. Build the calldata the Safe must execute against the proxy. Empty upgrade data:
-        //    v0.0.14 upgrades directly from the active slot-0/1 baselines and uses naturally empty
+        //    v0.0.15 upgrades directly from the active slot-0/1 baselines and uses naturally empty
         //    append-only mappings, with no initializer, reinitializer, or migration.
         upgradeCalldata = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (implementation, bytes("")));
 
