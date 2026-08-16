@@ -89,7 +89,8 @@ interface IERC8004AdapterCounterfactual {
 
     /// @notice Announces a counterfactual identity claim for an external token. The claim is recorded
     /// only as an event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage.
-    /// Indexers MUST treat the latest event per `registrationHash` as authoritative.
+    /// Indexers MUST treat the latest event per `registrationHash` as authoritative, latest meaning
+    /// highest block number, then highest log index.
     event CounterfactualAgentRegistered(
         bytes32 indexed registrationHash,
         address indexed tokenContract,
