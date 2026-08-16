@@ -59,8 +59,8 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
-/// wallet field alone. The event schema, indexed topics, `registrationHash`, and `version == 1`
-/// are unchanged by either contract standard. `CounterfactualAgentRegistered.standard` is the only
+/// wallet field alone. The event schema, indexed topics, and `registrationHash` are unchanged by
+/// either contract standard. `CounterfactualAgentRegistered.standard` is the only
 /// counterfactual event field that carries a standard, and it remains non-indexed. The on-chain
 /// `AgentBound.standard` keeps its own indexed slot. Because the standard is excluded from the hash,
 /// any two standards claiming the same `(tokenContract, tokenId)` alias onto one `registrationHash`.
