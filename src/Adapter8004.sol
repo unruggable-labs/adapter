@@ -1157,12 +1157,19 @@ contract Adapter8004 is
         }
 
         // 2. `CONTRACT_OWNABLE` is the fourth member of the owner-and-delegate pattern described at
-        //    step 3. It retains contract-self authority, and otherwise resolves the contract's live
-        //    `owner()` and accepts either that owner acting directly or a delegate of that owner.
+        //    step 4. It resolves the contract's live `owner()` and accepts either that owner acting
+        //    directly or a delegate of that owner. The bound contract itself has no authority here,
+        //    which is what separates this standard from `CONTRACT`. Self-authority would be an
+        //    escalation route around the owner, because any contract with a generic call mechanism,
+        //    an upgradeable implementation or an inducible callback could seize its own identity
+        //    without the owner acting. A contract that wants to control its own identity should bind
+        //    as `CONTRACT`, which is step 1.
         //    The owner probe is a fail-closed STATICCALL, so a revert, a wrong-length response, dirty
-        //    upper bits or a zero owner resolves to no owner and grants nobody. Resolving live means a
-        //    former owner's delegation stops conferring authority in the same transaction that
-        //    ownership moves.
+        //    upper bits or a zero owner resolves to no owner and grants nobody. That is why
+        //    `renounceOwnership()` permanently freezes a `CONTRACT_OWNABLE` identity: with no owner
+        //    there is nobody left to authorize, and renouncing ownership means giving up control.
+        //    Resolving live means a former owner's delegation stops conferring authority in the same
+        //    transaction that ownership moves.
         //    The delegation check is contract-scoped rather than token-scoped. A contract binding
         //    pins `tokenId` to 0, where it exists only as an input to the counterfactual hash and
         //    never as a reference to a token. A token-scoped check would therefore test a delegation
@@ -1173,9 +1180,6 @@ contract Adapter8004 is
         //    This standard remains outside the single-owner token set, so it gets no
         //    ownerless-collection window.
         if (standard == TokenStandard.CONTRACT_OWNABLE) {
-            if (account == tokenContract) {
-                return true;
-            }
             address contractOwner = _currentContractOwner(tokenContract);
             if (contractOwner == address(0)) {
                 return false;
@@ -1186,11 +1190,10 @@ contract Adapter8004 is
             return _isOwnerDelegate(account, contractOwner, tokenContract);
         }
 
-        // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Such a
-        //    contract can otherwise only bind as plain `CONTRACT`, which means every identity update
-        //    has to originate from the contract itself. The bound contract keeps its own authority,
-        //    and any holder of `DEFAULT_ADMIN_ROLE` is additionally authorized. The role is read on
-        //    every call, so revoking it removes authority immediately.
+        // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Authority
+        //    belongs to holders of `DEFAULT_ADMIN_ROLE` and to nobody else, including the bound
+        //    contract itself, for the same reason given at step 2. The role is read on every call, so
+        //    revoking it removes authority immediately.
         //    This closes an asymmetry the contract already had. `_controlsAccount`, which gates the
         //    primary-agent surface, has always accepted a `DEFAULT_ADMIN_ROLE` holder, so an admin
         //    could set that contract's primary agent while being unable to manage an identity bound
@@ -1201,9 +1204,6 @@ contract Adapter8004 is
         //    enumerate, so there is no well-defined delegator to name. Direct authority only, by
         //    design rather than by omission.
         if (standard == TokenStandard.CONTRACT_ADMIN) {
-            if (account == tokenContract) {
-                return true;
-            }
             return _hasDefaultAdminRole(tokenContract, account);
         }
 

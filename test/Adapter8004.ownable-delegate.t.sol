@@ -25,17 +25,8 @@ contract OwnableBinder {
         currentOwner = newOwner;
     }
 
-    function registerOwnable() external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(this), 0, "ipfs://ownable");
-    }
-}
-
-/// @notice `owner()` reverts, so the contract reports no usable owner.
-contract NoOwnerBinder is OwnableBinder {
-    constructor(Adapter8004 adapter) OwnableBinder(adapter, address(0)) {}
-
-    function owner() external pure override returns (address) {
-        revert("no owner");
+    function setOwner(address newOwner) external {
+        currentOwner = newOwner;
     }
 }
 
@@ -68,9 +59,13 @@ contract Adapter8004OwnableDelegateTest is Test {
         delegateRegistry = MockDelegateRegistry(adapter.DELEGATE_REGISTRY());
     }
 
+    /// @dev The owner registers, not the contract. Contract-self authority was removed, so a bound
+    /// contract can no longer create its own binding either.
     function _bind(address ownerAddress) internal returns (OwnableBinder binder, uint256 agentId) {
         binder = new OwnableBinder(adapter, ownerAddress);
-        agentId = binder.registerOwnable();
+        vm.prank(ownerAddress);
+        agentId =
+            adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(binder), 0, "ipfs://ownable");
     }
 
     function testOwnerDelegateIsAuthorized() external {
@@ -81,7 +76,7 @@ contract Adapter8004OwnableDelegateTest is Test {
 
         assertTrue(adapter.isController(agentId, hot), "delegate of the current owner controls");
         assertTrue(adapter.isController(agentId, alice), "the owner still controls");
-        assertTrue(adapter.isController(agentId, address(binder)), "the contract still controls");
+        assertFalse(adapter.isController(agentId, address(binder)), "the bound contract has no authority");
     }
 
     /// @dev The owner is resolved on every call, so authority follows ownership rather than the
@@ -98,17 +93,31 @@ contract Adapter8004OwnableDelegateTest is Test {
         assertTrue(adapter.isController(agentId, bob), "bob is the owner now");
     }
 
-    /// @dev A contract reporting no usable owner must grant nobody, and must never send the zero
-    /// address to the registry as a delegator.
-    function testZeroOwnerGrantsNobodyEvenWithBlanketDelegation() external {
-        NoOwnerBinder binder = new NoOwnerBinder(adapter);
-        uint256 agentId = binder.registerOwnable();
+    /// @dev Renouncing ownership permanently freezes the identity. A contract reporting no usable
+    /// owner grants nobody, and with contract-self authority removed there is nobody left to
+    /// authorize. That is the accepted consequence of the standard meaning what its name says.
+    function testRenouncingOwnershipFreezesTheIdentity() external {
+        (OwnableBinder binder, uint256 agentId) = _bind(alice);
+        delegateRegistry.delegateAll(hot, alice, bytes32(0), true);
+        assertTrue(adapter.isController(agentId, hot), "the delegate works while an owner exists");
 
-        delegateRegistry.delegateAll(hot, address(0), bytes32(0), true);
+        binder.setOwner(address(0));
 
-        assertFalse(adapter.isController(agentId, hot), "no owner means no delegate");
+        assertFalse(adapter.isController(agentId, alice), "the former owner is gone");
+        assertFalse(adapter.isController(agentId, hot), "no owner means no delegator, so no delegate");
         assertFalse(adapter.isController(agentId, address(0)), "the zero address is not an owner");
-        assertTrue(adapter.isController(agentId, address(binder)), "contract-self authority is unaffected");
+        assertFalse(adapter.isController(agentId, address(binder)), "the contract cannot rescue itself");
+    }
+
+    /// @dev The bound contract is rejected on both the authority read and the write path.
+    function testBoundContractIsRejected() external {
+        (OwnableBinder binder, uint256 agentId) = _bind(alice);
+
+        assertFalse(adapter.isController(agentId, address(binder)));
+
+        vm.prank(address(binder));
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), agentId));
+        adapter.setAgentURI(agentId, "ipfs://self");
     }
 
     function testDelegationScopedToAnotherRightConfersNothing() external {
@@ -138,7 +147,6 @@ contract Adapter8004OwnableDelegateTest is Test {
 
         vm.etch(adapter.DELEGATE_REGISTRY(), "");
 
-        assertTrue(adapter.isController(agentId, address(binder)), "contract-self needs no registry");
         assertTrue(adapter.isController(agentId, alice), "the owner needs no registry");
         assertFalse(adapter.isController(agentId, hot), "delegation fails closed without a registry");
     }

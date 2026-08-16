@@ -25,14 +25,6 @@ contract AdminBinder {
     function hasRole(bytes32 role, address account) external view virtual returns (bool) {
         return role == bytes32(0) && admins[account];
     }
-
-    function registerAdminBound() external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(this), 0, "ipfs://admin");
-    }
-
-    function registerWithTokenId(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(this), tokenId, "ipfs://x");
-    }
 }
 
 /// @notice Implements no `hasRole` at all, so the probe must fail closed rather than revert.
@@ -41,10 +33,6 @@ contract NoRoleBinder {
 
     constructor(Adapter8004 adapter) {
         ADAPTER = adapter;
-    }
-
-    function registerAdminBound() external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(this), 0, "ipfs://norole");
     }
 }
 
@@ -60,10 +48,6 @@ contract DirtyRoleBinder {
     fallback(bytes calldata) external returns (bytes memory) {
         return abi.encode(uint256(42));
     }
-
-    function registerAdminBound() external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(this), 0, "ipfs://dirty");
-    }
 }
 
 contract Adapter8004ContractAdminTest is Test {
@@ -71,6 +55,13 @@ contract Adapter8004ContractAdminTest is Test {
 
     address internal admin = makeAddr("admin");
     address internal stranger = makeAddr("stranger");
+
+    /// @dev An admin registers, not the contract. Contract-self authority was removed, so a bound
+    /// contract can no longer create its own binding either.
+    function _bindAs(address caller, address tokenContract) internal returns (uint256) {
+        vm.prank(caller);
+        return adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, tokenContract, 0, "ipfs://admin");
+    }
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
@@ -86,7 +77,7 @@ contract Adapter8004ContractAdminTest is Test {
 
     function testAdminBindsAndManages() external {
         AdminBinder binder = new AdminBinder(adapter, admin);
-        uint256 agentId = binder.registerAdminBound();
+        uint256 agentId = _bindAs(admin, address(binder));
 
         assertTrue(adapter.isController(agentId, admin), "the admin controls the bound identity");
 
@@ -97,7 +88,7 @@ contract Adapter8004ContractAdminTest is Test {
 
     function testNonAdminIsDenied() external {
         AdminBinder binder = new AdminBinder(adapter, admin);
-        uint256 agentId = binder.registerAdminBound();
+        uint256 agentId = _bindAs(admin, address(binder));
 
         assertFalse(adapter.isController(agentId, stranger));
         vm.prank(stranger);
@@ -105,28 +96,39 @@ contract Adapter8004ContractAdminTest is Test {
         adapter.setAgentURI(agentId, "ipfs://evil");
     }
 
-    function testBoundContractRetainsAuthority() external {
+    /// @dev The bound contract is rejected on both the authority read and the write path. Authority
+    /// belongs to the role holders alone.
+    function testBoundContractIsRejected() external {
         AdminBinder binder = new AdminBinder(adapter, admin);
-        uint256 agentId = binder.registerAdminBound();
+        uint256 agentId = _bindAs(admin, address(binder));
 
-        assertTrue(adapter.isController(agentId, address(binder)), "contract-self authority is kept");
+        assertFalse(adapter.isController(agentId, address(binder)));
+
+        vm.prank(address(binder));
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), agentId));
+        adapter.setAgentURI(agentId, "ipfs://self");
     }
 
-    /// @dev A contract with no `hasRole` must grant nobody, and must not revert while deciding that.
-    function testContractWithoutHasRoleFailsClosed() external {
+    /// @dev A contract with no `hasRole` grants nobody, and must fail closed rather than revert.
+    /// Since nobody holds the role there is also nobody who can create the binding, so the probe is
+    /// observed through the registration attempt itself.
+    function testContractWithoutHasRoleCannotBeBound() external {
         NoRoleBinder binder = new NoRoleBinder(adapter);
-        uint256 agentId = binder.registerAdminBound();
 
-        assertFalse(adapter.isController(agentId, admin), "no role support means no admin");
-        assertFalse(adapter.isController(agentId, stranger));
-        assertTrue(adapter.isController(agentId, address(binder)), "contract-self still works");
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
+
+        vm.prank(address(binder));
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), type(uint256).max));
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
     }
 
     /// @dev The raw-word decode is what makes this a decision rather than a revert. Any non-zero word
     /// counts as holding the role.
     function testDirtyBooleanReturnIsHandled() external {
         DirtyRoleBinder binder = new DirtyRoleBinder(adapter);
-        uint256 agentId = binder.registerAdminBound();
+        uint256 agentId = _bindAs(stranger, address(binder));
 
         assertTrue(adapter.isController(agentId, stranger), "a non-zero word counts as holding the role");
     }
@@ -134,7 +136,7 @@ contract Adapter8004ContractAdminTest is Test {
     /// @dev The role is read on every call, so it is not captured at bind time.
     function testRevokingTheRoleRemovesAuthorityOnTheNextCall() external {
         AdminBinder binder = new AdminBinder(adapter, admin);
-        uint256 agentId = binder.registerAdminBound();
+        uint256 agentId = _bindAs(admin, address(binder));
         assertTrue(adapter.isController(agentId, admin));
 
         binder.setAdmin(admin, false);
@@ -145,8 +147,9 @@ contract Adapter8004ContractAdminTest is Test {
     function testNonZeroTokenIdRevertsOnRegister() external {
         AdminBinder binder = new AdminBinder(adapter, admin);
 
+        vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForContract.selector, address(binder), 1));
-        binder.registerWithTokenId(1);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(binder), 1, "ipfs://x");
     }
 
     /// @dev The second choke point. A counterfactual emit resolves authority through
@@ -163,7 +166,7 @@ contract Adapter8004ContractAdminTest is Test {
     /// pattern. A blanket delegation from the admin confers nothing here.
     function testNoDelegationRouteExists() external {
         AdminBinder binder = new AdminBinder(adapter, admin);
-        uint256 agentId = binder.registerAdminBound();
+        uint256 agentId = _bindAs(admin, address(binder));
         address hot = makeAddr("hot");
 
         assertFalse(adapter.isController(agentId, hot), "delegation is not consulted for CONTRACT_ADMIN");

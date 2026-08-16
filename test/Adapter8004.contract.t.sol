@@ -334,7 +334,7 @@ contract Adapter8004ContractBindingTest is Test {
     //  Explicit ownable contract authority
     // -----------------------------------------------------------------
 
-    function testOwnableOwnerAndContractCanRegisterAndManageWhileOthersAreDenied() external {
+    function testOwnableOnlyOwnerCanRegisterAndManageWhileOthersAreDenied() external {
         address contractOwner = makeAddr("contractOwner");
         OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, contractOwner);
         ownable.mint(holder, 1_000 ether);
@@ -344,22 +344,21 @@ contract Adapter8004ContractBindingTest is Test {
             IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://owner-registered"
         );
         assertTrue(adapter.isController(ownerRegisteredId, contractOwner));
-        assertTrue(adapter.isController(ownerRegisteredId, address(ownable)));
+        assertFalse(adapter.isController(ownerRegisteredId, address(ownable)), "the contract has no authority");
 
         vm.prank(contractOwner);
         adapter.setMetadata(ownerRegisteredId, "controller", bytes("owner"));
         assertEq(registry.getMetadata(ownerRegisteredId, "controller"), bytes("owner"));
 
-        ownable.setOwnableMetadata(ownerRegisteredId, "controller", bytes("contract"));
-        assertEq(registry.getMetadata(ownerRegisteredId, "controller"), bytes("contract"));
-
-        uint256 contractRegisteredId = ownable.registerOwnable(0);
-        IERCAgentBindings.Binding memory binding = adapter.bindingOf(contractRegisteredId);
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(ownerRegisteredId);
         assertEq(uint8(binding.standard), 6);
         assertEq(binding.tokenContract, address(ownable));
         assertEq(binding.tokenId, 0);
-        assertTrue(adapter.isController(contractRegisteredId, contractOwner));
-        assertTrue(adapter.isController(contractRegisteredId, address(ownable)));
+
+        // The bound contract cannot create its own binding either, since registration runs the same
+        // authority check.
+        _expectNotController(address(ownable));
+        ownable.registerOwnable(0);
 
         address[3] memory denied = [holder, admin, stranger];
         for (uint256 i; i < denied.length; ++i) {
@@ -388,7 +387,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         assertFalse(adapter.isController(agentId, oldOwner));
         assertTrue(adapter.isController(agentId, newOwner));
-        assertTrue(adapter.isController(agentId, address(ownable)));
+        assertFalse(adapter.isController(agentId, address(ownable)), "the contract has no authority");
 
         _expectNotControllerOf(oldOwner, agentId);
         vm.prank(oldOwner);
@@ -404,34 +403,35 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(binding.tokenId, 0);
     }
 
-    function testRevertingOwnerFailsClosedButContractSelfStillWorks() external {
+    /// @dev A reverting `owner()` resolves to no owner, so there is nobody to authorize and the
+    /// binding cannot be created at all. The contract itself has no authority to fall back on.
+    function testRevertingOwnerFailsClosedSoNobodyCanBind() external {
         address allegedOwner = makeAddr("revertingOwner");
         RevertingOwnerBinder ownable = new RevertingOwnerBinder(adapter, allegedOwner);
-        uint256 agentId = ownable.registerOwnable(0);
 
-        assertFalse(adapter.isController(agentId, allegedOwner));
-        assertTrue(adapter.isController(agentId, address(ownable)));
-
-        _expectNotControllerOf(allegedOwner, agentId);
+        _expectNotController(allegedOwner);
         vm.prank(allegedOwner);
-        adapter.setMetadata(agentId, "controller", bytes("owner"));
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://x");
 
-        ownable.setOwnableMetadata(agentId, "controller", bytes("contract"));
-        assertEq(registry.getMetadata(agentId, "controller"), bytes("contract"));
+        _expectNotController(address(ownable));
+        ownable.registerOwnable(0);
     }
 
+    /// @dev Both malformed responses resolve to no owner, so the alleged owner cannot bind either
+    /// contract. Registration is where the probe is observed now that the contract has no authority
+    /// of its own to fall back on.
     function testDirtyAndWrongLengthOwnerResponsesFailClosed() external {
         address allegedOwner = makeAddr("malformedOwner");
         DirtyOwnerBinder dirty = new DirtyOwnerBinder(adapter, allegedOwner);
         ShortOwnerBinder short = new ShortOwnerBinder(adapter, allegedOwner);
 
-        uint256 dirtyAgentId = dirty.registerOwnable(0);
-        uint256 shortAgentId = short.registerOwnable(0);
+        _expectNotController(allegedOwner);
+        vm.prank(allegedOwner);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(dirty), 0, "ipfs://x");
 
-        assertFalse(adapter.isController(dirtyAgentId, allegedOwner));
-        assertFalse(adapter.isController(shortAgentId, allegedOwner));
-        assertTrue(adapter.isController(dirtyAgentId, address(dirty)));
-        assertTrue(adapter.isController(shortAgentId, address(short)));
+        _expectNotController(allegedOwner);
+        vm.prank(allegedOwner);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(short), 0, "ipfs://x");
     }
 
     /// @dev Both responses in the test above carry dirty upper bits, so the dirty word check denies
@@ -443,19 +443,22 @@ contract Adapter8004ContractBindingTest is Test {
         address allegedOwner = makeAddr("overlongOwner");
         LongOwnerBinder long = new LongOwnerBinder(adapter, allegedOwner);
 
-        uint256 agentId = long.registerOwnable(0);
-
-        assertFalse(adapter.isController(agentId, allegedOwner));
-        assertTrue(adapter.isController(agentId, address(long)));
+        _expectNotController(allegedOwner);
+        vm.prank(allegedOwner);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(long), 0, "ipfs://x");
     }
 
-    function testZeroOwnerGrantsNobodyAndContractSelfStillWorks() external {
+    /// @dev A zero owner grants nobody, so the binding cannot be created. This is also what makes
+    /// `renounceOwnership()` a permanent freeze on an existing binding.
+    function testZeroOwnerGrantsNobodySoNobodyCanBind() external {
         OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, address(0));
-        uint256 agentId = ownable.registerOwnable(0);
 
-        assertFalse(adapter.isController(agentId, address(0)));
-        assertFalse(adapter.isController(agentId, stranger));
-        assertTrue(adapter.isController(agentId, address(ownable)));
+        _expectNotController(stranger);
+        vm.prank(stranger);
+        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 0, "ipfs://x");
+
+        _expectNotController(address(ownable));
+        ownable.registerOwnable(0);
     }
 
     function testOwnableNonZeroTokenIdRevertsAtBothAuthorityChokePoints() external {
