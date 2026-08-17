@@ -713,6 +713,9 @@ The Foundry suite currently covers:
   shape, rejection of the zero address at every entry point, the `tokenId == 0` rule at every write
   entry point, absence of any `ownerOf` / `balanceOf` probe, the `(X, 0)` standard alias, and raw
   `AgentBound` / `CounterfactualAgentRegistered` layout compatibility
+- constructor-time binding: a contract binding itself as `ACCOUNT` from its own constructor on both the
+  on-chain and counterfactual paths, staying sole controller once code exists, contrasted with all seven
+  code-requiring standards still rejecting the same call
 - opt-in ownable contract bindings (`CONTRACT_OWNABLE`): dynamic owner authority, not contract-self
   ownership transfer, fail-closed reverting/malformed/zero `owner()` responses, holder/admin/stranger
   denial, the canonical `tokenId == 0` rule at both authority choke points, enum stability, and raw

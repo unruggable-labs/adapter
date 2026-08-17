@@ -11,6 +11,44 @@ import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegist
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 
+/// @dev Binds itself as `ACCOUNT` from inside its own constructor, when it has no runtime code yet.
+/// Only `ACCOUNT` permits this, because it is the only standard that applies no code test. Records the
+/// code length it saw during construction so the test can assert the premise rather than assume it, and
+/// exposes a post-deployment write so the same binding can be exercised once code exists.
+contract ConstructorAccountBinder {
+    Adapter8004 private immutable ADAPTER;
+
+    uint256 public agentId;
+    bytes32 public registrationHash;
+    uint256 public codeLengthDuringConstruction;
+
+    constructor(Adapter8004 adapter, bool useCounterfactual) {
+        ADAPTER = adapter;
+        codeLengthDuringConstruction = address(this).code.length;
+
+        if (useCounterfactual) {
+            registrationHash = adapter.counterfactualRegister(
+                IERCAgentBindings.TokenStandard.ACCOUNT, address(this), 0, "ipfs://ctor-cf"
+            );
+        } else {
+            agentId = adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), 0, "ipfs://ctor");
+        }
+    }
+
+    function setURI(string calldata newURI) external {
+        ADAPTER.setAgentURI(agentId, newURI);
+    }
+}
+
+/// @dev The same constructor-time bind under a standard that still requires runtime code. Every
+/// deployment reverts, which is the half that shows the code test was made standard-aware rather than
+/// switched off.
+contract ConstructorCodeRequiringBinder {
+    constructor(Adapter8004 adapter, IERCAgentBindings.TokenStandard standard) {
+        adapter.register(standard, address(this), 0, "ipfs://ctor");
+    }
+}
+
 /// @dev Covers the `ACCOUNT` standard, which is the one standard that accepts an address with no
 /// runtime code. The negatives here matter as much as the positives: relaxing the code test for
 /// `ACCOUNT` must not relax it for the other seven standards, and must not relax either the zero
@@ -146,6 +184,62 @@ contract Adapter8004AccountTest is Test {
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, stranger, agentId));
         adapter.setAgentURI(agentId, "ipfs://hijacked");
+    }
+
+    // --- constructor-time binding, which the relaxation newly permits ---
+
+    /// @dev A consequence of dropping the code test that the plan did not anticipate. A contract has no
+    /// runtime code while its constructor runs, so before this change the code test rejected it and the
+    /// docs stated that constructor-time binding was impossible. `ACCOUNT` applies no code test and
+    /// `msg.sender` during construction is already the contract's final address, so it now succeeds.
+    /// The second half of this test matters as much as the first: code appears immediately afterwards,
+    /// and nothing about the binding depends on the code length it was created under.
+    function testAccountBindsFromItsOwnConstructorAndKeepsControlAfterward() external {
+        ConstructorAccountBinder binder = new ConstructorAccountBinder(adapter, false);
+
+        assertEq(binder.codeLengthDuringConstruction(), 0, "premise: no runtime code during construction");
+        assertGt(address(binder).code.length, 0, "code exists once deployed");
+
+        uint256 agentId = binder.agentId();
+        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT), "standard");
+        assertEq(binding.tokenContract, address(binder), "bound address");
+        assertEq(binding.tokenId, 0, "canonical id");
+        assertTrue(adapter.isController(agentId, address(binder)), "sole controller after deployment");
+        assertFalse(adapter.isController(agentId, eoa), "and nobody else");
+
+        // The binding is still usable now that the address has code, which is the after-the-fact half.
+        binder.setURI("ipfs://after-deploy");
+        assertEq(registry.tokenURI(agentId), "ipfs://after-deploy");
+    }
+
+    /// @dev The counterfactual register path runs the same guard, so it gains the same ability. Worth its
+    /// own case because it is the entry point a constructor is most likely to reach for: it mints nothing
+    /// and takes no delivery, so it has no dependency on the deploying contract being able to receive.
+    function testAccountCounterfactualRegisterAlsoWorksFromAConstructor() external {
+        ConstructorAccountBinder binder = new ConstructorAccountBinder(adapter, true);
+
+        assertEq(binder.codeLengthDuringConstruction(), 0, "premise: no runtime code during construction");
+        assertEq(binder.registrationHash(), adapter.registrationHash(address(binder), 0), "hash matches the pair");
+    }
+
+    /// @dev The contrast. Every standard that calls into the bound address still rejects a constructor-time
+    /// bind, because the code test still applies to all seven and there is no runtime code yet.
+    function testEveryCodeRequiringStandardStillRejectsAConstructorTimeBind() external {
+        IERCAgentBindings.TokenStandard[7] memory standards = [
+            IERCAgentBindings.TokenStandard.ERC721,
+            IERCAgentBindings.TokenStandard.ERC1155,
+            IERCAgentBindings.TokenStandard.ERC6909,
+            IERCAgentBindings.TokenStandard.ERC1155F,
+            IERCAgentBindings.TokenStandard.ERC6909F,
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE,
+            IERCAgentBindings.TokenStandard.CONTRACT_ADMIN
+        ];
+
+        for (uint256 i; i < standards.length; ++i) {
+            vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+            new ConstructorCodeRequiringBinder(adapter, standards[i]);
+        }
     }
 
     // --- negatives: ACCOUNT is offered no delegation route ---
