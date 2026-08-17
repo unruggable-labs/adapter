@@ -30,13 +30,47 @@ upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
 on this summary; see the
 [last-deployed baseline audit](./deployments/upgrade-baseline-from-last-deployed.md).
 
+## [0.0.16] - Unreleased
+
+**This is the version the artifact carries, and `0.0.14`, `0.0.15` and `0.0.16`
+are one implementation, not three releases.** None of the three has been
+deployed. They are separate sections because they group unrelated work, not
+because they ship separately: the sections below record what changed, and
+`@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol) records what
+the single resulting implementation is called. Read all three together when
+reviewing an upgrade.
+
+Adds no storage slot and keeps the `0.0.14` layout, so it upgrades from the same
+deployed baselines with empty `upgradeToAndCall` data.
+
+The version was bumped because the implementation changed materially after the
+`0.0.15` text was written. Two of those changes are recorded under `0.0.14`
+below, where they belong by subject rather than by date: the appended
+`CONTRACT_ADMIN` standard, and the removal of contract-self authority from
+`CONTRACT_OWNABLE` and `CONTRACT_ADMIN`. That second one is a **breaking
+authority change**, and anyone who reviewed an earlier build of this branch has
+seen neither. The changes with no other home are listed here.
+
+### Changed
+
+- `setMetadataBatch` now emits one `MetadataSet` per entry, so a batch write and
+  the equivalent sequence of single writes produce identical logs. **The
+  `MetadataBatchSet` event is removed**, which is breaking for any consumer
+  subscribed to its `topic0`. The counterfactual mirror
+  `CounterfactualMetadataBatchSet` is unaffected and still exists.
+- Built with **solc 0.8.30** targeting the **prague** EVM, both pinned in
+  `foundry.toml` rather than left to the toolchain default. The bytecode and
+  therefore the implementation `EXTCODEHASH` differ from any earlier build even
+  where the source is unchanged, so compare a deployed implementation against a
+  build from this pin and not against an older artifact.
+
 ## [0.0.15] - Unreleased
 
 Breaking source release. Not deployed. Adds no storage slot and keeps the
 `0.0.14` layout, so it upgrades from the same deployed baselines with empty
-`upgradeToAndCall` data. This is the release train that also carries the
-unreleased `0.0.14` contract-binding work below; the two ship together in one
-implementation.
+`upgradeToAndCall` data. This is part of the release train described under
+`0.0.16` above, which also carries the unreleased `0.0.14` contract-binding
+work below; all three ship together in one implementation.
 
 ### Changed
 

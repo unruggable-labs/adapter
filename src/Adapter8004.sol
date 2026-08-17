@@ -47,7 +47,14 @@ interface IOwnableContract {
 /// `_primaryCounterfactualAgent` pointers are keyed by this hash, so `Binding` rows and full
 /// ERC-8004 registrations are unaffected. It is also the only such break, because everything that
 /// hashes with `extraData == bytes32(0)` will hash identically from here on.
-/// @custom:version 0.0.15
+///
+/// v0.0.16 appends the `CONTRACT_ADMIN` standard, removes contract-self authority from
+/// `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, and drops the `MetadataBatchSet` event in favor of one
+/// `MetadataSet` per entry. The authority removal is breaking for any contract that was relying on
+/// authorizing itself. The storage layout is again unchanged, so v0.0.14, v0.0.15 and v0.0.16 ship
+/// as one implementation that upgrades from the same deployed baselines with empty
+/// `upgradeToAndCall` data.
+/// @custom:version 0.0.16
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,

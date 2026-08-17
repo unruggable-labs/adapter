@@ -1,4 +1,4 @@
-# Adapter8004 v0.0.15 — ERC-7930 counterfactual hash fixture
+# Adapter8004 — ERC-7930 counterfactual hash fixture
 
 Canonical formula:
 
@@ -6,7 +6,8 @@ Canonical formula:
 keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))
 ```
 
-> **Scheme revision, v0.0.15.** A trailing `bytes32 extraData` was appended to the preimage, so
+> **Scheme revision, v0.0.15, unchanged since.** A trailing `bytes32 extraData` was appended to the
+> preimage, so
 > every hash below changed. The superseded values are retained at the end of this document so that a
 > reimplementer can tell which scheme their output matches. `extraData` is `bytes32(0)` in this
 > implementation and no caller can supply it, because it is a compile-time constant rather than an
