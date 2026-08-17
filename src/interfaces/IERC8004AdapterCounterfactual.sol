@@ -47,20 +47,30 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// motivating example, and there is no ERC-20-specific standard value.
 ///
 /// `CONTRACT_OWNABLE` (appended value 6; values 0-5 unchanged) is an explicit opt-in to a second
-/// authority route. The bound contract remains authorized, and its current canonical nonzero
-/// `owner()` is authorized dynamically. The probe is a STATICCALL and fails closed: a revert,
+/// authority route. Authority is the contract's current canonical nonzero `owner()`, resolved
+/// dynamically, and not the bound contract itself. The probe is a STATICCALL and fails closed: a revert,
 /// returndata whose length is not exactly 32 bytes, dirty upper bits, or a zero owner grants nobody.
 /// Ownership transfers therefore give existing claims to the new owner and remove authority from
 /// the old owner without changing the immutable binding, and they also end any delegation the former
 /// owner had granted. A delegate of the current owner is authorized as well, through a
 /// contract-scoped delegate.xyz check rather than a token-scoped one, because the binding names a
 /// contract rather than a token. Like `CONTRACT`, this value is outside the single-owner token set
-/// and gets no ownerless window.
+/// and gets no ownerless window. Because there is no contract-self fallback, a contract that
+/// renounces ownership permanently freezes the identity: no owner means nobody left to authorize.
+///
+/// `CONTRACT_ADMIN` (appended value 7; values 0-6 unchanged) is the same idea for an AccessControl
+/// contract that exposes no `owner()`. Authority is any holder of its `DEFAULT_ADMIN_ROLE`, which is
+/// `bytes32(0)`, and not the bound contract itself. The `hasRole` probe is a STATICCALL and fails
+/// closed: a revert, returndata whose length is not exactly 32 bytes, or a zero word grants nobody.
+/// Role membership is read on every call, so revoking it removes authority immediately. There is no
+/// delegate.xyz route, because a role is a membership predicate that many addresses can satisfy and
+/// none can enumerate, so there is no well-defined delegator to name. Like the other two contract
+/// values it is outside the single-owner token set and gets no ownerless window.
 ///
 /// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
 /// wallet field alone. The event schema, indexed topics, and `registrationHash` are unchanged by
-/// either contract standard. `CounterfactualAgentRegistered.standard` is the only
+/// any contract standard. `CounterfactualAgentRegistered.standard` is the only
 /// counterfactual event field that carries a standard, and it remains non-indexed. The on-chain
 /// `AgentBound.standard` keeps its own indexed slot. Because the standard is excluded from the hash,
 /// any two standards claiming the same `(tokenContract, tokenId)` alias onto one `registrationHash`.

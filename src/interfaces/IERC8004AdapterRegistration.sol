@@ -40,8 +40,8 @@ interface IERC8004AdapterRegistration {
     /// token-authority rules and `AgentBound` event/return as `register`, plus a
     /// `PrimaryAgentSet(caller, agentId, caller)`. The primary is recorded for whoever made the call,
     /// with no exceptions. When an ownerless collection calls, that is the collection and not a future
-    /// buyer. For a `CONTRACT` binding it is the bound contract, and for `CONTRACT_OWNABLE` it is
-    /// whichever authorized account called.
+    /// buyer. For a `CONTRACT` binding it is the bound contract, and for `CONTRACT_OWNABLE` or
+    /// `CONTRACT_ADMIN` it is whichever authorized account called.
     function registerAndSetPrimary(
         IERCAgentBindings.TokenStandard standard,
         address tokenContract,

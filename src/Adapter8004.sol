@@ -298,7 +298,8 @@ contract Adapter8004 is
 
         // 4. Require external binding control under the existing authority model: single-owner
         //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `CONTRACT`
-        //    requires the bound contract itself, and `CONTRACT_OWNABLE` also accepts its current owner.
+        //    requires the bound contract itself, `CONTRACT_OWNABLE` requires its current owner or a
+        //    delegate of that owner, and `CONTRACT_ADMIN` requires a `DEFAULT_ADMIN_ROLE` holder.
         //    The authorized caller must also own the agent (step 3) and approve the adapter (step 5).
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
@@ -1057,8 +1058,8 @@ contract Adapter8004 is
     }
 
     /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
-    /// (1) the existing current-controller model, which for contract bindings always includes the
-    /// bound contract itself, or (2) temporary collection authority when the direct caller is
+    /// (1) the existing current-controller model, which for contract bindings resolves the authority
+    /// that standard defines, or (2) temporary collection authority when the direct caller is
     /// the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
     /// The latter window reopens after a burn if `ownerOf` again reverts or returns zero; preventing
     /// that would require historical-existence storage.

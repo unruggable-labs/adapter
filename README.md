@@ -135,11 +135,11 @@ ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path bec
 
 ### Contract Bindings
 
-`CONTRACT` is value `5`, and `CONTRACT_OWNABLE` is appended as value `6`. Values `0`-`5` are unchanged.
+`CONTRACT` is value `5`, `CONTRACT_OWNABLE` is appended as value `6`, and `CONTRACT_ADMIN` as value `7`. Values `0`-`6` are unchanged.
 
-Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(tokenContract, tokenId)`. Values `5` and `6` name the deployed contract itself, any contract, not only a token, so there is no token to identify:
+Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(tokenContract, tokenId)`. Values `5`, `6` and `7` name the deployed contract itself, any contract, not only a token, so there is no token to identify:
 
-- `tokenId` MUST be `0` for both values. A contract-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForContract(tokenContract, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
+- `tokenId` MUST be `0` for all three values. A contract-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForContract(tokenContract, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
 - Under `CONTRACT` (value `5`), the controller is the bound `tokenContract` itself, and only that contract. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound contract never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `tokenContract` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `CONTRACT` instead.
 - Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `CONTRACT` and route every identity update through its own code. It also closes an asymmetry: `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's primary agent while being unable to manage an identity bound to it.
@@ -169,7 +169,7 @@ A second consequence follows from the `owner()` probe failing closed: **`renounc
 
 After binding, the mutable ERC-8004 fields (`setAgentURI`, `setMetadata`, `setMetadataBatch`, `setAgentWallet`, `unsetAgentWallet`) follow the selected authority model, and the latest authorized write wins. The adapter keeps no history and no per-field lock.
 
-The `Binding` itself is immutable for both values and there is deliberately **no revoke or unbind API**. Once an agent is bound, its selected standard and coordinates are permanent. Dynamic value-6 owner authority does not mutate the binding. To move on, register a fresh ERC-8004 identity instead; a single contract may bind any number of agents.
+The `Binding` itself is immutable for all three values and there is deliberately **no revoke or unbind API**. Once an agent is bound, its selected standard and coordinates are permanent. Dynamic value-6 owner authority does not mutate the binding. To move on, register a fresh ERC-8004 identity instead; a single contract may bind any number of agents.
 
 ## Architecture
 
@@ -507,9 +507,10 @@ Indexer rules:
   useful chain diagnostic but is not one of the canonical hash fields
 - chain binding comes from the adapter proxy's Interoperable Address alone; do not encode
   `tokenContract` as an Interoperable Address
-- indexers MUST treat the latest event per `(tokenContract, tokenId)` as authoritative
-- order state transitions by `(blockNumber, transactionIndex, logIndex)`; a later full registration
-  replaces the earlier full payload and later setters update individual fields
+- indexers MUST treat the latest event per `registrationHash` as authoritative, latest meaning
+  highest block number, then highest log index
+- a later full registration replaces the earlier full payload and later setters update individual
+  fields
 - ownerless collection events carry `emitter == tokenContract`; this records the authorizing caller,
   but is not a permanent proof that the token was pre-mint because the collection may later be a
   normal owner or delegate

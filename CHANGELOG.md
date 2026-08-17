@@ -138,7 +138,8 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     and the marketplace convention, many contracts expose `owner()` only as a royalties or
     collection-metadata admin, often a stale deployer EOA, so this authority is never assumed.
     It exists only where a contract chose value `6`.
-  - For both values the `Binding` itself stays immutable, with deliberately no revoke or unbind API.
+  - For every contract standard the `Binding` itself stays immutable, with deliberately no revoke or
+    unbind API.
     Ownership transfer moves who may write; it never rebinds or unbinds an agent.
   - `tokenId` MUST be `0` for value `6` as well, enforced at both authority choke points and
     reverting with the same `NonZeroTokenIdForContract(tokenContract, tokenId)` error. Value `6`
