@@ -142,12 +142,37 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     Ownership transfer moves who may write; it never rebinds or unbinds an agent.
   - `tokenId` MUST be `0` for value `6` as well, enforced at both authority choke points and
     reverting with the same `NonZeroTokenIdForContract(tokenContract, tokenId)` error. Value `6`
-    also stays outside the single-owner set: no ownerless-collection window, no delegate.xyz route.
+    also stays outside the single-owner set, so it gets no ownerless-collection window. It does have
+    a delegate.xyz route, added later in this release train and described above.
   - `registrationHash` is unchanged and the standard remains excluded from it, so a contract at
     `(X, 0)` claiming as ERC-721 token `#0`, `CONTRACT`, and `CONTRACT_OWNABLE` aliases all three
     onto one identity with one current claim, resolved by the latest
     `CounterfactualAgentRegistered.standard` in log order. `AgentBound` and the counterfactual event
     layouts are unchanged; `6` is only a new value in the existing `uint8` field.
+- Admin contract bindings. `CONTRACT_ADMIN` is appended to `TokenStandard` as value `7`; values
+  `0`-`6` are unchanged, so stored bindings and indexed history keep their meaning.
+  - Authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and
+    nobody else. The bound contract itself has no authority, as with value `6`. It exists for an
+    AccessControl contract that exposes no `owner()`, which could otherwise only bind as value `5`
+    and route every identity update through its own code. It also closes an asymmetry:
+    `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin
+    could set a contract's primary agent while being unable to manage an identity bound to it.
+  - The `hasRole(bytes32,address)` probe is a fail-closed `STATICCALL`. A revert, returndata whose
+    length is not exactly 32 bytes, or a zero word each grant nobody. Any non-zero word counts as
+    holding the role, which is deliberately more permissive than the value-6 address probe: nothing
+    is being extracted from the word, so a non-canonical `true` from an honest implementation is
+    accepted rather than reverted.
+  - Role membership is read on every call, so granting or revoking the role takes effect in the same
+    transaction. Registration runs the same authority check, so an admin must create the binding and
+    the contract cannot register itself.
+  - No delegate.xyz route, by design rather than omission. Delegation requires one delegator to ask
+    the registry about, and a role is a membership predicate that many addresses can satisfy and none
+    can enumerate, so there is no well-defined delegator to name.
+  - `tokenId` MUST be `0`, enforced at both authority choke points with the same
+    `NonZeroTokenIdForContract(tokenContract, tokenId)` error. Value `7` stays outside the
+    single-owner set, so it gets no ownerless-collection window. `registrationHash` is unchanged and
+    still excludes the standard, and `7` is only a new value in the existing `uint8` field, so no
+    event signature or topic moves.
 - Full ERC-8004 `register` (including `registerAndSetPrimary`) now accepts the same temporary
   ownerless collection authority as unsigned counterfactual writes: the directly calling
   ERC-721/ERC-1155F/ERC-6909F token contract may register its own id while `ownerOf(tokenId)`
