@@ -68,7 +68,7 @@ Supported binding standards:
 - ERC-6909
 - ERC-1155F
 - ERC-6909F
-- `ACCOUNT`, an account-level binding of any address, contract or externally owned, including but not limited to an ERC-20 (see [Contract Bindings](#contract-bindings))
+- `ACCOUNT`, an account-level binding of any address, contract or externally owned, including but not limited to an ERC-20 (see [Account-Level Bindings](#account-level-bindings))
 - `CONTRACT_OWNABLE`, an explicit-opt-in contract binding controlled by the contract's current `owner()`
 - `CONTRACT_ADMIN`, the same idea for an AccessControl contract, controlled by holders of its `DEFAULT_ADMIN_ROLE`
 
@@ -133,9 +133,9 @@ A cold wallet that owns the bound token can delegate a hot wallet through delega
 
 ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path because they expose single-owner `ownerOf(tokenId)` semantics. Plain ERC-1155 and ERC-6909 use balance checks alone, because the no-vault delegate.xyz API cannot soundly map a token-id delegation to a balance holder.
 
-### Contract Bindings
+### Account-Level Bindings
 
-`ACCOUNT` is value `5`, `CONTRACT_OWNABLE` is appended as value `6`, and `CONTRACT_ADMIN` as value `7`. Values `0`-`6` are unchanged.
+`ACCOUNT` is value `5`, `CONTRACT_OWNABLE` is appended as value `6`, and `CONTRACT_ADMIN` as value `7`. Values `0`-`4` are unchanged. Value `5` keeps its position and was renamed from `CONTRACT`, which moves no stored binding and no indexed history.
 
 Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(tokenContract, tokenId)`. Values `5`, `6` and `7` name an address itself rather than a token within it, so there is no token to identify:
 
@@ -150,7 +150,7 @@ Values `0`-`4` name a token *within* a contract, so their binding coordinate is 
 - `CONTRACT_ADMIN` has no delegate.xyz route, by design rather than omission. Delegation requires one delegator to ask the registry about, and a role is a membership predicate that many addresses can satisfy and none can enumerate, so there is no well-defined delegator to name.
 - Value-6 owner authority is dynamic. A successful ownership transfer immediately gives control over every existing value-6 binding to the new owner and removes it from the previous owner. This is deliberately different from value 5's permanent sole-controller guarantee.
 - The value-6 `owner()` probe is a `STATICCALL` and fails closed. A revert, returndata whose length is not exactly 32 bytes, a word with dirty upper bits, or any other non-canonical shape grants no owner authority. A canonical `address(0)` also grants nobody; it never authorizes the zero account. There is no contract-self fallback in any of those cases, so a binding whose `owner()` cannot be resolved has no authority at all.
-- None of the three contract standards is part of the single-owner token set, so none gets the ownerless-collection window. Only `CONTRACT_OWNABLE` has a delegate.xyz route.
+- None of the three account-level standards is part of the single-owner token set, so none gets the ownerless-collection window. Only `CONTRACT_OWNABLE` has a delegate.xyz route. `ACCOUNT` has none by design: the delegator would be the bound address itself, and a delegation it granted for any unrelated purpose would otherwise confer permanent control over the identity, which an immutable binding could never withdraw.
 
 An ERC-20 claiming its own identity is the motivating example: it has one fungible supply and no per-token owner, so `ACCOUNT` is how it binds. There is no ERC-20-specific standard value. An ERC-20 uses `ACCOUNT` like any other contract. (ERC-20Agent, if you have seen it referenced, is a separate metadata profile layered on top; it is not a binding standard here.)
 
@@ -159,12 +159,12 @@ Calling rules:
 - For `ACCOUNT`, the adapter's immediate EVM caller must be `tokenContract`. A router, forwarder, or multicall contract that calls the adapter itself fails because the adapter sees that intermediary as `msg.sender`.
 - For `CONTRACT_OWNABLE`, the immediate caller must be the current canonical nonzero `owner()` returned by the bound contract, or a delegate.xyz delegate of that owner. The bound contract, holders, the adapter admin, roles, and strangers gain nothing from this model.
 - For `CONTRACT_ADMIN`, the immediate caller must hold the bound contract's `DEFAULT_ADMIN_ROLE`. The bound contract, holders, the adapter admin, and strangers gain nothing from this model.
-- A call from the bound contract's constructor fails: the adapter requires deployed runtime code at `tokenContract`.
+- For `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, a call from the bound contract's constructor fails, because the adapter requires deployed runtime code at `tokenContract` and there is none yet. The same holds for values `0`-`4`. Under `ACCOUNT` it succeeds: no code test applies, and `msg.sender` during construction is already the contract's final address, so a contract can bind itself as `ACCOUNT` from its own constructor.
 - Do not `delegatecall` into `Adapter8004`. That is unsupported and dangerous. The adapter is a UUPS proxy implementation with its own storage layout, and borrowing its code into another contract's storage is not a supported integration. This is about calling *into* the adapter; how the bound contract is implemented internally is its own business, and a contract that is itself a proxy binds fine because its proxy address is the caller the adapter sees.
 - `bindExisting` additionally requires the authorized caller to already own the ERC-8004 agent in the registry and to have approved the adapter to transfer it (`approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`).
 - `registerAndSetPrimary` remains caller-scoped: it records the new agent as the immediate caller's primary agent.
 
-That value-5 call requirement has a design consequence worth stating plainly: **permanent contract-self authority is worth nothing unless the bound contract has a repeatable outbound path to the adapter.** A contract with no way to call out cannot bind under value 5, and one with only a one-shot post-deployment hook can bind once and then freezes. An owner-driven contract that intentionally wants direct external-owner management should choose `CONTRACT_OWNABLE` at bind time instead.
+That value-5 call requirement has a design consequence worth stating plainly, and it applies only where the bound address is a contract: **permanent self-authority is worth nothing unless the bound contract has a repeatable outbound path to the adapter.** A contract with no way to call out cannot bind under value 5, and one with only a single hook can bind once and then freezes. That hook may be the constructor. An owner-driven contract that intentionally wants direct external-owner management should choose `CONTRACT_OWNABLE` at bind time instead. An externally owned account has no such constraint, since sending a transaction is itself the outbound path.
 
 Excluding self-authority from value `6` has a consequence at deployment time, because registration runs the same authority check as every other write: **a contract cannot create its own `CONTRACT_OWNABLE` binding.** The owner must call `register`. A contract that registers itself from its constructor or an init hook must either become a two-step deploy, where the owner registers after deployment, or bind as `ACCOUNT` instead.
 
@@ -172,7 +172,7 @@ A second consequence follows from the `owner()` probe failing closed: **`renounc
 
 After binding, the mutable ERC-8004 fields (`setAgentURI`, `setMetadata`, `setMetadataBatch`, `setAgentWallet`, `unsetAgentWallet`) follow the selected authority model, and the latest authorized write wins. The adapter keeps no history and no per-field lock.
 
-The `Binding` itself is immutable for all three values and there is deliberately **no revoke or unbind API**. Once an agent is bound, its selected standard and coordinates are permanent. Dynamic value-6 owner authority does not mutate the binding. To move on, register a fresh ERC-8004 identity instead; a single contract may bind any number of agents.
+The `Binding` itself is immutable for all three values and there is deliberately **no revoke or unbind API**. Once an agent is bound, its selected standard and coordinates are permanent. Dynamic value-6 owner authority does not mutate the binding. To move on, register a fresh ERC-8004 identity instead; a single address may bind any number of agents.
 
 ## Architecture
 
@@ -370,7 +370,7 @@ Token standard enum values:
 - `0x06`: `CONTRACT_OWNABLE` (dynamic current-`owner()` authority and its delegates, not the contract itself; always paired with `tokenId == 0`)
 - `0x07`: `CONTRACT_ADMIN` (`DEFAULT_ADMIN_ROLE` authority, not the contract itself; always paired with `tokenId == 0`)
 
-The enum is append-only: `ACCOUNT` remains `0x05`, `CONTRACT_OWNABLE` is appended as `0x06`, `CONTRACT_ADMIN` as `0x07`, and values `0x00`-`0x06` keep their meaning, so existing stored bindings and indexed history are unaffected.
+The enum is append-only: `ACCOUNT` remains `0x05`, `CONTRACT_OWNABLE` is appended as `0x06`, `CONTRACT_ADMIN` as `0x07`, and values `0x00`-`0x04` keep their meaning, so existing stored bindings and indexed history are unaffected. `0x05` also keeps its position; only its name and its code test changed, and neither is persisted.
 
 The adapter reserves the `agent-binding` key and rejects user attempts to set or batch-set it through the adapter. The `cf-registration` (canonical-promotion) key is reserved on both surfaces: every counterfactual write rejects it, and the canonical writes (`register`, `setMetadata`, `setMetadataBatch`) reject it too, so a controller cannot fabricate a promotion back-link on either surface before a genuine on-chain mint.
 
@@ -479,7 +479,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 
 The collection must be the direct adapter caller and pass its own deployed address as `tokenContract`; a router, forwarded sender, `delegatecall`, or call from the collection constructor does not establish this authority. Register first and mint second. After `ownerOf` returns a nonzero owner, the collection has no special privilege and calls revert unless it separately qualifies under the normal owner/delegate controller model. The buyer or an authorized delegate can then overwrite the collection payload, and latest log order wins. Multiple emissions are allowed while no owner exists and share the same `registrationHash`.
 
-`ACCOUNT` uses the same unsigned functions but a different authority: the bound contract is the permanent sole controller at `tokenId 0`, so its counterfactual calls never stop working and never depend on an ownership probe. `CONTRACT_OWNABLE` also fixes `tokenId` at `0`, but accepts only the current canonical nonzero `owner()` and its delegates, not the bound contract; ownership transfers therefore change who may emit updates for existing claims. A failed or malformed `owner()` probe grants nobody authority, and there is no contract-self fallback. `CONTRACT_ADMIN` behaves the same way with `DEFAULT_ADMIN_ROLE` in place of `owner()`, so granting or revoking the role changes who may emit. A counterfactual claim has no whole-claim tombstone. There is no way to delete one. A later authorized event supersedes an earlier one under the usual last-event-wins rule, and `counterfactualUnsetAgentWallet` clears only the wallet field, not the claim.
+`ACCOUNT` uses the same unsigned functions but a different authority: the bound address is the permanent sole controller at `tokenId 0`, so its counterfactual calls never stop working and never depend on an ownership probe. `CONTRACT_OWNABLE` also fixes `tokenId` at `0`, but accepts only the current canonical nonzero `owner()` and its delegates, not the bound contract; ownership transfers therefore change who may emit updates for existing claims. A failed or malformed `owner()` probe grants nobody authority, and there is no contract-self fallback. `CONTRACT_ADMIN` behaves the same way with `DEFAULT_ADMIN_ROLE` in place of `owner()`, so granting or revoking the role changes who may emit. A counterfactual claim has no whole-claim tombstone. There is no way to delete one. A later authorized event supersedes an earlier one under the usual last-event-wins rule, and `counterfactualUnsetAgentWallet` clears only the wallet field, not the claim.
 
 Plain ERC-1155 and ERC-6909 do not gain this ownerless path because neither standard supplies a universal global owner/nonexistence query; their unsigned calls still require positive balance. A reverted `ownerOf` or canonical `address(0)` response means “no current owner,” not “never minted,” so burning a single-owner id can reopen the collection-only window. Signature-based counterfactual registration is intentionally not supported: register-at-mint collections should call the unsigned function directly while the id is ownerless, then mint.
 
@@ -707,10 +707,12 @@ script/deploy.sh sepolia
 The Foundry suite currently covers:
 
 - registration for ERC-721, ERC-1155, ERC-6909, ERC-1155F, and ERC-6909F bindings
-- contract bindings (`ACCOUNT`), for both a non-token binder and an ERC-20 fixture: bound-contract-only
-  authority, the `tokenId == 0` rule at every write entry point, absence of any `ownerOf` /
-  `balanceOf` probe, the `(X, 0)` standard alias, and raw `AgentBound` /
-  `CounterfactualAgentRegistered` layout compatibility
+- account bindings (`ACCOUNT`), for a non-token binder, an ERC-20 fixture, and a code-less address:
+  bound-address-only authority, acceptance of an address with no runtime code on every entry path,
+  identical behavior with and without an EIP-7702 designator, denial of every delegate.xyz delegation
+  shape, rejection of the zero address at every entry point, the `tokenId == 0` rule at every write
+  entry point, absence of any `ownerOf` / `balanceOf` probe, the `(X, 0)` standard alias, and raw
+  `AgentBound` / `CounterfactualAgentRegistered` layout compatibility
 - opt-in ownable contract bindings (`CONTRACT_OWNABLE`): dynamic owner authority, not contract-self
   ownership transfer, fail-closed reverting/malformed/zero `owner()` responses, holder/admin/stranger
   denial, the canonical `tokenId == 0` rule at both authority choke points, enum stability, and raw

@@ -929,7 +929,8 @@ contract Adapter8004ContractBindingTest is Test {
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 1, "ipfs://registry");
 
-        // A codeless address is still the generic rejection.
+        // The zero address is still the generic rejection. Under `ACCOUNT` that comes from the sentinel
+        // clause rather than the code test, which this standard does not apply.
         vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://zero");
     }

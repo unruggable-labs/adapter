@@ -48,12 +48,14 @@ interface IOwnableContract {
 /// ERC-8004 registrations are unaffected. It is also the only such break, because everything that
 /// hashes with `extraData == bytes32(0)` will hash identically from here on.
 ///
-/// v0.0.16 appends the `CONTRACT_ADMIN` standard, removes contract-self authority from
-/// `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, and drops the `MetadataBatchSet` event in favor of one
-/// `MetadataSet` per entry. The authority removal is breaking for any contract that was relying on
-/// authorizing itself. The storage layout is again unchanged, so v0.0.14, v0.0.15 and v0.0.16 ship
-/// as one implementation that upgrades from the same deployed baselines with empty
-/// `upgradeToAndCall` data.
+/// v0.0.16 renames `TokenStandard` value 5 from `CONTRACT` to `ACCOUNT` and relaxes it to accept any
+/// address with or without runtime code, appends the `CONTRACT_ADMIN` standard, removes contract-self
+/// authority from `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, and drops the `MetadataBatchSet` event in
+/// favor of one `MetadataSet` per entry. The authority removal is breaking for any contract that was
+/// relying on authorizing itself. The value-5 rename changes the `NonZeroTokenIdForAccount` selector
+/// but no enum position, event topic or `registrationHash`. The storage layout is again unchanged, so
+/// v0.0.14, v0.0.15 and v0.0.16 ship as one implementation that upgrades from the same deployed
+/// baselines with empty `upgradeToAndCall` data.
 /// @custom:version 0.0.16
 contract Adapter8004 is
     Initializable,
@@ -541,9 +543,9 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     // Emit-only mirrors of the on-chain register surface. They write nothing to adapter storage and
     // make no ERC-8004 registry calls. Each is gated by current bound-token control, by the temporary
-    // direct ownerless-collection authority documented below, or by a contract binding's authority,
-    // which is contract-self for value 5, the current owner or its delegate for value 6, and a
-    // `DEFAULT_ADMIN_ROLE` holder for value 7, always at `tokenId 0`.
+    // direct ownerless-collection authority documented below, or by an account-level binding's
+    // authority, which is the bound address itself for value 5, the current owner or its delegate for
+    // value 6, and a `DEFAULT_ADMIN_ROLE` holder for value 7, always at `tokenId 0`.
     //
     // There is no whole-claim tombstone. A claim can only be superseded by a later event, and
     // unsetting the wallet clears that field alone. Indexers consume the emitted events as
@@ -1013,8 +1015,11 @@ contract Adapter8004 is
     /// probes already fails closed against a code-less address, because a staticcall to an address
     /// with no code succeeds and returns nothing, and each probe rejects a response that is not
     /// exactly 32 bytes. So this check produces a precise error early rather than standing as the
-    /// only thing preventing an EOA from masquerading as a collection. It also means calls from a
-    /// token contract constructor stay unsupported, since runtime code is not installed yet.
+    /// only thing preventing an EOA from masquerading as a collection. For those seven it also means
+    /// calls from the bound contract's constructor stay unsupported, since runtime code is not
+    /// installed yet. `ACCOUNT` is the exception: a contract binding itself as `ACCOUNT` from its own
+    /// constructor now succeeds, because `msg.sender` is already its final address and no code test
+    /// stands in the way.
     ///
     /// `ACCOUNT` is exempt because it never calls the bound address. Its authority is the single
     /// comparison `account == boundAddress`, which is well defined whether or not the address has
@@ -1072,20 +1077,22 @@ contract Adapter8004 is
     }
 
     /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
-    /// (1) the existing current-controller model, which for contract bindings resolves the authority
+    /// (1) the existing current-controller model, which for account-level bindings resolves the authority
     /// that standard defines, or (2) temporary collection authority when the direct caller is
     /// the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
     /// The latter window reopens after a burn if `ownerOf` again reverts or returns zero; preventing
     /// that would require historical-existence storage.
     ///
     /// Every mode compares the adapter's immediate EVM caller against `tokenContract`, so a router,
-    /// forwarder, or multicall that calls the adapter itself cannot stand in for the bound contract.
+    /// forwarder, or multicall that calls the adapter itself cannot stand in for the bound address.
     /// An external owner or governance address may still drive this by calling an entry point on the
     /// bound contract that makes the outbound adapter call. `delegatecall` into this contract is
     /// unsupported and dangerous: it is a UUPS implementation with its own storage layout.
-    /// For a `ACCOUNT` binding that also means the permanent authority is worth nothing without a
-    /// repeatable outbound path: a contract that cannot call out cannot bind at all (constructor
-    /// calls are rejected), and one with a single post-deployment hook binds once and then freezes.
+    /// For an `ACCOUNT` binding held by a contract that also means the permanent authority is worth
+    /// nothing without a repeatable outbound path: a contract that cannot call out cannot bind at all,
+    /// and one with a single hook binds once and then freezes. That hook may be the constructor, since
+    /// `ACCOUNT` applies no code test. An externally owned account has no such constraint, because
+    /// sending a transaction is itself the outbound path.
     function _requireTokenAuthority(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
         internal
         view
@@ -1102,7 +1109,7 @@ contract Adapter8004 is
         _requireBindingControl(standard, tokenContract, tokenId, account);
     }
 
-    /// @dev The three contract standards name the contract itself rather than a token within it, so
+    /// @dev The three account-level standards name the address itself rather than a token within it, so
     /// each has exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
     /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
     /// an account-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
@@ -1147,15 +1154,16 @@ contract Adapter8004 is
         returns (bool)
     {
         // 1. An account-level binding names `tokenContract` itself rather than a token within it, so
-        //    the bound contract is the controller and nobody else is. There is no per-token owner or
-        //    holder to resolve, and the adapter asks the contract nothing: `ownerOf` and both
+        //    the bound address is the controller and nobody else is. There is no per-token owner or
+        //    holder to resolve, and the adapter asks the address nothing: `ownerOf` and both
         //    `balanceOf` shapes are never probed on this branch, and `tokenId` is not consulted (it is
-        //    pinned to 0 at the choke points above). Anything the contract exposes itself, whether an
-        //    `owner()`, a token balance or a role, carries no authority here, and neither does the
-        //    adapter admin.
+        //    pinned to 0 at the choke points above). Anything the bound address exposes itself, whether
+        //    an `owner()`, a token balance or a role, carries no authority here, and neither does the
+        //    adapter admin. Nor does a delegate.xyz delegate of the bound address, which is pinned by
+        //    `testAccountGrantsNoDelegationRoute`.
         //    The transient single-owner collection window in `_requireTokenAuthority` closes as soon
         //    as the id is minted and can reopen on burn. This authority never closes:
-        //    there is no token whose ownership could change hands, so the bound contract is the
+        //    there is no token whose ownership could change hands, so the bound address is the
         //    permanent controller of the agents it binds, before and after binding, and its latest
         //    write to a mutable registry field wins. Deliberately not part of
         //    `_isSingleOwnerStandard`, so it gets no ownerless-window probe.

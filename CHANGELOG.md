@@ -89,6 +89,19 @@ seen neither. The changes with no other home are listed here.
   accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership. Counterfactual
   claims are less exposed, being emit-only and last-event-wins.
 
+  **A second consequence, which the plan did not anticipate:** dropping the code test also
+  drops the incidental bar on constructor-time binding. A contract can now bind itself as
+  `ACCOUNT` from its own constructor, because `msg.sender` during construction is already
+  its final address. Verified against the built contract. This is coherent with the
+  standard rather than a hole, since `ACCOUNT` authority never calls the bound address, but
+  it is a behavior change for anyone who read the previous "constructor calls are rejected"
+  rule as universal, and it remains rejected for every other standard.
+
+  `ACCOUNT` is offered no delegate.xyz route, which was a documented decision with no test
+  behind it until mutation testing found that widening it passed the whole suite.
+  `testAccountGrantsNoDelegationRoute` now pins it across every delegation shape the
+  adapter honors elsewhere, including a blanket wallet-level grant.
+
   `NonZeroTokenIdForContract` is renamed `NonZeroTokenIdForAccount`, which changes that
   error's selector. Free only because value `5` has never been deployed, confirmed by
   reading the EIP-1967 implementation slots on Mainnet, Base and Sepolia and probing
@@ -155,7 +168,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 
 ### Added
 
-- Contract bindings. `ACCOUNT` is appended to `TokenStandard` as value `5`; values `0`-`4` are
+- Account bindings. `ACCOUNT` is appended to `TokenStandard` as value `5`; values `0`-`4` are
   unchanged, so stored bindings and indexed history keep their meaning. Values `0`-`4` name a token
   within a contract; `ACCOUNT` names any address itself, token or not. An ERC-20 claiming
   its own identity is the motivating example and uses `ACCOUNT` like any other contract. There is
@@ -176,12 +189,13 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   - The adapter's immediate EVM caller must be `tokenContract`. A router, forwarder, or multicall
     contract that calls the adapter itself fails, because the adapter sees that contract as
     `msg.sender`. An external owner or governance address may instead call an entry point on the
-    bound contract, which then makes the outbound adapter call (the planned reference pattern). A
-    constructor call is rejected. Deployed runtime code is required. `delegatecall` into
-    `Adapter8004` is unsupported and dangerous: it is a UUPS implementation with its own storage
-    layout, not a library. `bindExisting` additionally requires the bound contract to own the
-    ERC-8004 agent and to have approved the adapter. `registerAndSetPrimary` records the bound
-    contract's own primary agent.
+    bound contract, which then makes the outbound adapter call (the planned reference pattern). As
+    shipped in this version a constructor call is rejected, because deployed runtime code is required;
+    v0.0.16 removes that requirement for this standard, so a constructor call now succeeds.
+    `delegatecall` into `Adapter8004` is unsupported and dangerous: it is a UUPS implementation with
+    its own storage layout, not a library. `bindExisting` additionally requires the bound address to
+    own the ERC-8004 agent and to have approved the adapter. `registerAndSetPrimary` records the bound
+    address's own primary agent.
   - Permanent authority is worth nothing without a repeatable outbound path to the adapter. A
     contract that cannot call out cannot bind at all; one with a single post-deployment hook binds
     once and then freezes. Repeatable management needs a governance-gated, upgradeable, or
@@ -214,12 +228,12 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     outcomes leaves any authority behind, since there is no contract-self fallback.
   - Owner authority is **dynamic**: it follows ownership transfer. A new owner gains authority over
     agents bound before it took over, and the previous owner loses it. This is the deliberate
-    contrast with value `5`, whose bound contract is the permanent sole controller. Under EIP-173
+    contrast with value `5`, whose bound address is the permanent sole controller. Under EIP-173
     and the marketplace convention, many contracts expose `owner()` only as a royalties or
     collection-metadata admin, often a stale deployer EOA, so this authority is never assumed.
     It exists only where a contract chose value `6`.
-  - For every contract standard the `Binding` itself stays immutable, with deliberately no revoke or
-    unbind API.
+  - For all three account-level standards the `Binding` itself stays immutable, with deliberately no
+    revoke or unbind API.
     Ownership transfer moves who may write; it never rebinds or unbinds an agent.
   - `tokenId` MUST be `0` for value `6` as well, enforced at both authority choke points and
     reverting with the same `NonZeroTokenIdForAccount(tokenContract, tokenId)` error. Value `6`
@@ -293,7 +307,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 This ownerless full-registration change adds no public selector, storage slot, event ABI,
 counterfactual payload-version change, or `@custom:version` bump.
 
-Contract bindings add no public selector, storage slot, or `@custom:version` bump either.
+Account-level bindings add no public selector, storage slot, or `@custom:version` bump either.
 `registrationHash`, the counterfactual event schema, and `version == 1` are unchanged;
 `AgentBound` keeps its layout with `standard` indexed, and `CounterfactualAgentRegistered`, the
 only counterfactual event carrying a standard, keeps its layout with `standard` non-indexed.
@@ -347,6 +361,8 @@ Source version. Not deployed. No storage migration or initializer.
 ### Changed
 - `_requireValidTokenContract` now rejects addresses without deployed code, preventing an EOA
   from masquerading as an ownerless collection. Constructor-time adapter calls are unsupported.
+  (Renamed `_requireValidBoundAddress` in v0.0.16, which makes the code test standard-aware: every
+  standard keeps it except `ACCOUNT`, so constructor-time calls became supported for that one.)
 - After mint, collection calls fall back to the unchanged owner/delegate controller model. A burn
   can reopen the collection-only window because “ownerless” means no current owner and the adapter
   deliberately stores no historical-existence bit.
