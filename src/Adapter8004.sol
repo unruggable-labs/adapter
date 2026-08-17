@@ -539,8 +539,8 @@ contract Adapter8004 is
     // Emit-only mirrors of the on-chain register surface. They write nothing to adapter storage and
     // make no ERC-8004 registry calls. Each is gated by current bound-token control, by the temporary
     // direct ownerless-collection authority documented below, or by a contract binding's authority,
-    // which is contract-self for value 5 and contract-self or current owner for value 6, always at
-    // `tokenId 0`.
+    // which is contract-self for value 5, the current owner or its delegate for value 6, and a
+    // `DEFAULT_ADMIN_ROLE` holder for value 7, always at `tokenId 0`.
     //
     // There is no whole-claim tombstone. A claim can only be superseded by a later event, and
     // unsetting the wallet clears that field alone. Indexers consume the emitted events as

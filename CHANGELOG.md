@@ -112,9 +112,16 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     from the contract supersede earlier ones by last-event-wins, and wallet unset is field-level.
 - Ownable contract bindings. `CONTRACT_OWNABLE` is appended to `TokenStandard` as value `6`; values
   `0`-`5` are unchanged, so stored bindings and indexed history keep their meaning.
-  - Authority is **both** the bound `tokenContract` and the current address returned by its
-    `owner()`. The bound contract never loses authority: the owner route is added to contract-self
-    authority, not substituted for it.
+  - Authority is the current address returned by the bound contract's `owner()`, and delegate.xyz
+    delegates of that owner. The bound contract itself has no authority under this standard.
+    Self-authority is excluded deliberately: any contract with a generic call mechanism, an
+    upgradeable implementation, or an inducible callback could otherwise seize its own identity
+    without the owner acting, while the name of the standard promises the owner controls it.
+  - Two consequences follow. Registration runs the same authority check, so a contract cannot create
+    its own binding and the owner must call `register`; a contract that self-registers from a
+    constructor or init hook needs a two-step deploy or should bind as `CONTRACT`. And because the
+    `owner()` probe fails closed with no self-authority to fall back on, `renounceOwnership()`
+    permanently freezes the identity. That is intended.
   - This is an explicit opt-in chosen at bind time, and, like the rest of the `Binding`, the choice
     is immutable. `CONTRACT` (value `5`) semantics are entirely unchanged: binding as `5` still means
     no `owner()`, role, or balance route in, and the adapter still makes zero external authority
@@ -124,7 +131,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     `view`, so an authority check can never reenter. A revert (no assumed selector), returndata that
     is not exactly 32 bytes, dirty upper bits above the 160-bit address, or a zero owner each grant
     no external authority, and a zero owner therefore never matches a zero `account`. None of these
-    outcomes removes contract-self authority.
+    outcomes leaves any authority behind, since there is no contract-self fallback.
   - Owner authority is **dynamic**: it follows ownership transfer. A new owner gains authority over
     agents bound before it took over, and the previous owner loses it. This is the deliberate
     contrast with value `5`, whose bound contract is the permanent sole controller. Under EIP-173
