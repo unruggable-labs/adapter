@@ -1,5 +1,13 @@
 # Adapter8004 `bindExisting` Proposal
 
+> **Partly superseded by the implementation.** `bindExisting` shipped, but the two pre-checks this
+> document proposes for agent ownership and adapter approval were later removed. Both re-derived, by
+> hand and from the registry itself, rules that `transferFrom` on the very next line already enforces.
+> The registry reverts `ERC721IncorrectOwner(from, tokenId, previousOwner)` and
+> `ERC721InsufficientApproval(operator, tokenId)`, which name more of the failing state than the
+> adapter errors proposed below, so `NotAgentOwner` and `AgentTransferNotApproved` no longer exist.
+> Sections below are kept as the design record and are marked where they no longer describe the code.
+
 ## Summary
 
 Add a design-only `bindExisting` entry point that lets the owner of an already-minted ERC-8004 `agentId` transfer that identity into `Adapter8004` management and bind it to an external ERC-721, ERC-1155, or ERC-6909 token. The flow uses the PM-selected two-transaction approval model:
@@ -28,11 +36,11 @@ Add errors:
 
 ```solidity
 error AlreadyBound(uint256 agentId);
-error NotAgentOwner(uint256 agentId, address owner);
-error AgentTransferNotApproved(uint256 agentId);
+error NotAgentOwner(uint256 agentId, address owner);      // NOT SHIPPED, see the note above
+error AgentTransferNotApproved(uint256 agentId);          // NOT SHIPPED, see the note above
 ```
 
-Optional helper:
+Optional helper, **not shipped**:
 
 ```solidity
 function _requireAgentTransferApproval(uint256 agentId, address owner) internal view;
@@ -80,7 +88,7 @@ The current `IERC8004IdentityRegistry` interface does not expose ERC-721 transfe
 
 5. Check ERC-721 registry transfer approval before attempting the transfer.
 
-   Revert with `AgentTransferNotApproved(agentId)` if the adapter is neither approved for `agentId` nor approved-for-all by the owner. This produces a clear adapter error instead of surfacing a generic ERC-721 transfer failure.
+   **Not implemented.** The reasoning here, that an adapter error beats a generic ERC-721 transfer failure, did not survive contact with the actual errors: `ERC721InsufficientApproval(operator, tokenId)` names the operator that lacked approval, where `AgentTransferNotApproved(agentId)` named only the agent. The check was dropped and step 6 carries it.
 
 6. Transfer registry ownership into the adapter:
 
@@ -136,8 +144,9 @@ Existing errors reused:
 New errors:
 
 - `AlreadyBound(uint256 agentId)` when `_bindings[agentId].tokenContract != address(0)`.
-- `NotAgentOwner(uint256 agentId, address owner)` when `identityRegistry.ownerOf(agentId) != msg.sender`.
-- `AgentTransferNotApproved(uint256 agentId)` when the adapter lacks per-token or operator approval to transfer the ERC-8004 identity.
+- ~~`NotAgentOwner`~~ and ~~`AgentTransferNotApproved`~~ were specified here but not shipped. The
+  transfer in step 6 enforces both rules and reverts `ERC721IncorrectOwner` or
+  `ERC721InsufficientApproval`.
 
 I would let `identityRegistry.ownerOf(agentId)` bubble its native unknown-token revert for nonexistent `agentId`s instead of wrapping it in `UnknownAgent`. `UnknownAgent` currently means "not known to this adapter," while `bindExisting` is explicitly dealing with identities not yet known to the adapter.
 
@@ -150,9 +159,9 @@ Add focused tests in `test/Adapter8004.t.sol`:
 - Operator approval path succeeds with `setApprovalForAll(adapter, true)`.
 - Zero `tokenContract` reverts with `InvalidTokenContract()`.
 - Already-bound `agentId` reverts with `AlreadyBound(agentId)`.
-- Caller who controls the external token but does not own the ERC-8004 identity reverts with `NotAgentOwner(agentId, owner)`.
+- Caller who controls the external token but does not own the ERC-8004 identity reverts with `ERC721IncorrectOwner(caller, agentId, owner)`.
 - Caller who owns the ERC-8004 identity but does not control the external token reverts with `NotController(caller, type(uint256).max)`.
-- Missing registry approval reverts with `AgentTransferNotApproved(agentId)` before `transferFrom`.
+- Missing registry approval reverts with `ERC721InsufficientApproval(adapter, agentId)` from `transferFrom`.
 - Pre-existing `BINDING_METADATA_KEY` value is overwritten with the adapter address.
 - Existing `agentURI` is preserved; caller can update it after binding through `setAgentURI` if they still control the external token.
 - Existing non-binding metadata keys are preserved and can be updated after binding through `setMetadata`.
@@ -206,6 +215,6 @@ No if the implementation orders operations as proposed: perform validation first
 
 ## Ambiguities Before Implementation
 
-- Confirm whether `AgentTransferNotApproved(agentId)` should also include the owner and adapter addresses for richer debugging, or stay compact.
+- ~~Confirm whether `AgentTransferNotApproved(agentId)` should also include the owner and adapter addresses for richer debugging, or stay compact.~~ Resolved by deleting the error: OZ's `ERC721InsufficientApproval(operator, tokenId)` already carries the operator.
 - Confirm whether adding `bindExisting` to `IERC8004AdapterRegistration` is acceptable, or whether the team wants a new interface to avoid changing the existing registration interface.
 - Confirm that preserving the current "same external token may bind multiple agentIds" behavior is intended for `bindExisting`.

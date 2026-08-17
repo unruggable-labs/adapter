@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrimaryAgent.sol";
@@ -1136,12 +1137,14 @@ contract Adapter8004Test is Test {
         // bindExisting against Bob's agent.
         vm.prank(bob);
         uint256 agentId = registry.register("ipfs://bobs");
-        // Even if the registry had blanket approval, Alice does not own the agent.
+        // Even if the registry had blanket approval, Alice does not own the agent. The transfer
+        // itself rejects her: the adapter is authorized to move the token, but `from` is not the
+        // current owner, so ERC-721 reverts and names the real owner.
         vm.prank(bob);
         IERC721(address(registry)).setApprovalForAll(address(adapter), true);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAgentOwner.selector, agentId, bob));
+        vm.expectRevert(abi.encodeWithSelector(IERC721Errors.ERC721IncorrectOwner.selector, alice, agentId, bob));
         adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
     }
 
@@ -1162,12 +1165,15 @@ contract Adapter8004Test is Test {
         vm.prank(alice);
         uint256 agentId = registry.register("");
 
-        // No approve / setApprovalForAll call.
+        // No approve / setApprovalForAll call. ERC-721 `transferFrom` enforces this itself and
+        // names the operator that lacked approval.
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.AgentTransferNotApproved.selector, agentId));
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC721Errors.ERC721InsufficientApproval.selector, address(adapter), agentId)
+        );
         adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
 
-        // The proxy still does not own the agent: bindExisting reverted before transferFrom.
+        // The proxy still does not own the agent: the transfer reverted the whole call.
         assertEq(registry.ownerOf(agentId), alice);
     }
 

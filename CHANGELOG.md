@@ -58,6 +58,17 @@ seen neither. The changes with no other home are listed here.
   `MetadataBatchSet` event is removed**, which is breaking for any consumer
   subscribed to its `topic0`. The counterfactual mirror
   `CounterfactualMetadataBatchSet` is unaffected and still exists.
+- `bindExisting` no longer pre-checks agent ownership or adapter approval. The
+  `transferFrom` on the next line already enforced both, and the pre-checks read
+  `ownerOf` and `getApproved` from the same registry that does the enforcing, so
+  they bought no defence in depth. **The `NotAgentOwner` and
+  `AgentTransferNotApproved` errors are removed**, which is breaking for any
+  caller decoding them; the failures now surface as ERC-721
+  `ERC721IncorrectOwner(from, tokenId, previousOwner)` and
+  `ERC721InsufficientApproval(operator, tokenId)`, both of which name more of the
+  failing state. Who may call `bindExisting` is unchanged. Saves two to three
+  external calls, measured at roughly 2,700 gas on the per-token approval path
+  and 4,000 on the operator path.
 - Built with **solc 0.8.30** targeting the **prague** EVM, both pinned in
   `foundry.toml` rather than left to the toolchain default. The bytecode and
   therefore the implementation `EXTCODEHASH` differ from any earlier build even

@@ -160,8 +160,6 @@ contract Adapter8004 is
     /// Bindings are immutable and there is deliberately no revoke or unbind API: to move on, register
     /// a fresh ERC-8004 identity. One external token may back any number of agents.
     error AlreadyBound(uint256 agentId);
-    error NotAgentOwner(uint256 agentId, address owner);
-    error AgentTransferNotApproved(uint256 agentId);
 
     /// @notice Thrown when the current block timestamp is past a signed primary-agent `deadline`.
     error SignatureExpired(uint256 deadline);
@@ -295,39 +293,36 @@ contract Adapter8004 is
             revert AlreadyBound(agentId);
         }
 
-        // 3. Require the caller to own the ERC-8004 agent in the registry. An external-token
-        //    controller cannot pull a stranger's agent into the adapter just because the adapter
-        //    happens to be approved. `ownerOf` will surface its native revert for unknown ids.
-        address owner = identityRegistry.ownerOf(agentId);
-        if (owner != msg.sender) {
-            revert NotAgentOwner(agentId, owner);
-        }
-
-        // 4. Require external binding control under the existing authority model: single-owner
+        // 3. Require external binding control under the existing authority model: single-owner
         //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `CONTRACT`
         //    requires the bound contract itself, `CONTRACT_OWNABLE` requires its current owner or a
         //    delegate of that owner, and `CONTRACT_ADMIN` requires a `DEFAULT_ADMIN_ROLE` holder.
-        //    The authorized caller must also own the agent (step 3) and approve the adapter (step 5).
+        //    Agent ownership and adapter approval are enforced by the transfer in step 4.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
 
-        // 5. Require the adapter to have prior ERC-721 transfer approval for `agentId`, either
-        //    per-token through `approve` or operator-level through `setApprovalForAll`.
-        _requireAgentTransferApproval(agentId, msg.sender);
-
-        // 6. Transfer the ERC-8004 identity into the adapter before any adapter storage or
+        // 4. Transfer the ERC-8004 identity into the adapter before any adapter storage or
         //    registry-metadata writes. Any failure here reverts the whole transaction with no
         //    adapter state changes.
+        //
+        //    This call is also where the remaining two preconditions are enforced, rather than by
+        //    adapter pre-checks that would re-derive the same rules from the same registry. ERC-721
+        //    `transferFrom` reverts `ERC721InsufficientApproval` unless the adapter holds per-token
+        //    or operator approval, and `ERC721IncorrectOwner` unless the caller is the agent's
+        //    current owner, so an external-token controller still cannot pull a stranger's agent
+        //    into the adapter merely because the adapter happens to be approved. Both native errors
+        //    name more of the failing state than the adapter errors they replaced. Unknown ids
+        //    surface the registry's own `ERC721NonexistentToken`.
         IERC721(address(identityRegistry)).transferFrom(msg.sender, address(this), agentId);
 
-        // 7. Persist the immutable adapter binding for this agent.
+        // 5. Persist the immutable adapter binding for this agent.
         _bindings[agentId] = Binding({standard: standard, tokenContract: tokenContract, tokenId: tokenId});
 
-        // 8. Overwrite the canonical binding metadata to point at this adapter. Any pre-existing
+        // 6. Overwrite the canonical binding metadata to point at this adapter. Any pre-existing
         //    value at the reserved key (arbitrary user data or a value pointing at another adapter)
         //    is intentionally replaced once the adapter owns the identity.
         identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
 
-        // 9. Emit the existing binding event so indexers do not need a separate event family.
+        // 7. Emit the existing binding event so indexers do not need a separate event family.
         emit AgentBound(agentId, standard, tokenContract, tokenId, msg.sender);
     }
 
@@ -1036,17 +1031,6 @@ contract Adapter8004 is
         // 3. Revert when the caller no longer controls the bound token.
         if (!_hasBindingControl(binding, account)) {
             revert NotController(account, agentId);
-        }
-    }
-
-    /// @dev Reverts unless the adapter is approved to move `agentId` on the ERC-8004 registry,
-    /// either by per-token `approve(adapter, agentId)` or operator-level `setApprovalForAll(adapter, true)`
-    /// from `owner`. Casts the registry to `IERC721` locally to avoid widening the ERC-8004 metadata
-    /// interface.
-    function _requireAgentTransferApproval(uint256 agentId, address owner) internal view {
-        IERC721 registry721 = IERC721(address(identityRegistry));
-        if (registry721.getApproved(agentId) != address(this) && !registry721.isApprovedForAll(owner, address(this))) {
-            revert AgentTransferNotApproved(agentId);
         }
     }
 
