@@ -8,7 +8,7 @@ import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 
 /// @notice An AccessControl-style contract with no `owner()`, which is the case this standard exists
-/// for. It could otherwise only bind as plain `CONTRACT`.
+/// for. It could otherwise only bind as plain `ACCOUNT`.
 contract AdminBinder {
     Adapter8004 internal immutable ADAPTER;
     mapping(address => bool) internal admins;
@@ -148,7 +148,7 @@ contract Adapter8004ContractAdminTest is Test {
         AdminBinder binder = new AdminBinder(adapter, admin);
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForContract.selector, address(binder), 1));
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(binder), 1));
         adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(binder), 1, "ipfs://x");
     }
 
@@ -158,7 +158,7 @@ contract Adapter8004ContractAdminTest is Test {
         AdminBinder binder = new AdminBinder(adapter, admin);
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForContract.selector, address(binder), 3));
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(binder), 3));
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(binder), 3, "ipfs://x");
     }
 

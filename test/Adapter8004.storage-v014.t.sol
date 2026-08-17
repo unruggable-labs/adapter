@@ -133,7 +133,7 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(adapter.primaryAgentNonces(account), 11);
     }
 
-    /// @dev Appending `CONTRACT` and `CONTRACT_OWNABLE` to `TokenStandard` must not renumber the values
+    /// @dev Appending `ACCOUNT` and `CONTRACT_OWNABLE` to `TokenStandard` must not renumber the values
     /// already persisted in live `Binding` rows. Pins `ERC6909F == 4` as the stored byte on both sides
     /// of the upgrade and checks the upgraded implementation still routes it down the single-owner path.
     function testAppendedContractStandardDoesNotRenumberStoredTokenStandards() external {
@@ -152,7 +152,7 @@ contract Adapter8004StorageV014Test is Test {
 
         assertEq(uint8(uint256(vm.load(proxy, bindingSlot))), 4, "post-upgrade stored standard byte");
         assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909F), 4);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT), 5);
+        assertEq(uint8(IERCAgentBindings.TokenStandard.ACCOUNT), 5);
         assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE), 6);
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(7);

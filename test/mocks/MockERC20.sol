@@ -8,7 +8,7 @@ import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
-/// @dev Concrete token fixture for `TokenStandard.CONTRACT`: a minimal ERC-20 that binds itself as a
+/// @dev Concrete token fixture for `TokenStandard.ACCOUNT`: a minimal ERC-20 that binds itself as a
 /// contract. It has no `ownerOf` and no `balanceOf(address,uint256)`, so any adapter probe for
 /// per-token ownership or per-id balance would have to hit a function it does not have, and its
 /// ordinary `balanceOf(address)` gives holders no authority. The adapter-driving helpers below run
@@ -67,12 +67,12 @@ contract MockERC20 {
     // ---------------------------------------------------------------
 
     function register(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent");
+        return ADAPTER.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
     function registerAndSetPrimary(uint256 tokenId) external returns (uint256) {
         return ADAPTER.registerAndSetPrimary(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent"
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent"
         );
     }
 
@@ -81,13 +81,13 @@ contract MockERC20 {
         returns (uint256)
     {
         return ADAPTER.register(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent", metadata
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent", metadata
         );
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
         return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://erc20-agent"
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent"
         );
     }
 
@@ -97,19 +97,19 @@ contract MockERC20 {
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external returns (bytes32) {
         return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, agentURI, metadata
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, agentURI, metadata
         );
     }
 
     function counterfactualSetAgentURI(uint256 tokenId, string calldata newURI) external {
-        ADAPTER.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, newURI);
+        ADAPTER.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, newURI);
     }
 
     function counterfactualSetMetadata(uint256 tokenId, string calldata metadataKey, bytes calldata metadataValue)
         external
     {
         ADAPTER.counterfactualSetMetadata(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, metadataKey, metadataValue
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue
         );
     }
 
@@ -117,18 +117,16 @@ contract MockERC20 {
         external
     {
         ADAPTER.counterfactualSetMetadataBatch(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, metadata
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, metadata
         );
     }
 
     function counterfactualSetAgentWallet(uint256 tokenId, address newWallet) external {
-        ADAPTER.counterfactualSetAgentWallet(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, newWallet
-        );
+        ADAPTER.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, newWallet);
     }
 
     function counterfactualUnsetAgentWallet(uint256 tokenId) external {
-        ADAPTER.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId);
+        ADAPTER.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId);
     }
 
     function prepareExistingAgent(MockIdentityRegistry registry) external returns (uint256 agentId) {
@@ -137,7 +135,7 @@ contract MockERC20 {
     }
 
     function bindExisting(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId);
+        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId);
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

@@ -8,7 +8,7 @@ import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
 /// @dev A binder that is not a token at all: no ERC-20/721/1155/6909 interface, no `ownerOf`, no
-/// `balanceOf`, no supply, no holders, no `owner()`. It exists to show that `TokenStandard.CONTRACT`
+/// `balanceOf`, no supply, no holders, no `owner()`. It exists to show that `TokenStandard.ACCOUNT`
 /// binds a contract identity rather than a token, so a plain service contract can hold an agent with
 /// nothing for the adapter to probe. Its only state is unrelated bookkeeping.
 contract MockContractBinder {
@@ -30,12 +30,12 @@ contract MockContractBinder {
 
     function register(uint256 tokenId) external returns (uint256) {
         return
-            ADAPTER.register(IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://contract-agent");
+            ADAPTER.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent");
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
         return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId, "ipfs://contract-agent"
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent"
         );
     }
 
@@ -45,7 +45,7 @@ contract MockContractBinder {
     }
 
     function bindExisting(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(this), tokenId);
+        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId);
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

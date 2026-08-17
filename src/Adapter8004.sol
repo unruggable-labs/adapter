@@ -135,14 +135,14 @@ contract Adapter8004 is
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
     /// through `_hasBindingControl`.
     error InvalidTokenContractIsRegistry();
-    /// @notice Thrown by any `CONTRACT` or `CONTRACT_OWNABLE` adapter operation called with a nonzero
+    /// @notice Thrown by any `ACCOUNT`, `CONTRACT_OWNABLE` or `CONTRACT_ADMIN` operation called with a nonzero
     /// `tokenId`. This covers registration, `bindExisting` and the emit-only counterfactual calls
-    /// alike, since all of them pass through the same authority choke points. A contract-level binding names the contract
+    /// alike, since all of them pass through the same authority choke points. An account-level binding names the address
     /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
     /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
     /// its `registrationHash`, and any pointer derived from it can never disagree with the id the
     /// caller submitted.
-    error NonZeroTokenIdForContract(address tokenContract, uint256 tokenId);
+    error NonZeroTokenIdForAccount(address tokenContract, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
     /// @notice Thrown when `setPrimaryAgentFor` / `clearPrimaryAgentFor` is called by an address that
@@ -286,7 +286,7 @@ contract Adapter8004 is
     {
         // 1. Reject an unusable external token contract address (matches `register` taxonomy) and
         //    reject the registry itself, which would lock the agent permanently post-bind.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Reject an already-bound agent so adapter bindings remain immutable post-bind.
         if (_bindings[agentId].tokenContract != address(0)) {
@@ -294,8 +294,8 @@ contract Adapter8004 is
         }
 
         // 3. Require external binding control under the existing authority model: single-owner
-        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `CONTRACT`
-        //    requires the bound contract itself, `CONTRACT_OWNABLE` requires its current owner or a
+        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `ACCOUNT`
+        //    requires the named address itself, `CONTRACT_OWNABLE` requires its current owner or a
         //    delegate of that owner, and `CONTRACT_ADMIN` requires a `DEFAULT_ADMIN_ROLE` holder.
         //    Agent ownership and adapter approval are enforced by the transfer in step 4.
         _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
@@ -335,7 +335,7 @@ contract Adapter8004 is
     ) private returns (uint256 agentId) {
         // 1. Reject an unusable external token contract address, and reject the registry itself
         //    (binding to the registry would lock the agent permanently post-register).
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Confirm the caller currently controls the token being bound, or is the directly
         //    calling single-owner collection while the id has no current owner.
@@ -512,7 +512,7 @@ contract Adapter8004 is
     /// have an owner that can be identified and can change, so each resolves that owner live and
     /// accepts either the owner acting directly or a delegate.xyz delegate of that owner. The
     /// remaining standards have no such owner: `ERC1155` and `ERC6909` grant control to any positive
-    /// balance, and `CONTRACT` grants it to the bound contract alone.
+    /// balance, and `ACCOUNT` grants it to the named address alone.
     ///
     /// Delegation carries a consequence worth knowing before relying on it. A wallet holding a
     /// blanket delegate.xyz delegation from the owner, one that names no rights at all, is accepted
@@ -608,7 +608,7 @@ contract Adapter8004 is
     ) private returns (bytes32 computedHash) {
         // 1. Reject an unusable external token contract address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Confirm the caller is a current controller, or the directly calling single-owner token
         //    contract while `tokenId` has no current owner.
@@ -640,7 +640,7 @@ contract Adapter8004 is
     ) external nonReentrant {
         // 1. Reject an unusable external token contract address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
@@ -669,7 +669,7 @@ contract Adapter8004 is
     ) external nonReentrant {
         // 1. Reject an unusable external token contract address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
@@ -706,7 +706,7 @@ contract Adapter8004 is
     ) external nonReentrant {
         // 1. Reject an unusable external token contract address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
@@ -737,7 +737,7 @@ contract Adapter8004 is
     ) external nonReentrant {
         // 1. Reject an unusable external token contract address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
@@ -763,7 +763,7 @@ contract Adapter8004 is
     {
         // 1. Reject an unusable external token contract address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidTokenContract(tokenContract);
+        _requireValidBoundAddress(standard, tokenContract);
 
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
@@ -1005,16 +1005,39 @@ contract Adapter8004 is
         newImplementation;
     }
 
-    /// @dev Reject an address without deployed code and the ERC-8004 identity registry itself as
-    /// `tokenContract`. Runtime code is required so an EOA cannot masquerade as an ownerless
-    /// collection. Calls from a token contract constructor are unsupported because its runtime code
-    /// is not installed yet. Binding the registry would let `_hasBindingControl` resolve to the
-    /// adapter post-bind, permanently locking the agent away from any external controller.
-    function _requireValidTokenContract(address tokenContract) internal view {
-        if (tokenContract.code.length == 0) {
+    /// @dev Validates the bound address for a given standard. Two rules, with different scopes.
+    ///
+    /// The runtime-code requirement applies to every standard except `ACCOUNT`. The seven that need
+    /// it all call into the bound address: `ownerOf` or `balanceOf` for the token standards,
+    /// `owner()` for `CONTRACT_OWNABLE`, and `hasRole` for `CONTRACT_ADMIN`. Every one of those
+    /// probes already fails closed against a code-less address, because a staticcall to an address
+    /// with no code succeeds and returns nothing, and each probe rejects a response that is not
+    /// exactly 32 bytes. So this check produces a precise error early rather than standing as the
+    /// only thing preventing an EOA from masquerading as a collection. It also means calls from a
+    /// token contract constructor stay unsupported, since runtime code is not installed yet.
+    ///
+    /// `ACCOUNT` is exempt because it never calls the bound address. Its authority is the single
+    /// comparison `account == boundAddress`, which is well defined whether or not the address has
+    /// code, so there is nothing for a code test to protect. Requiring code there would not even
+    /// select for EOAs: under EIP-7702 a delegated EOA carries a 23-byte designator and passes,
+    /// while the same address before or after that delegation does not.
+    ///
+    /// The zero address is rejected under every standard, `ACCOUNT` included. `_bindings` uses a
+    /// zero `tokenContract` as its unbound sentinel, so a zero binding would be indistinguishable
+    /// from no binding and would make `bindingOf` and `UnknownAgent` lie. Nothing could authorize it
+    /// in any case, since `msg.sender` is never the zero address.
+    ///
+    /// The registry rejection applies to every standard. Binding the registry would let
+    /// `_hasBindingControl` resolve to the adapter post-bind, permanently locking the agent away
+    /// from any external controller.
+    function _requireValidBoundAddress(TokenStandard standard, address boundAddress) internal view {
+        if (boundAddress == address(0)) {
             revert InvalidTokenContract();
         }
-        if (tokenContract == address(identityRegistry)) {
+        if (standard != TokenStandard.ACCOUNT && boundAddress.code.length == 0) {
+            revert InvalidTokenContract();
+        }
+        if (boundAddress == address(identityRegistry)) {
             revert InvalidTokenContractIsRegistry();
         }
     }
@@ -1038,7 +1061,7 @@ contract Adapter8004 is
         internal
         view
     {
-        // 1. Pin contract-level bindings to the canonical id 0 in the same call that decides control,
+        // 1. Pin account-level bindings to the canonical id 0 in the same call that decides control,
         //    so no write path can reach storage or an event with a nonzero contract-binding id.
         _requireCanonicalTokenId(standard, tokenContract, tokenId);
 
@@ -1060,14 +1083,14 @@ contract Adapter8004 is
     /// An external owner or governance address may still drive this by calling an entry point on the
     /// bound contract that makes the outbound adapter call. `delegatecall` into this contract is
     /// unsupported and dangerous: it is a UUPS implementation with its own storage layout.
-    /// For a `CONTRACT` binding that also means the permanent authority is worth nothing without a
+    /// For a `ACCOUNT` binding that also means the permanent authority is worth nothing without a
     /// repeatable outbound path: a contract that cannot call out cannot bind at all (constructor
     /// calls are rejected), and one with a single post-deployment hook binds once and then freezes.
     function _requireTokenAuthority(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
         internal
         view
     {
-        // 1. Pin contract-level bindings to the canonical id 0 before any authority branch is taken,
+        // 1. Pin account-level bindings to the canonical id 0 before any authority branch is taken,
         //    so the ownerless window cannot be entered and no emit-only path can escape the check.
         _requireCanonicalTokenId(standard, tokenContract, tokenId);
 
@@ -1082,12 +1105,12 @@ contract Adapter8004 is
     /// @dev The three contract standards name the contract itself rather than a token within it, so
     /// each has exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
     /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
-    /// a contract-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
+    /// an account-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
     /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
     /// id they submitted. No-op for every other standard.
     function _requireCanonicalTokenId(TokenStandard standard, address tokenContract, uint256 tokenId) internal pure {
-        if (_isContractStandard(standard) && tokenId != 0) {
-            revert NonZeroTokenIdForContract(tokenContract, tokenId);
+        if (_isAccountStandard(standard) && tokenId != 0) {
+            revert NonZeroTokenIdForAccount(tokenContract, tokenId);
         }
     }
 
@@ -1123,7 +1146,7 @@ contract Adapter8004 is
         view
         returns (bool)
     {
-        // 1. A contract-level binding names `tokenContract` itself rather than a token within it, so
+        // 1. An account-level binding names `tokenContract` itself rather than a token within it, so
         //    the bound contract is the controller and nobody else is. There is no per-token owner or
         //    holder to resolve, and the adapter asks the contract nothing: `ownerOf` and both
         //    `balanceOf` shapes are never probed on this branch, and `tokenId` is not consulted (it is
@@ -1142,20 +1165,20 @@ contract Adapter8004 is
         //    revoke without the same executor it used to delegate, so a single governance action
         //    could grant authority that nobody can later withdraw. Bind `CONTRACT_OWNABLE` instead
         //    if delegation is wanted, where the delegator is the owner account.
-        //    (An ERC-20 binding its own contract-level identity through `CONTRACT` is the motivating
+        //    (An ERC-20 binding its own contract-level identity through `ACCOUNT` is the motivating
         //    example, but nothing here is specific to tokens.)
-        if (standard == TokenStandard.CONTRACT) {
+        if (standard == TokenStandard.ACCOUNT) {
             return account == tokenContract;
         }
 
         // 2. `CONTRACT_OWNABLE` is the fourth member of the owner-and-delegate pattern described at
         //    step 4. It resolves the contract's live `owner()` and accepts either that owner acting
         //    directly or a delegate of that owner. The bound contract itself has no authority here,
-        //    which is what separates this standard from `CONTRACT`. Self-authority would be an
+        //    which is what separates this standard from `ACCOUNT`. Self-authority would be an
         //    escalation route around the owner, because any contract with a generic call mechanism,
         //    an upgradeable implementation or an inducible callback could seize its own identity
         //    without the owner acting. A contract that wants to control its own identity should bind
-        //    as `CONTRACT`, which is step 1.
+        //    as `ACCOUNT`, which is step 1.
         //    The owner probe is a fail-closed STATICCALL, so a revert, a wrong-length response, dirty
         //    upper bits or a zero owner resolves to no owner and grants nobody. That is why
         //    `renounceOwnership()` permanently freezes a `CONTRACT_OWNABLE` identity: with no owner
@@ -1224,8 +1247,8 @@ contract Adapter8004 is
 
     /// @dev The three standards that name a contract rather than a token within it. They share the
     /// canonical `tokenId == 0` coordinate and none of them is a single-owner token standard.
-    function _isContractStandard(TokenStandard standard) internal pure returns (bool) {
-        return standard == TokenStandard.CONTRACT || standard == TokenStandard.CONTRACT_OWNABLE
+    function _isAccountStandard(TokenStandard standard) internal pure returns (bool) {
+        return standard == TokenStandard.ACCOUNT || standard == TokenStandard.CONTRACT_OWNABLE
             || standard == TokenStandard.CONTRACT_ADMIN;
     }
 

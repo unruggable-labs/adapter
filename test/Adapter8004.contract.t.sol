@@ -180,11 +180,11 @@ contract Adapter8004ContractBindingTest is Test {
 
     function testContractRegistersItsOwnAgent() external {
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit Adapter8004.AgentBound(0, IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, address(token));
+        emit Adapter8004.AgentBound(0, IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, address(token));
         uint256 agentId = token.register(0);
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(binding.tokenContract, address(token));
         assertEq(binding.tokenId, 0);
 
@@ -214,7 +214,7 @@ contract Adapter8004ContractBindingTest is Test {
         uint256 agentId = binder.register(0);
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(binding.tokenContract, address(binder));
         assertEq(binding.tokenId, 0);
         assertEq(registry.ownerOf(agentId), address(adapter));
@@ -226,7 +226,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         _expectNotController(stranger);
         vm.prank(stranger);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(binder), 0, "ipfs://stranger");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0, "ipfs://stranger");
 
         // Permanent: activity on the binder changes nothing, and it keeps full control afterwards.
         binder.doWork();
@@ -252,7 +252,7 @@ contract Adapter8004ContractBindingTest is Test {
         uint256 agentId = token.registerAndSetPrimary(0);
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(binding.tokenContract, address(token));
         assertEq(binding.tokenId, 0);
         assertEq(registry.ownerOf(agentId), address(adapter));
@@ -268,32 +268,32 @@ contract Adapter8004ContractBindingTest is Test {
     function testRegisterAndSetPrimaryRejectsEveryCallerThatIsNotTheBoundContract() external {
         _expectNotController(holder);
         vm.prank(holder);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://holder");
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://holder");
         assertEq(adapter.primaryAgentOf(holder), adapter.PRIMARY_AGENT_UNSET());
 
         _expectNotController(admin);
         vm.prank(admin);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://admin");
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://admin");
         assertEq(adapter.primaryAgentOf(admin), adapter.PRIMARY_AGENT_UNSET());
 
         _expectNotController(stranger);
         vm.prank(stranger);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://stranger");
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://stranger");
         assertEq(adapter.primaryAgentOf(stranger), adapter.PRIMARY_AGENT_UNSET());
     }
 
     function testHolderAdminAndStrangerCannotRegisterAContractBinding() external {
         _expectNotController(holder);
         vm.prank(holder);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://holder");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://holder");
 
         _expectNotController(admin);
         vm.prank(admin);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://admin");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://admin");
 
         _expectNotController(stranger);
         vm.prank(stranger);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://stranger");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://stranger");
     }
 
     function testContractPathNeverProbesOwnerOfOrEitherBalanceOf() external {
@@ -499,7 +499,7 @@ contract Adapter8004ContractBindingTest is Test {
             address(token),
             0,
             bytes32(0),
-            IERCAgentBindings.TokenStandard.CONTRACT,
+            IERCAgentBindings.TokenStandard.ACCOUNT,
             "ipfs://erc20-agent",
             empty,
             address(token)
@@ -513,7 +513,7 @@ contract Adapter8004ContractBindingTest is Test {
             address(token),
             0,
             bytes32(0),
-            IERCAgentBindings.TokenStandard.CONTRACT,
+            IERCAgentBindings.TokenStandard.ACCOUNT,
             "ipfs://full",
             metadata,
             address(token)
@@ -569,7 +569,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         assertEq(registry.ownerOf(agentId), address(adapter));
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(binding.tokenContract, address(token));
         assertEq(binding.tokenId, 0);
         assertEq(registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY()), abi.encodePacked(address(adapter)));
@@ -583,7 +583,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         _expectNotController(stranger);
         vm.prank(stranger);
-        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0);
+        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
     }
 
     // -----------------------------------------------------------------
@@ -630,7 +630,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         _expectNonZeroTokenId(address(token), type(uint256).max);
         adapter.register(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(token), type(uint256).max, "ipfs://non-canonical"
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(token), type(uint256).max, "ipfs://non-canonical"
         );
 
         _expectNonZeroTokenId(address(token), 7);
@@ -639,7 +639,7 @@ contract Adapter8004ContractBindingTest is Test {
         // The id check runs before the control check, so it is not reachable-around by a stranger.
         _expectNonZeroTokenId(address(token), 1);
         vm.prank(stranger);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 1, "ipfs://stranger");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1, "ipfs://stranger");
 
         // Same rule for a binder that is not a token.
         MockContractBinder binder = new MockContractBinder(adapter);
@@ -739,7 +739,7 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(
             keccak256(logs[0].data),
             keccak256(
-                abi.encode(bytes32(0), IERCAgentBindings.TokenStandard.CONTRACT, "ipfs://raw", metadata, address(token))
+                abi.encode(bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://raw", metadata, address(token))
             )
         );
     }
@@ -846,7 +846,7 @@ contract Adapter8004ContractBindingTest is Test {
             keccak256(logs[1].data),
             keccak256(
                 abi.encode(
-                    bytes32(0), IERCAgentBindings.TokenStandard.CONTRACT, "ipfs://erc20-agent", empty, address(hybrid)
+                    bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://erc20-agent", empty, address(hybrid)
                 )
             ),
             "log 1 is the superseded contract-self claim"
@@ -865,7 +865,7 @@ contract Adapter8004ContractBindingTest is Test {
             "log 2 is the winning ownable-contract claim"
         );
         assertEq(_word(logs[0].data, 1), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(_word(logs[1].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(_word(logs[1].data, 1), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(_word(logs[2].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE));
     }
 
@@ -884,7 +884,7 @@ contract Adapter8004ContractBindingTest is Test {
         uint256 secondAgentId = token.registerWithMetadata(0, _metadata("role", "treasury"));
         assertTrue(secondAgentId != firstAgentId);
         assertEq(adapter.bindingOf(secondAgentId).tokenContract, address(token));
-        assertEq(uint8(adapter.bindingOf(secondAgentId).standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(uint8(adapter.bindingOf(secondAgentId).standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(registry.getMetadata(secondAgentId, "role"), bytes("treasury"));
         assertEq(registry.tokenURI(secondAgentId), "ipfs://erc20-agent");
         assertEq(
@@ -906,7 +906,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         // The original binding is byte-for-byte what it was at registration.
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(firstAgentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.CONTRACT));
+        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(binding.tokenContract, address(token));
         assertEq(binding.tokenId, 0);
     }
@@ -917,23 +917,21 @@ contract Adapter8004ContractBindingTest is Test {
 
     function testIdentityRegistryCannotBeBoundAsAContract() external {
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 0, "ipfs://registry");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 0, "ipfs://registry");
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
-        adapter.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 0, "ipfs://registry"
-        );
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
         // The registry rejection precedes the canonical-id check, matching the other standards.
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(registry), 1, "ipfs://registry");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 1, "ipfs://registry");
 
         // A codeless address is still the generic rejection.
         vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
-        adapter.register(IERCAgentBindings.TokenStandard.CONTRACT, address(0), 0, "ipfs://zero");
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://zero");
     }
 
     // -----------------------------------------------------------------
@@ -945,33 +943,33 @@ contract Adapter8004ContractBindingTest is Test {
 
         _expectNotController(account);
         vm.prank(account);
-        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://denied");
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://denied");
 
         _expectNotController(account);
         vm.prank(account);
         adapter.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://denied", metadata
+            IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://denied", metadata
         );
 
         _expectNotController(account);
         vm.prank(account);
-        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "ipfs://denied");
+        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://denied");
 
         _expectNotController(account);
         vm.prank(account);
-        adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, "k", bytes("v"));
+        adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "k", bytes("v"));
 
         _expectNotController(account);
         vm.prank(account);
-        adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, metadata);
+        adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, metadata);
 
         _expectNotController(account);
         vm.prank(account);
-        adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0, wallet);
+        adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, wallet);
 
         _expectNotController(account);
         vm.prank(account);
-        adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.CONTRACT, address(token), 0);
+        adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
     }
 
     function _findLog(Vm.Log[] memory logs, bytes32 topic0) internal pure returns (Vm.Log memory found) {
@@ -1027,7 +1025,7 @@ contract Adapter8004ContractBindingTest is Test {
     }
 
     function _expectNonZeroTokenId(address tokenContract, uint256 tokenId) internal {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForContract.selector, tokenContract, tokenId));
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, tokenContract, tokenId));
     }
 
     function _signAgentWallet(uint256 agentId, address newWallet, address owner, uint256 deadline)

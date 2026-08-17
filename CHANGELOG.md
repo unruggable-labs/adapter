@@ -58,6 +58,41 @@ seen neither. The changes with no other home are listed here.
   `MetadataBatchSet` event is removed**, which is breaking for any consumer
   subscribed to its `topic0`. The counterfactual mirror
   `CounterfactualMetadataBatchSet` is unaffected and still exists.
+- **`CONTRACT` (value `5`) is renamed `ACCOUNT` and now accepts any address, with or
+  without runtime code.** The enum position is unchanged, so no stored binding and no
+  indexed history moves, and because enum member names do not appear in event
+  signatures this changes no `topic0`. The standard is excluded from the
+  counterfactual preimage, so no `registrationHash` changes either.
+
+  The motivation is a defect rather than new permissiveness. There was exactly one
+  code test on the register path, and `ACCOUNT` authority is a bare
+  `msg.sender == tokenContract`. Under EIP-7702 a delegated externally owned account
+  carries a 23-byte designator, which cleared that test, and an ordinary transaction
+  from the same key cleared the authority check. So the shipped rule was never
+  "accounts are excluded", it was "accounts are excluded unless a 7702 delegation
+  happens to be installed at the moment of the call", which is arbitrary, undocumented,
+  and flips as wallets configure themselves. Verified against the code before the
+  change and now pinned by a test. The relaxation removes an accidental and unstable
+  exclusion and makes the rule sayable: `ACCOUNT` names an address, and how that
+  address is implemented is not the adapter's concern.
+
+  The code test survives for every other standard, which all call into the bound
+  address and so genuinely need it. It is a precise early error rather than the only
+  gate: each probe already fails closed against a code-less address. The zero address
+  is now rejected explicitly under every standard, `ACCOUNT` included, because
+  `_bindings` uses a zero `tokenContract` as its unbound sentinel. The
+  registry-address rejection is unchanged for every standard.
+
+  **The consequence to document for integrators:** an address bound as `ACCOUNT` can
+  install a 7702 delegation afterwards, which permanently widens who can act for that
+  identity, and a binding is immutable so it cannot be undone. This is the same
+  accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership. Counterfactual
+  claims are less exposed, being emit-only and last-event-wins.
+
+  `NonZeroTokenIdForContract` is renamed `NonZeroTokenIdForAccount`, which changes that
+  error's selector. Free only because value `5` has never been deployed, confirmed by
+  reading the EIP-1967 implementation slots on Mainnet, Base and Sepolia and probing
+  each live implementation for the selector, which is absent from all three.
 - `bindExisting` no longer pre-checks agent ownership or adapter approval. The
   `transferFrom` on the next line already enforced both, and the pre-checks read
   `ownerOf` and `getApproved` from the same registry that does the enforcing, so
@@ -120,14 +155,14 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 
 ### Added
 
-- Contract bindings. `CONTRACT` is appended to `TokenStandard` as value `5`; values `0`-`4` are
+- Contract bindings. `ACCOUNT` is appended to `TokenStandard` as value `5`; values `0`-`4` are
   unchanged, so stored bindings and indexed history keep their meaning. Values `0`-`4` name a token
-  within a contract; `CONTRACT` names any deployed contract itself, token or not. An ERC-20 claiming
-  its own identity is the motivating example and uses `CONTRACT` like any other contract. There is
+  within a contract; `ACCOUNT` names any address itself, token or not. An ERC-20 claiming
+  its own identity is the motivating example and uses `ACCOUNT` like any other contract. There is
   no ERC-20-specific standard value. (ERC-20Agent is a separate metadata profile layered on top, not a
   binding standard.)
-  - `tokenId` MUST be `0`: a contract-level binding has exactly one canonical coordinate. Any other
-    id reverts the new `NonZeroTokenIdForContract(tokenContract, tokenId)` error rather than being
+  - `tokenId` MUST be `0`: an account-level binding has exactly one canonical coordinate. Any other
+    id reverts the new `NonZeroTokenIdForAccount(tokenContract, tokenId)` error rather than being
     coerced, enforced at both authority choke points, so it covers `register`,
     `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
   - The controller is the bound `tokenContract` itself and nothing else. No holder, delegate,
@@ -135,8 +170,8 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     either `balanceOf` shape; control is `msg.sender == tokenContract`, so a contract with no token
     interface at all binds exactly like one that has one.
   - Unlike the transient ERC-721/ERC-1155F/ERC-6909F direct-collection window, which closes on mint
-    and can reopen on burn, a contract-level binding has no token whose ownership could change hands,
-    so its authority window never closes. `CONTRACT` is deliberately excluded from the single-owner
+    and can reopen on burn, an account-level binding has no token whose ownership could change hands,
+    so its authority window never closes. `ACCOUNT` is deliberately excluded from the single-owner
     set: no ownerless probe, no delegate.xyz route.
   - The adapter's immediate EVM caller must be `tokenContract`. A router, forwarder, or multicall
     contract that calls the adapter itself fails, because the adapter sees that contract as
@@ -164,11 +199,11 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     without the owner acting, while the name of the standard promises the owner controls it.
   - Two consequences follow. Registration runs the same authority check, so a contract cannot create
     its own binding and the owner must call `register`; a contract that self-registers from a
-    constructor or init hook needs a two-step deploy or should bind as `CONTRACT`. And because the
+    constructor or init hook needs a two-step deploy or should bind as `ACCOUNT`. And because the
     `owner()` probe fails closed with no self-authority to fall back on, `renounceOwnership()`
     permanently freezes the identity. That is intended.
   - This is an explicit opt-in chosen at bind time, and, like the rest of the `Binding`, the choice
-    is immutable. `CONTRACT` (value `5`) semantics are entirely unchanged: binding as `5` still means
+    is immutable. `ACCOUNT` (value `5`) semantics are entirely unchanged: binding as `5` still means
     no `owner()`, role, or balance route in, and the adapter still makes zero external authority
     calls on that branch. A contract that wants owner-driven management opts in by binding as `6`
     instead of `5`.
@@ -187,11 +222,11 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     unbind API.
     Ownership transfer moves who may write; it never rebinds or unbinds an agent.
   - `tokenId` MUST be `0` for value `6` as well, enforced at both authority choke points and
-    reverting with the same `NonZeroTokenIdForContract(tokenContract, tokenId)` error. Value `6`
+    reverting with the same `NonZeroTokenIdForAccount(tokenContract, tokenId)` error. Value `6`
     also stays outside the single-owner set, so it gets no ownerless-collection window. It does have
     a delegate.xyz route, added later in this release train and described above.
   - `registrationHash` is unchanged and the standard remains excluded from it, so a contract at
-    `(X, 0)` claiming as ERC-721 token `#0`, `CONTRACT`, and `CONTRACT_OWNABLE` aliases all three
+    `(X, 0)` claiming as ERC-721 token `#0`, `ACCOUNT`, and `CONTRACT_OWNABLE` aliases all three
     onto one identity with one current claim, resolved by the latest
     `CounterfactualAgentRegistered.standard` in log order. `AgentBound` and the counterfactual event
     layouts are unchanged; `6` is only a new value in the existing `uint8` field.
@@ -215,7 +250,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     the registry about, and a role is a membership predicate that many addresses can satisfy and none
     can enumerate, so there is no well-defined delegator to name.
   - `tokenId` MUST be `0`, enforced at both authority choke points with the same
-    `NonZeroTokenIdForContract(tokenContract, tokenId)` error. Value `7` stays outside the
+    `NonZeroTokenIdForAccount(tokenContract, tokenId)` error. Value `7` stays outside the
     single-owner set, so it gets no ownerless-collection window. `registrationHash` is unchanged and
     still excludes the standard, and `7` is only a new value in the existing `uint8` field, so no
     event signature or topic moves.
@@ -262,9 +297,9 @@ Contract bindings add no public selector, storage slot, or `@custom:version` bum
 `registrationHash`, the counterfactual event schema, and `version == 1` are unchanged;
 `AgentBound` keeps its layout with `standard` indexed, and `CounterfactualAgentRegistered`, the
 only counterfactual event carrying a standard, keeps its layout with `standard` non-indexed.
-`CONTRACT` and `CONTRACT_OWNABLE` are only new values in the existing `uint8` field. Because the
+`ACCOUNT` and `CONTRACT_OWNABLE` are only new values in the existing `uint8` field. Because the
 standard is excluded from `registrationHash`, any two standards claiming the same `(tokenContract,
-tokenId)` alias onto one hash; a contract at `(X, 0)` claiming its ERC-721 token `#0`, `CONTRACT`,
+tokenId)` alias onto one hash; a contract at `(X, 0)` claiming its ERC-721 token `#0`, `ACCOUNT`,
 and `CONTRACT_OWNABLE` is the worked example. That is accepted and documented. Hashing the standard would break
 every existing hash. The claims are deliberately one identity with one current claim, and indexers
 read the latest `CounterfactualAgentRegistered.standard` in log order to see which claim wins.

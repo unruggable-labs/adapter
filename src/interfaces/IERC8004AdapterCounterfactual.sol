@@ -31,20 +31,40 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// the existing schema and carry `emitter = tokenContract`; later owner/delegate events overwrite
 /// them by normal log ordering.
 ///
-/// `CONTRACT` (`TokenStandard` value 5; values 0-4 unchanged) uses the same unsigned
-/// functions under a different authority. It names a deployed contract itself rather than a token
-/// within it, so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForContract`. The bound
-/// contract itself is the only authorized emitter: the adapter's immediate EVM caller must be
-/// `tokenContract`. A router, forwarder, or multicall that calls the adapter itself fails, since the
-/// adapter sees that contract as `msg.sender`; an external owner or governance address may instead
-/// call an entry point on the bound contract that makes the outbound adapter call. `delegatecall`
-/// into the adapter is unsupported and dangerous, because it is a UUPS implementation with its own
-/// storage layout rather than a library. Holders, an optional `owner()`, and the adapter admin have
-/// no authority, and the adapter probes neither `ownerOf` nor either `balanceOf` shape. The
-/// transient single-owner window above closes on mint and can reopen on burn, whereas a
-/// contract-level binding has no token whose ownership could change hands, so its authority window
-/// never closes. An ERC-20 claiming its own contract-level identity through `CONTRACT` is the
-/// motivating example, and there is no ERC-20-specific standard value.
+/// `ACCOUNT` (`TokenStandard` value 5; values 0-4 unchanged) uses the same unsigned
+/// functions under a different authority. It names an address itself rather than a token within it,
+/// so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForAccount`. The named address is
+/// the only authorized emitter: the adapter's immediate EVM caller must be `tokenContract`. A
+/// router, forwarder, or multicall that calls the adapter itself fails, since the adapter sees that
+/// contract as `msg.sender`; an external owner or governance address may instead call an entry point
+/// on the bound contract that makes the outbound adapter call. `delegatecall` into the adapter is
+/// unsupported and dangerous, because it is a UUPS implementation with its own storage layout rather
+/// than a library. Holders, an optional `owner()`, and the adapter admin have no authority, and the
+/// adapter probes neither `ownerOf` nor either `balanceOf` shape. The transient single-owner window
+/// above closes on mint and can reopen on burn, whereas an account-level binding has no token whose
+/// ownership could change hands, so its authority window never closes. An ERC-20 claiming its own
+/// contract-level identity through `ACCOUNT` is the motivating example, and there is no
+/// ERC-20-specific standard value.
+///
+/// **`ACCOUNT` accepts any address, with or without runtime code, and applies no code test at all.**
+/// It is the only standard that does not, and it can afford not to because it never calls the
+/// address it names: authority is the single comparison `msg.sender == tokenContract`, which is well
+/// defined either way. The zero address and the identity registry are still rejected. A plain
+/// externally-owned account and a deployed contract are therefore equally valid subjects, which is
+/// the point of the standard.
+///
+/// Under EIP-7702 an externally-owned account can carry code, so `msg.sender == tokenContract` is
+/// not proof of key possession. Authority means, exactly, whoever can cause a call to originate from
+/// that address. For an undelegated account that is the key holder. For a delegated one it is the
+/// key holder plus anyone who can drive the delegate to make an outbound call, which for the common
+/// batch-executor delegate is a broad set. **An address bound as `ACCOUNT` can install a 7702
+/// delegation afterwards, and doing so permanently widens who can act for that identity.** Revoking
+/// the delegation narrows it again, but the binding is immutable and cannot be undone. This is the
+/// same accepted shape as a `CONTRACT_OWNABLE` binding whose contract renounces ownership: an action
+/// outside the adapter, taken by the party the standard trusts, that permanently changes who can
+/// authorize and that the adapter will not second-guess. Counterfactual claims are less exposed than
+/// bindings, because they are emit-only and last-event-wins, so a key holder who revokes a
+/// delegation can re-emit and their claim wins again.
 ///
 /// `CONTRACT_OWNABLE` (appended value 6; values 0-5 unchanged) is an explicit opt-in to a second
 /// authority route. Authority is the contract's current canonical nonzero `owner()`, resolved
@@ -54,7 +74,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// the old owner without changing the immutable binding, and they also end any delegation the former
 /// owner had granted. A delegate of the current owner is authorized as well, through a
 /// contract-scoped delegate.xyz check rather than a token-scoped one, because the binding names a
-/// contract rather than a token. Like `CONTRACT`, this value is outside the single-owner token set
+/// contract rather than a token. Like `ACCOUNT`, this value is outside the single-owner token set
 /// and gets no ownerless window. Because there is no contract-self fallback, a contract that
 /// renounces ownership permanently freezes the identity: no owner means nobody left to authorize.
 ///
@@ -74,7 +94,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// counterfactual event field that carries a standard, and it remains non-indexed. The on-chain
 /// `AgentBound.standard` keeps its own indexed slot. Because the standard is excluded from the hash,
 /// any two standards claiming the same `(tokenContract, tokenId)` alias onto one `registrationHash`.
-/// A contract that is also an ERC-721 collection, claiming token `#0`, `CONTRACT`, and
+/// A contract that is also an ERC-721 collection, claiming token `#0`, `ACCOUNT`, and
 /// `CONTRACT_OWNABLE` at `(X, 0)`, is the worked example. That is accepted and documented, because
 /// they are deliberately one identity with one current claim, and consumers read the latest
 /// `CounterfactualAgentRegistered.standard` in log order to see which claim currently wins.
