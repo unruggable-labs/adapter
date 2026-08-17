@@ -7,7 +7,9 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
+import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 
 /// @dev Covers the `ACCOUNT` standard, which is the one standard that accepts an address with no
 /// runtime code. The negatives here matter as much as the positives: relaxing the code test for
@@ -19,6 +21,7 @@ contract Adapter8004AccountTest is Test {
 
     address internal eoa = address(0xE0A);
     address internal admin = address(0xADD1);
+    address internal hot = address(0x407);
 
     function setUp() external {
         registry = new MockIdentityRegistry();
@@ -143,5 +146,119 @@ contract Adapter8004AccountTest is Test {
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, stranger, agentId));
         adapter.setAgentURI(agentId, "ipfs://hijacked");
+    }
+
+    // --- negatives: ACCOUNT is offered no delegation route ---
+
+    /// @dev `ACCOUNT` authority is exactly `msg.sender == boundAddress`, and the absence of a
+    /// delegate.xyz route is a decision rather than an omission. An account that granted a delegation
+    /// for some unrelated purpose would otherwise be handing that delegate permanent control of its
+    /// agent identity, because a binding is immutable and could never withdraw it. Every delegation
+    /// shape the adapter honors for the other standards is checked here. The blanket wallet-level grant
+    /// is the one that matters most, since it is the shape most likely to already exist.
+    function testAccountGrantsNoDelegationRoute() external {
+        MockDelegateRegistry delegateRegistry = _installDelegateRegistry();
+        bytes32 rights = adapter.DELEGATE_RIGHTS();
+
+        vm.prank(eoa);
+        uint256 agentId = adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://agent");
+
+        delegateRegistry.delegateAll(hot, eoa, rights, true);
+        _assertHotHasNoAuthority(agentId, "wallet-level ALL");
+        delegateRegistry.delegateAll(hot, eoa, rights, false);
+
+        // Empty rights is honored for every other standard, so it is the widest grant available here.
+        delegateRegistry.delegateAll(hot, eoa, bytes32(0), true);
+        _assertHotHasNoAuthority(agentId, "wallet-level ALL with empty rights");
+        delegateRegistry.delegateAll(hot, eoa, bytes32(0), false);
+
+        delegateRegistry.delegateContract(hot, eoa, eoa, rights, true);
+        _assertHotHasNoAuthority(agentId, "contract-scoped on the bound address");
+        delegateRegistry.delegateContract(hot, eoa, eoa, rights, false);
+
+        delegateRegistry.delegateERC721(hot, eoa, eoa, 0, rights, true);
+        _assertHotHasNoAuthority(agentId, "token-scoped on the bound address at the canonical id");
+    }
+
+    /// @dev The same rule before any binding exists. A delegation cannot be used to claim the identity
+    /// of the address that granted it, on either the on-chain or the counterfactual path.
+    function testAccountDelegateCannotClaimTheAccountIdentity() external {
+        MockDelegateRegistry delegateRegistry = _installDelegateRegistry();
+        delegateRegistry.delegateAll(hot, eoa, adapter.DELEGATE_RIGHTS(), true);
+
+        vm.prank(hot);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://hot");
+
+        vm.prank(hot);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://hot");
+    }
+
+    /// @dev Extends the sentinel invariant past `register`. Under every standard other than `ACCOUNT`
+    /// the code test also rejects `address(0)` and reverts with the same selector, so the zero clause is
+    /// only separately observable under `ACCOUNT`. Checking it at each entry point is therefore the only
+    /// way the invariant gets a margin worth having.
+    function testAccountRejectsZeroAddressAtEveryEntryPoint() external {
+        vm.startPrank(eoa);
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "k", bytes("v"));
+
+        IERC8004IdentityRegistry.MetadataEntry[] memory batch = new IERC8004IdentityRegistry.MetadataEntry[](1);
+        batch[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, batch);
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, eoa);
+
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
+
+        vm.stopPrank();
+
+        vm.prank(eoa);
+        uint256 agentId = registry.register("ipfs://premint");
+        vm.prank(eoa);
+        IERC721(address(registry)).approve(address(adapter), agentId);
+        vm.prank(eoa);
+        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
+    }
+
+    // --- helpers ---
+
+    /// @dev Places the delegate.xyz v2 mock at the canonical hardcoded address the adapter reads, so a
+    /// delegation can actually be granted under test. Installed per test rather than in `setUp` so the
+    /// code-test cases above keep running against a bare fixture.
+    function _installDelegateRegistry() private returns (MockDelegateRegistry) {
+        MockDelegateRegistry impl = new MockDelegateRegistry();
+        vm.etch(adapter.DELEGATE_REGISTRY(), address(impl).code);
+        return MockDelegateRegistry(adapter.DELEGATE_REGISTRY());
+    }
+
+    function _assertHotHasNoAuthority(uint256 agentId, string memory shape) private {
+        assertFalse(adapter.isController(agentId, hot), shape);
+
+        vm.prank(hot);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, agentId));
+        adapter.setAgentURI(agentId, "ipfs://hijacked");
+
+        vm.prank(hot);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, agentId));
+        adapter.setMetadata(agentId, "k", bytes("v"));
     }
 }
