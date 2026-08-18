@@ -92,19 +92,6 @@ contract Adapter8004AccountTest is Test {
         assertEq(registrationHash, adapter.registrationHash(eoa, 0), "hash is standard-independent");
     }
 
-    function testAccountBindExistingFromCodelessAddress() external {
-        vm.prank(eoa);
-        uint256 agentId = registry.register("ipfs://premint");
-        vm.prank(eoa);
-        IERC721(address(registry)).approve(address(adapter), agentId);
-
-        vm.prank(eoa);
-        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0);
-
-        assertEq(adapter.bindingOf(agentId).boundAddress, eoa, "bound address");
-        assertEq(registry.ownerOf(agentId), address(adapter), "identity moved into the adapter");
-    }
-
     /// @dev The motivating defect. Before this change the code test was the only gate, so whether an
     /// EOA could bind at all depended on whether a 7702 delegation happened to be installed at that
     /// moment: 23 bytes of designator cleared the guard, and an ordinary transaction from the same
@@ -320,14 +307,6 @@ contract Adapter8004AccountTest is Test {
         adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
 
         vm.stopPrank();
-
-        vm.prank(eoa);
-        uint256 agentId = registry.register("ipfs://premint");
-        vm.prank(eoa);
-        IERC721(address(registry)).approve(address(adapter), agentId);
-        vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
     }
 
     // --- helpers ---

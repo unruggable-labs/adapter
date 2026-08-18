@@ -108,17 +108,40 @@ seen neither. The changes with no other home are listed here.
   error's selector. Free only because value `5` has never been deployed, confirmed by
   reading the EIP-1967 implementation slots on Mainnet, Base and Sepolia and probing
   each live implementation for the selector, which is absent from all three.
-- `bindExisting` no longer pre-checks agent ownership or adapter approval. The
-  `transferFrom` on the next line already enforced both, and the pre-checks read
-  `ownerOf` and `getApproved` from the same registry that does the enforcing, so
-  they bought no defence in depth. **The `NotAgentOwner` and
-  `AgentTransferNotApproved` errors are removed**, which is breaking for any
-  caller decoding them; the failures now surface as ERC-721
-  `ERC721IncorrectOwner(from, tokenId, previousOwner)` and
-  `ERC721InsufficientApproval(operator, tokenId)`, both of which name more of the
-  failing state. Who may call `bindExisting` is unchanged. Saves two to three
-  external calls, measured at roughly 2,700 gas on the per-token approval path
-  and 4,000 on the operator path.
+- **`bindExisting` is removed.** It pulled an already-minted ERC-8004 agent into
+  adapter management against an external token. The asymmetry with `register` is the
+  whole argument. `register` mints an agent that is born bound, so nothing pre-existed
+  and nothing can be lost. `bindExisting` took an identity that already existed
+  independently and irreversibly subordinated it: afterwards the adapter owns the agent
+  NFT permanently, control follows the bound token so selling that token hands the buyer
+  the agent, ERC-8004 clears the agent wallet on transfer, the reserved `agent-binding`
+  metadata is overwritten, and the binding is immutable.
+
+  There is no way back. The adapter has no unbind, revoke, withdraw, rescue or recover
+  function, and after this change it contains **no ERC-721 transfer of any kind, in
+  either direction**. A caller who did not fully understand the consequences had no
+  remedy, and the consequences are not obvious from the call.
+
+  Removing the function is reversible: a later UUPS upgrade can reintroduce it, with a
+  clearer surface, if the need is real. The harm it enabled is not reversible. That
+  asymmetry decided it.
+
+  **The invariant this buys, which is stronger than anything the contract had before:
+  every agent the adapter holds a binding for was minted by the adapter, in the same
+  transaction that created that binding.** There is exactly one write to `_bindings`, it
+  sits in `_register`, and it is preceded by the registry mint. No independently
+  existing identity can come under adapter management by any path. Something can still
+  be sent to the adapter address by an outside ERC-721 transfer, but that creates no
+  binding and is not manageable through the adapter, so it is a stuck token rather than a
+  subordinated identity.
+
+  The earlier `0.0.16` work that dropped `bindExisting`'s redundant ownership and
+  approval pre-checks, and with them the `NotAgentOwner` and `AgentTransferNotApproved`
+  errors, is moot now that the function is gone. Those two errors remain absent.
+
+  `AlreadyBound` is removed with it. Its only `revert` was inside `bindExisting`, and
+  `register` mints a fresh id that cannot already carry a binding, so the error became
+  unreachable rather than merely unused.
 - **The `tokenContract` field, parameter and event/error argument is renamed
   `boundAddress`** throughout the contract and interfaces, including
   `Binding.boundAddress`. The field is polymorphic: for values `0`-`4` it holds a
@@ -225,8 +248,8 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   binding standard.)
   - `tokenId` MUST be `0`: an account-level binding has exactly one canonical coordinate. Any other
     id reverts the new `NonZeroTokenIdForAccount(boundAddress, tokenId)` error rather than being
-    coerced, enforced at both authority choke points, so it covers `register`,
-    `bindExisting`, and every unsigned counterfactual writer.
+    coerced, enforced at both authority choke points, so it covers `register` and every
+    unsigned counterfactual writer.
   - The controller is the bound `boundAddress` itself and nothing else. No holder, delegate,
     optional `owner()`, or adapter admin has authority. The adapter probes neither `ownerOf` nor
     either `balanceOf` shape; control is `msg.sender == boundAddress`, so a contract with no token
@@ -242,8 +265,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     shipped in this version a constructor call is rejected, because deployed runtime code is required;
     v0.0.16 removes that requirement for this standard, so a constructor call now succeeds.
     `delegatecall` into `Adapter8004` is unsupported and dangerous: it is a UUPS implementation with
-    its own storage layout, not a library. `bindExisting` additionally requires the bound address to
-    own the ERC-8004 agent and to have approved the adapter.
+    its own storage layout, not a library.
   - Permanent authority is worth nothing without a repeatable outbound path to the adapter. A
     contract that cannot call out cannot bind at all; one with a single post-deployment hook binds
     once and then freezes. Repeatable management needs a governance-gated, upgradeable, or
@@ -321,7 +343,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   ERC-721/ERC-1155F/ERC-6909F token contract may register its own id while `ownerOf(tokenId)`
   reverts or returns canonical `address(0)`. Minting to a non-collection owner closes the window;
   the buyer/controller then receives ordinary binding control. Plain ERC-1155/ERC-6909 remain
-  positive-balance controlled, and `bindExisting` still requires ordinary current control.
+  positive-balance controlled.
 
 ### Changed
 
@@ -587,6 +609,7 @@ Source version. Safe TX payloads prepared 2026-05-20
   management against an external ERC-721/1155/6909 token, using a
   two-transaction approval model. Preserves the existing `agentURI` and
   non-binding metadata; overwrites only the reserved `agent-binding` key.
+  (Removed in `0.0.16` before any deployment; see that section for why.)
 - Counterfactual payload versioning: every counterfactual event carries a
   `uint8 version` first non-indexed field (baseline `1`), so indexers can detect
   ABI cutovers.

@@ -1,5 +1,9 @@
 # Adapter8004 `bindExisting` Proposal
 
+> **Removed.** `bindExisting` was removed in `0.0.16` before any deployment, because it could
+> irreversibly subordinate an agent that already existed independently and the adapter has no exit
+> path. See CHANGELOG.md. This document is kept as the design record.
+>
 > **Field renamed since:** `tokenContract` is now `boundAddress`.
 >
 > **Partly superseded by the implementation.** `bindExisting` shipped, but the two pre-checks this

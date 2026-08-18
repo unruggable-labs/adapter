@@ -86,10 +86,6 @@ contract OwnableERC20Binder is MockERC20 {
         );
     }
 
-    function bindExistingOwnable(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(this), tokenId);
-    }
-
     function setOwnableMetadata(uint256 agentId, string calldata key, bytes calldata value) external {
         ADAPTER.setMetadata(agentId, key, value);
     }
@@ -427,26 +423,13 @@ contract Adapter8004ContractBindingTest is Test {
         ownable.registerOwnable(0);
     }
 
-    function testOwnableNonZeroTokenIdRevertsAtBothAuthorityChokePoints() external {
+    function testOwnableNonZeroTokenIdRevertsOnRegister() external {
         address contractOwner = makeAddr("canonicalOwner");
         OwnableERC20Binder ownable = new OwnableERC20Binder(adapter, contractOwner);
 
         _expectNonZeroTokenId(address(ownable), 1);
         vm.prank(contractOwner);
         adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 1, "ipfs://non-canonical");
-
-        vm.prank(contractOwner);
-        uint256 agentId = registry.register("ipfs://existing");
-        vm.prank(contractOwner);
-        registry.approve(address(adapter), agentId);
-
-        _expectNonZeroTokenId(address(ownable), 1);
-        vm.prank(contractOwner);
-        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(ownable), 1);
-
-        assertEq(registry.ownerOf(agentId), contractOwner);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
-        adapter.bindingOf(agentId);
     }
 
     // -----------------------------------------------------------------
@@ -524,35 +507,6 @@ contract Adapter8004ContractBindingTest is Test {
     }
 
     // -----------------------------------------------------------------
-    //  bindExisting
-    // -----------------------------------------------------------------
-
-    function testBindExistingSucceedsWhenTheContractOwnsAndApprovesTheAgent() external {
-        uint256 agentId = token.prepareExistingAgent(registry);
-        assertEq(registry.ownerOf(agentId), address(token));
-
-        token.bindExisting(agentId, 0);
-
-        assertEq(registry.ownerOf(agentId), address(adapter));
-        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(binding.boundAddress, address(token));
-        assertEq(binding.tokenId, 0);
-        assertEq(registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY()), abi.encodePacked(address(adapter)));
-    }
-
-    function testBindExistingRejectsAStrangerHoldingTheAgent() external {
-        vm.prank(stranger);
-        uint256 agentId = registry.register("ipfs://stranger-agent");
-        vm.prank(stranger);
-        registry.approve(address(adapter), agentId);
-
-        _expectNotController(stranger);
-        vm.prank(stranger);
-        adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
-    }
-
-    // -----------------------------------------------------------------
     //  Post-bind control
     // -----------------------------------------------------------------
 
@@ -613,34 +567,13 @@ contract Adapter8004ContractBindingTest is Test {
         binder.register(1);
     }
 
-    function testNonZeroTokenIdRevertsAtTheBindingControlRoute() external {
-        uint256 agentId = token.prepareExistingAgent(registry);
-
-        _expectNonZeroTokenId(address(token), 1);
-        token.bindExisting(agentId, 1);
-
-        // Nothing moved: the agent is still the bound contract's, unbound.
-        assertEq(registry.ownerOf(agentId), address(token));
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
-        adapter.bindingOf(agentId);
-
-        // The canonical coordinate still binds.
-        token.bindExisting(agentId, 0);
-        assertEq(registry.ownerOf(agentId), address(adapter));
-    }
-
     function testEveryContractBindingWriteEntryPointRejectsANonZeroTokenId() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
-        uint256 agentId = token.prepareExistingAgent(registry);
-
         _expectNonZeroTokenId(address(token), 1);
         token.register(1);
 
         _expectNonZeroTokenId(address(token), 1);
         token.registerWithMetadata(1, metadata);
-
-        _expectNonZeroTokenId(address(token), 1);
-        token.bindExisting(agentId, 1);
 
         _expectNonZeroTokenId(address(token), 1);
         token.counterfactualRegister(1);
@@ -663,8 +596,9 @@ contract Adapter8004ContractBindingTest is Test {
         _expectNonZeroTokenId(address(token), 1);
         token.counterfactualUnsetAgentWallet(1);
 
-        // Nothing was minted, bound, or claimed along the way.
-        assertEq(registry.ownerOf(agentId), address(token));
+        // Nothing was minted, bound, or claimed along the way: agent id 0 would be the first mint.
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
+        adapter.bindingOf(0);
         assertEq(adapter.primaryAgentOf(address(token)), adapter.PRIMARY_AGENT_UNSET());
     }
 
@@ -855,17 +789,6 @@ contract Adapter8004ContractBindingTest is Test {
         );
         assertEq(registry.getAgentWallet(secondAgentId), address(0));
         assertTrue(adapter.isController(secondAgentId, address(token)));
-
-        // ...but an agent that is already bound can never be rebound, by anyone.
-        uint256 existingAgentId = token.prepareExistingAgent(registry);
-        token.bindExisting(existingAgentId, 0);
-
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.AlreadyBound.selector, existingAgentId));
-        token.bindExisting(existingAgentId, 0);
-
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.AlreadyBound.selector, firstAgentId));
-        vm.prank(stranger);
-        adapter.bindExisting(firstAgentId, IERCAgentBindings.TokenStandard.ERC721, address(token), 0);
 
         // The original binding is byte-for-byte what it was at registration.
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(firstAgentId);

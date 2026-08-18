@@ -72,9 +72,8 @@ Supported binding standards:
 - `CONTRACT_OWNABLE`, an explicit-opt-in contract binding controlled by the contract's current `owner()`
 - `CONTRACT_ADMIN`, the same idea for an AccessControl contract, controlled by holders of its `DEFAULT_ADMIN_ROLE`
 
-What the unreleased source adds over the active deployments (on-chain status varies by chain — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and `bindExisting` and the primary-agent surface are not yet deployed anywhere):
+What the unreleased source adds over the active deployments (on-chain status varies by chain — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and the primary-agent surface is not yet deployed anywhere):
 
-- `bindExisting(...)`: pull an already-minted ERC-8004 agent into adapter management against an external token, using a two-transaction approval model.
 - delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
 - Direct collection register-at-mint for ownerless ERC-721/ERC-1155F/ERC-6909F ids through the existing unsigned counterfactual selectors.
@@ -139,7 +138,7 @@ ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path bec
 
 Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(boundAddress, tokenId)`. Values `5`, `6` and `7` name an address itself rather than a token within it, so there is no token to identify:
 
-- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `bindExisting`, and every unsigned counterfactual writer.
+- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register` and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `boundAddress` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
 - Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's primary agent while being unable to manage an identity bound to it.
@@ -161,7 +160,6 @@ Calling rules:
 - For `CONTRACT_ADMIN`, the immediate caller must hold the bound contract's `DEFAULT_ADMIN_ROLE`. The bound contract, holders, the adapter admin, and strangers gain nothing from this model.
 - For `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, a call from the bound contract's constructor fails, because the adapter requires deployed runtime code at `boundAddress` and there is none yet. The same holds for values `0`-`4`. Under `ACCOUNT` it succeeds: no code test applies, and `msg.sender` during construction is already the contract's final address, so a contract can bind itself as `ACCOUNT` from its own constructor.
 - Do not `delegatecall` into `Adapter8004`. That is unsupported and dangerous. The adapter is a UUPS proxy implementation with its own storage layout, and borrowing its code into another contract's storage is not a supported integration. This is about calling *into* the adapter; how the bound contract is implemented internally is its own business, and a contract that is itself a proxy binds fine because its proxy address is the caller the adapter sees.
-- `bindExisting` additionally requires the authorized caller to already own the ERC-8004 agent in the registry and to have approved the adapter to transfer it (`approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`).
 
 That value-5 call requirement has a design consequence worth stating plainly, and it applies only where the bound address is a contract: **permanent self-authority is worth nothing unless the bound contract has a repeatable outbound path to the adapter.** A contract with no way to call out cannot bind under value 5, and one with only a single hook can bind once and then freezes. That hook may be the constructor. An owner-driven contract that intentionally wants direct external-owner management should choose `CONTRACT_OWNABLE` at bind time instead. An externally owned account has no such constraint, since sending a transaction is itself the outbound path.
 
@@ -316,37 +314,23 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 
 If the collection cannot authorize `setPrimaryAgentFor(buyer, agentId)`, the buyer can set the
 pointer separately with `setPrimaryAgent(agentId)` (or use the signed full-primary path).
-`bindExisting` does not receive ownerless collection authority;
-it continues to require ordinary current control of an already-existing external token.
 
-### 2b. Bind An Existing Agent
+### 2b. There Is No Way To Bind An Existing Agent
 
-`bindExisting` pulls an already-minted ERC-8004 `agentId` into adapter management against an external token. It is a two-transaction flow:
+Every agent under adapter management is minted by the adapter, in the same transaction that creates its
+binding. There is no function that pulls an already-minted ERC-8004 identity into the adapter, and the
+contract contains no ERC-721 transfer of any kind, in either direction. An agent that exists
+independently stays independent.
 
-1. the agent owner approves the adapter on the ERC-8004 registry: `approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`
-2. the same owner calls:
-
-```solidity
-bindExisting(agentId, standard, boundAddress, tokenId)
-```
-
-The adapter does this:
-
-1. rejects an invalid token contract, and the registry itself, the same way `register` does
-2. rejects an already-bound agent so adapter bindings stay immutable
-3. requires the caller to own the agent in the ERC-8004 registry
-4. requires the caller to control the external token under the binding-control model (direct ownership, or delegate.xyz for ERC-721/ERC-1155F/ERC-6909F)
-5. requires prior ERC-721 transfer approval for `agentId`
-6. transfers the ERC-8004 identity into the adapter
-7. stores the immutable binding
-8. overwrites the reserved `agent-binding` metadata key to point at this adapter
-9. emits `AgentBound`
-
-The pre-existing `agentURI` and all non-binding metadata are preserved. Only the reserved `agent-binding` key is overwritten. Unlike `register`, `bindExisting` does not clear the agent wallet, because transferring an existing identity does not reset its wallet to the adapter.
+This is deliberate. A binding is immutable and there is no unbind, revoke, withdraw or rescue path, so
+binding an agent that already existed would irreversibly subordinate it: the adapter would own the NFT
+permanently, control would follow the bound token so selling that token would hand over the agent, and
+the reserved `agent-binding` metadata would be overwritten. `register` has none of that exposure,
+because the agent it binds is born bound and nothing pre-existed to lose.
 
 ### Binding Metadata Format
 
-On a successful `register` or `bindExisting`, the adapter writes canonical ERC-8217 metadata with:
+On a successful `register`, the adapter writes canonical ERC-8217 metadata with:
 
 - key: `agent-binding`
 - value: `abi.encodePacked(address(this))`, the 20-byte adapter proxy address
@@ -572,7 +556,7 @@ The README and contract align on the following points:
 
 The adapter intentionally goes beyond the ERC draft by also exposing:
 
-- `register(...)` and `bindExisting(...)`
+- `register(...)`
 - `setAgentURI(...)`
 - `setMetadata(...)`
 - `setMetadataBatch(...)`
@@ -598,7 +582,6 @@ User-facing functions:
 
 - `register(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
 - `register(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI)`
-- `bindExisting(uint256 agentId, TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `setAgentURI(uint256 agentId, string newURI)`
 - `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`
 - `setMetadataBatch(uint256 agentId, MetadataEntry[] metadata)`
@@ -721,7 +704,6 @@ The Foundry suite currently covers:
   bound contract and of non-admins, live revocation, fail-closed missing and non-canonical `hasRole`
   responses, absence of a delegate.xyz route, and the canonical `tokenId == 0` rule at both authority
   choke points
-- `bindExisting` for already-minted agents, including the approval and ownership checks
 - delegate.xyz v2 hot/cold control for ERC-721, ERC-1155F, and ERC-6909F bindings
 - immutable per-agent bindings
 - repeated registration using the same external token

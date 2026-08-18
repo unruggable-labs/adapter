@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-
 import {Adapter8004} from "../../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
@@ -121,15 +119,6 @@ contract MockERC20 {
 
     function counterfactualUnsetAgentWallet(uint256 tokenId) external {
         ADAPTER.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId);
-    }
-
-    function prepareExistingAgent(MockIdentityRegistry registry) external returns (uint256 agentId) {
-        agentId = registry.register("ipfs://existing");
-        IERC721(address(registry)).approve(address(ADAPTER), agentId);
-    }
-
-    function bindExisting(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId);
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

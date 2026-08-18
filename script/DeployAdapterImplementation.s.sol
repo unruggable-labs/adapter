@@ -127,7 +127,7 @@ contract DeployAdapterImplementationScript is Script {
         _logSignature("CounterfactualMetadataBatchSet", SIG_CF_METADATA_BATCH_SET);
         _logSignature("CounterfactualAgentWalletSet", SIG_CF_WALLET_SET);
         _logSignature("CounterfactualAgentWalletUnset", SIG_CF_WALLET_UNSET);
-        console2.log("AgentBound (existing, also emitted by bindExisting):");
+        console2.log("AgentBound (existing):");
         console2.logBytes32(keccak256(bytes(SIG_AGENT_BOUND)));
 
         // 4. Persist a Safe Transaction Builder JSON next to the existing per-chain artifacts.

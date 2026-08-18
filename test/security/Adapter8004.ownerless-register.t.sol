@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
@@ -36,15 +35,6 @@ contract OwnerlessRegisterCollection {
 
     function register(uint256 tokenId) external returns (uint256) {
         return ADAPTER.register(STANDARD, address(this), tokenId, "ipfs://agent");
-    }
-
-    function prepareExistingAgent(MockIdentityRegistry registry) external returns (uint256 agentId) {
-        agentId = registry.register("ipfs://existing");
-        IERC721(address(registry)).approve(address(ADAPTER), agentId);
-    }
-
-    function bindExisting(uint256 agentId, uint256 tokenId) external {
-        ADAPTER.bindExisting(agentId, STANDARD, address(this), tokenId);
     }
 
     function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
@@ -138,21 +128,6 @@ contract OwnerlessRegisterTest is Test {
 
         uint256 agentId = collection.register(12);
         assertTrue(adapter.isController(agentId, address(collection)));
-    }
-
-    function testBindExistingStillRejectsOwnerlessCollectionWithoutCurrentControl() external {
-        OwnerlessRegisterCollection collection =
-            new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, false);
-        uint256 agentId = collection.prepareExistingAgent(registry);
-
-        vm.expectRevert();
-        collection.bindExisting(agentId, 14);
-
-        assertEq(registry.ownerOf(agentId), address(collection));
-
-        collection.mint(address(collection), 14);
-        collection.bindExisting(agentId, 14);
-        assertEq(registry.ownerOf(agentId), address(adapter));
     }
 
     function testPlainERC1155AndERC6909RemainBalanceOnly() external {

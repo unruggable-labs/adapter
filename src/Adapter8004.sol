@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC6909} from "@openzeppelin/contracts/interfaces/IERC6909.sol";
@@ -129,7 +128,7 @@ contract Adapter8004 is
     /// through `_hasBindingControl`.
     error BoundAddressIsRegistry();
     /// @notice Thrown by any `ACCOUNT`, `CONTRACT_OWNABLE` or `CONTRACT_ADMIN` operation called with a nonzero
-    /// `tokenId`. This covers registration, `bindExisting` and the emit-only counterfactual calls
+    /// `tokenId`. This covers registration and the emit-only counterfactual calls
     /// alike, since all of them pass through the same authority choke points. An account-level binding names the address
     /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
     /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
@@ -149,10 +148,6 @@ contract Adapter8004 is
     error PrimaryCounterfactualAgentHashReserved(bytes32 registrationHash);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
-    /// @notice Thrown when an agent that already carries a binding is offered for binding again.
-    /// Bindings are immutable and there is deliberately no revoke or unbind API: to move on, register
-    /// a fresh ERC-8004 identity. One external token may back any number of agents.
-    error AlreadyBound(uint256 agentId);
 
     /// @notice Thrown when the current block timestamp is past a signed primary-agent `deadline`.
     error SignatureExpired(uint256 deadline);
@@ -257,52 +252,6 @@ contract Adapter8004 is
         returns (uint256 agentId)
     {
         return _register(standard, boundAddress, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
-    }
-
-    function bindExisting(uint256 agentId, TokenStandard standard, address boundAddress, uint256 tokenId)
-        external
-        nonReentrant
-    {
-        // 1. Reject an unusable bound address (matches `register` taxonomy) and
-        //    reject the registry itself, which would lock the agent permanently post-bind.
-        _requireValidBoundAddress(standard, boundAddress);
-
-        // 2. Reject an already-bound agent so adapter bindings remain immutable post-bind.
-        if (_bindings[agentId].boundAddress != address(0)) {
-            revert AlreadyBound(agentId);
-        }
-
-        // 3. Require external binding control under the existing authority model: single-owner
-        //    standards use ownerOf plus delegate.xyz, plain ERC-1155/ERC-6909 use balance, `ACCOUNT`
-        //    requires the named address itself, `CONTRACT_OWNABLE` requires its current owner or a
-        //    delegate of that owner, and `CONTRACT_ADMIN` requires a `DEFAULT_ADMIN_ROLE` holder.
-        //    Agent ownership and adapter approval are enforced by the transfer in step 4.
-        _requireBindingControl(standard, boundAddress, tokenId, msg.sender);
-
-        // 4. Transfer the ERC-8004 identity into the adapter before any adapter storage or
-        //    registry-metadata writes. Any failure here reverts the whole transaction with no
-        //    adapter state changes.
-        //
-        //    This call is also where the remaining two preconditions are enforced, rather than by
-        //    adapter pre-checks that would re-derive the same rules from the same registry. ERC-721
-        //    `transferFrom` reverts `ERC721InsufficientApproval` unless the adapter holds per-token
-        //    or operator approval, and `ERC721IncorrectOwner` unless the caller is the agent's
-        //    current owner, so an external-token controller still cannot pull a stranger's agent
-        //    into the adapter merely because the adapter happens to be approved. Both native errors
-        //    name more of the failing state than the adapter errors they replaced. Unknown ids
-        //    surface the registry's own `ERC721NonexistentToken`.
-        IERC721(address(identityRegistry)).transferFrom(msg.sender, address(this), agentId);
-
-        // 5. Persist the immutable adapter binding for this agent.
-        _bindings[agentId] = Binding({standard: standard, boundAddress: boundAddress, tokenId: tokenId});
-
-        // 6. Overwrite the canonical binding metadata to point at this adapter. Any pre-existing
-        //    value at the reserved key (arbitrary user data or a value pointing at another adapter)
-        //    is intentionally replaced once the adapter owns the identity.
-        identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
-
-        // 7. Emit the existing binding event so indexers do not need a separate event family.
-        emit AgentBound(agentId, standard, boundAddress, tokenId, msg.sender);
     }
 
     function _register(
@@ -1085,9 +1034,11 @@ contract Adapter8004 is
     }
 
     /// @dev The three account-level standards name the address itself rather than a token within it, so
-    /// each has exactly one canonical coordinate: `tokenId == 0`. Enforced at both authority choke points
-    /// (`_requireTokenAuthority` and `_requireBindingControl`) so every write and control decision for
-    /// an account-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
+    /// each has exactly one canonical coordinate: `tokenId == 0`. Enforced in `_requireTokenAuthority`,
+    /// which every write passes through, and again in `_requireBindingControl`. The second is now
+    /// defence in depth rather than a distinct gate, because every path into `_requireBindingControl`
+    /// arrives via `_requireTokenAuthority`, which has already checked. It is kept so a future direct
+    /// caller cannot bypass the rule. Reverts rather than coercing a nonzero id to `0`:
     /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
     /// id they submitted. No-op for every other standard.
     function _requireCanonicalTokenId(TokenStandard standard, address boundAddress, uint256 tokenId) internal pure {
