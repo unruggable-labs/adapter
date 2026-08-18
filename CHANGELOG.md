@@ -56,7 +56,9 @@ seen neither. The changes with no other home are listed here.
 - `setMetadataBatch` now emits one `MetadataSet` per entry, so a batch write and
   the equivalent sequence of single writes produce identical logs. **The
   `MetadataBatchSet` event is removed**, which is breaking for any consumer
-  subscribed to its `topic0`. The counterfactual mirror
+  subscribed to its `topic0`. That event carried only a count, so it told a consumer
+  that something had changed without saying what; the per-entry `MetadataSet` events
+  that replace it name each key. The counterfactual mirror
   `CounterfactualMetadataBatchSet` is unaffected and still exists.
 - **`CONTRACT` (value `5`) is renamed `ACCOUNT` and now accepts any address, with or
   without runtime code.** The enum position is unchanged, so no stored binding and no

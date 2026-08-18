@@ -29,33 +29,22 @@ interface IOwnableContract {
 }
 
 /// @notice Upgrade target for the active Adapter8004 proxies.
-/// @dev The production upgrade baseline is the implementation currently selected by each proxy,
-/// not the unreleased 0.0.9-0.0.13 source history. The active Mainnet/Base and Sepolia
-/// implementations both use regular slots 0 (`identityRegistry`) and 1 (`_bindings`) only.
-/// v0.0.14 appends its three primary-agent mappings directly at slots 2-4. A direct production
-/// upgrade requires no migration or reinitializer and must use empty `upgradeToAndCall` data.
-/// Sepolia's live delegate.xyz constants and authorization behavior are retained by this
-/// implementation.
+/// @dev Storage layout, which is what an upgrade reviewer should check first. Regular slot 0 is
+/// `identityRegistry` and slot 1 is `_bindings`; both are carried from the deployed baseline, which
+/// uses those two slots and nothing else. Slots 2 through 4 hold the three primary-agent mappings.
+/// The layout is append-only: add new state after slot 4, and never reorder, insert or repurpose an
+/// existing slot. No slots are reserved and there is no storage gap, so nothing is set aside to
+/// consume. Upgrading a live proxy needs no migration and no reinitializer, and must use empty
+/// `upgradeToAndCall` data.
 ///
-/// v0.0.15 folds a `bytes32 extraData` discriminator into the counterfactual registration hash and
-/// emits it on every counterfactual event. It is declared as a `constant`, so the storage layout is
-/// unchanged.
-///
-/// This is a breaking change. Every `registrationHash` changes and every counterfactual topic0
-/// moves, so it must be treated as a hard cutover. Document the cutover block, move the indexer to
-/// the new ABI, and reindex before upgrading a proxy. Only counterfactual identities and the
-/// `_primaryCounterfactualAgent` pointers are keyed by this hash, so `Binding` rows and full
-/// ERC-8004 registrations are unaffected. It is also the only such break, because everything that
-/// hashes with `extraData == bytes32(0)` will hash identically from here on.
-///
-/// v0.0.16 renames `TokenStandard` value 5 from `CONTRACT` to `ACCOUNT` and relaxes it to accept any
-/// address with or without runtime code, appends the `CONTRACT_ADMIN` standard, removes contract-self
-/// authority from `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, and drops the `MetadataBatchSet` event in
-/// favor of one `MetadataSet` per entry. The authority removal is breaking for any contract that was
-/// relying on authorizing itself. The value-5 rename changes the `NonZeroTokenIdForAccount` selector
-/// but no enum position, event topic or `registrationHash`. The storage layout is again unchanged, so
-/// v0.0.14, v0.0.15 and v0.0.16 ship as one implementation that upgrades from the same deployed
-/// baselines with empty `upgradeToAndCall` data.
+/// Counterfactual identities are keyed by a `registrationHash` over the ERC-7930 interoperable
+/// address of this proxy, the bound address, the token id, and a `bytes32 extraData` discriminator.
+/// `extraData` is a `constant` fixed at `bytes32(0)`, so it occupies no storage, and every pair that
+/// hashes with zero hashes identically from here on. That preimage does not match the one a live
+/// proxy computes today, so upgrading one is a hard cutover for any indexer consuming counterfactual
+/// events: move it to this ABI and reindex before upgrading. `Binding` rows and full ERC-8004
+/// registrations are not keyed by this hash and are unaffected. See CHANGELOG.md for the cutover
+/// detail and for anything this implementation changed relative to a deployed one.
 /// @custom:version 0.0.16
 contract Adapter8004 is
     Initializable,
@@ -198,10 +187,10 @@ contract Adapter8004 is
     uint256 public constant PRIMARY_AGENT_UNSET = type(uint256).max;
     bytes32 public constant PRIMARY_COUNTERFACTUAL_AGENT_UNSET = bytes32(type(uint256).max);
 
-    /// @dev Active v0.0.14 reverse claims and full-system nonces. These three mappings are
-    /// append-only regular slots 2 through 4 and begin empty after a direct upgrade from either active deployed
-    /// implementation. Unreleased 0.0.9-0.0.13 layouts are not production compatibility
-    /// baselines and therefore consume no reserved slots.
+    /// @dev Reverse claims and full-system nonces. These three mappings occupy regular slots 2 through
+    /// 4, in the order declared here, and are append-only: never reorder, insert between them, or
+    /// repurpose one. They begin empty on a proxy upgraded from the deployed baseline, which holds
+    /// slots 0 and 1 only. No slots are reserved ahead of them.
     mapping(address account => uint256 complementAgentId) private _primaryAgent;
     mapping(address account => bytes32 complementRegistrationHash) private _primaryCounterfactualAgent;
     mapping(address account => uint256 nonce) private _primaryAgentNonces;
@@ -212,8 +201,9 @@ contract Adapter8004 is
     }
 
     /// @notice Initializes a newly deployed proxy.
-    /// @dev Do not call during an upgrade of an existing proxy. Active proxies already have slots
-    /// 0 and 1 initialized; v0.0.14 adds only empty mappings and has no reinitializer.
+    /// @dev Do not call during an upgrade of an existing proxy. An active proxy already has slots 0
+    /// and 1 initialized, the mappings at slots 2 through 4 are meant to begin empty, and there is no
+    /// reinitializer, so an upgrade carries empty `upgradeToAndCall` data instead of calling this.
     function initialize(address identityRegistry_, address initialOwner) external initializer {
         // 1. Reject an unusable registry target before any state is initialized.
         if (identityRegistry_ == address(0)) {
@@ -424,9 +414,8 @@ contract Adapter8004 is
     /// beyond the transaction reverting as a whole.
     /// @dev Each entry emits its own `MetadataSet`, identical to what the single-write path emits, so
     /// a batch is indistinguishable from a run of individual writes on the event surface. There is no
-    /// batch-specific event. An earlier version emitted one `MetadataBatchSet` carrying only a count,
-    /// which told a consumer that something changed without saying what. An empty batch writes
-    /// nothing and therefore emits nothing.
+    /// batch-specific event: a consumer that wants to know what changed reads the per-entry events,
+    /// which name the key. An empty batch writes nothing and therefore emits nothing.
     function setMetadataBatch(uint256 agentId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         nonReentrant

@@ -31,7 +31,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// the existing schema and carry `emitter = tokenContract`; later owner/delegate events overwrite
 /// them by normal log ordering.
 ///
-/// `ACCOUNT` (`TokenStandard` value 5; values 0-4 unchanged) uses the same unsigned
+/// `ACCOUNT` (`TokenStandard` value 5) uses the same unsigned
 /// functions under a different authority. It names an address itself rather than a token within it,
 /// so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForAccount`. The named address is
 /// the only authorized emitter: the adapter's immediate EVM caller must be `tokenContract`. A
@@ -67,8 +67,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// bindings, because they are emit-only and last-event-wins, so a key holder who revokes a
 /// delegation can re-emit and their claim wins again.
 ///
-/// `CONTRACT_OWNABLE` (appended value 6; values 0-4 unchanged, and value 5 keeps its position while
-/// being renamed and relaxed in this release) is an explicit opt-in to a second
+/// `CONTRACT_OWNABLE` (`TokenStandard` value 6) is an explicit opt-in to a second
 /// authority route. Authority is the contract's current canonical nonzero `owner()`, resolved
 /// dynamically, and not the bound contract itself. The probe is a STATICCALL and fails closed: a revert,
 /// returndata whose length is not exactly 32 bytes, dirty upper bits, or a zero owner grants nobody.
@@ -80,8 +79,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// and gets no ownerless window. Because there is no contract-self fallback, a contract that
 /// renounces ownership permanently freezes the identity: no owner means nobody left to authorize.
 ///
-/// `CONTRACT_ADMIN` (appended value 7; values 0-4 and 6 unchanged, with value 5 renamed and relaxed in
-/// this release) is the same idea for an AccessControl
+/// `CONTRACT_ADMIN` (`TokenStandard` value 7) is the same idea for an AccessControl
 /// contract that exposes no `owner()`. Authority is any holder of its `DEFAULT_ADMIN_ROLE`, which is
 /// `bytes32(0)`, and not the bound contract itself. The `hasRole` probe is a STATICCALL and fails
 /// closed: a revert, returndata whose length is not exactly 32 bytes, or a zero word grants nobody.
@@ -92,8 +90,8 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
-/// wallet field alone. The event schema, indexed topics, and `registrationHash` are unchanged by
-/// any account-level standard. `CounterfactualAgentRegistered.standard` is the only
+/// wallet field alone. The event schema, indexed topics, and `registrationHash` do not vary by
+/// account-level standard. `CounterfactualAgentRegistered.standard` is the only
 /// counterfactual event field that carries a standard, and it remains non-indexed. The on-chain
 /// `AgentBound.standard` keeps its own indexed slot. Because the standard is excluded from the hash,
 /// any two standards claiming the same `(tokenContract, tokenId)` alias onto one `registrationHash`.

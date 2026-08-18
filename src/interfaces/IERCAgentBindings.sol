@@ -2,10 +2,9 @@
 pragma solidity ^0.8.24;
 
 interface IERCAgentBindings {
-    /// @dev Append-only. Values 0-4 are load-bearing: they are persisted inside every stored `Binding`
-    /// and emitted in `AgentBound` / counterfactual events, so renumbering them would silently
-    /// reinterpret existing bindings and indexed history. `ACCOUNT` is therefore value 5,
-    /// `CONTRACT_OWNABLE` is appended as value 6, and `CONTRACT_ADMIN` as value 7.
+    /// @dev Append-only. Every value is persisted inside its stored `Binding` and emitted in
+    /// `AgentBound` / counterfactual events, so renumbering one would silently reinterpret existing
+    /// bindings and indexed history. Add new standards at the end and never reorder these.
     ///
     /// Values 0-4 name a token *within* a contract, so the binding coordinate is `(tokenContract,
     /// tokenId)`. The three account standards name an address itself: there is no token to
@@ -18,7 +17,7 @@ interface IERCAgentBindings {
     ///
     /// `ACCOUNT` is the only standard that accepts an address with no runtime code, because it is
     /// the only one that never calls the address it names. `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`
-    /// still require code, since `owner()` and `hasRole` must be callable, as do values 0-4, which
+    /// require code, since `owner()` and `hasRole` must be callable, as do values 0-4, which
     /// need `ownerOf` or `balanceOf`. Under EIP-7702 an externally-owned account can carry code, so
     /// `ACCOUNT` authority is precisely whoever can cause a call to originate from that address,
     /// which is the key holder plus, if a delegation is installed, whoever can drive it. Installing
