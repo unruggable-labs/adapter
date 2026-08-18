@@ -345,12 +345,9 @@ contract Adapter8004 is
 
     /// @notice Write several metadata entries for one agent, in the order given. The caller must
     /// control the bound token, and no entry may target the reserved `agent-binding` or
-    /// `cf-registration` keys. Entries are applied one at a time and are not atomic in any sense
-    /// beyond the transaction reverting as a whole.
-    /// @dev Each entry emits its own `MetadataSet`, identical to what the single-write path emits, so
-    /// a batch is indistinguishable from a run of individual writes on the event surface. There is no
-    /// batch-specific event: a consumer that wants to know what changed reads the per-entry events,
-    /// which name the key. An empty batch writes nothing and therefore emits nothing.
+    /// `cf-registration` keys.
+    /// @dev Each entry emits its own `MetadataSet`. There is no batch event, so a batch is
+    /// indistinguishable from a run of individual writes.
     function setMetadataBatch(uint256 agentId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         nonReentrant
@@ -361,12 +358,9 @@ contract Adapter8004 is
         // 2. Prevent callers from writing reserved metadata (agent-binding and cf-registration).
         _requireNoReservedCounterfactualKeys(metadata);
 
-        // 3. Replay each metadata write through the ERC-8004 registry one by one, emitting the same
-        //    event the single-write path emits. A batch is therefore indistinguishable from a run of
-        //    individual writes on the event surface, so a consumer that already handles `MetadataSet`
-        //    needs no batch-specific code. The emit sits inside the loop rather than after it so each
-        //    adapter event lands next to the registry write it describes, which is what an indexer
-        //    applying events in log order depends on.
+        // 3. Replay each write through the ERC-8004 registry. The emit sits inside the loop rather
+        //    than after it so each adapter event lands next to the registry write it describes,
+        //    which is what an indexer applying events in log order depends on.
         uint256 length = metadata.length;
         for (uint256 i; i < length; ++i) {
             identityRegistry.setMetadata(agentId, metadata[i].metadataKey, metadata[i].metadataValue);
