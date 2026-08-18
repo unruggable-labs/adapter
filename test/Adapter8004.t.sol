@@ -231,7 +231,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(binding.tokenContract, address(token721));
+        assertEq(binding.boundAddress, address(token721));
         assertEq(binding.tokenId, 1);
     }
 
@@ -253,8 +253,8 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory firstBinding = adapter.bindingOf(firstAgentId);
         IERCAgentBindings.Binding memory secondBinding = adapter.bindingOf(secondAgentId);
-        assertEq(firstBinding.tokenContract, address(token721));
-        assertEq(secondBinding.tokenContract, address(token721));
+        assertEq(firstBinding.boundAddress, address(token721));
+        assertEq(secondBinding.boundAddress, address(token721));
         assertEq(firstBinding.tokenId, 1);
         assertEq(secondBinding.tokenId, 1);
     }
@@ -290,7 +290,7 @@ contract Adapter8004Test is Test {
         IERCAgentBindings.Binding memory binding = IERCAgentBindings(bindingContract).bindingOf(agentId);
 
         assertEq(uint256(binding.standard), uint256(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(binding.tokenContract, address(token721));
+        assertEq(binding.boundAddress, address(token721));
         assertEq(binding.tokenId, 1);
     }
 
@@ -301,7 +301,7 @@ contract Adapter8004Test is Test {
         IERCAgentBindings.Binding memory binding = bindings.bindingOf(agentId);
 
         assertEq(uint256(binding.standard), uint256(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(binding.tokenContract, address(token721));
+        assertEq(binding.boundAddress, address(token721));
         assertEq(binding.tokenId, 1);
     }
 
@@ -424,7 +424,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(binding.tokenContract, address(token721));
+        assertEq(binding.boundAddress, address(token721));
         assertEq(binding.tokenId, 1);
     }
 
@@ -622,7 +622,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualRegisterRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(0), 1, "ipfs://agent/cf", _emptyMetadata()
         );
@@ -683,7 +683,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentURIRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(0), 1, "ipfs://x");
     }
 
@@ -710,7 +710,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetMetadataRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.ERC721, address(0), 1, "k", bytes("v"));
     }
 
@@ -759,7 +759,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetMetadataBatchRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ERC721, address(0), 1, _emptyMetadata());
     }
 
@@ -813,7 +813,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentWalletRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(0), 1, wallet);
     }
 
@@ -838,7 +838,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualUnsetAgentWalletRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
     }
 
@@ -894,7 +894,7 @@ contract Adapter8004Test is Test {
     }
 
     function testRegistrationHashExcludesStandard() external view {
-        // Identity is (chain, adapter, tokenContract, tokenId). The standard is neither part of the
+        // Identity is (chain, adapter, boundAddress, tokenId). The standard is neither part of the
         // hash nor a parameter, so a token resolves to one hash regardless of the interface it is
         // registered through. The hybrid-contract test covers the cross-standard case directly.
         assertEq(adapter.registrationHash(address(token721), 1), adapter.registrationHash(address(token721), 1));
@@ -1015,7 +1015,7 @@ contract Adapter8004Test is Test {
         // bindingOf reflects the supplied external token.
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
         assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(b.tokenContract, address(token721));
+        assertEq(b.boundAddress, address(token721));
         assertEq(b.tokenId, 1);
     }
 
@@ -1041,13 +1041,13 @@ contract Adapter8004Test is Test {
         IERC721(address(registry)).approve(address(adapter), agentId);
 
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
     }
 
     function testBindExistingRejectsRegistryAsTokenContract() external {
         // Alice mints an agent and approves the adapter, then tries to bind the agent to the
-        // identity registry itself with `tokenId == agentId`. Without the registry-as-tokenContract
+        // identity registry itself with `tokenId == agentId`. Without the registry-as-boundAddress
         // reject, the bind would succeed and the agent would be permanently uncontrollable
         // because `ownerOf` on the registry resolves to the adapter post-transfer.
         vm.prank(alice);
@@ -1057,7 +1057,7 @@ contract Adapter8004Test is Test {
         IERC721(address(registry)).approve(address(adapter), agentId);
 
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ERC721, address(registry), agentId);
 
         // The registry still owns the agent; nothing was bound.
@@ -1066,13 +1066,13 @@ contract Adapter8004Test is Test {
 
     function testRegisterRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(registry), 0, "", _emptyMetadata());
     }
 
     function testCounterfactualRegisterRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(registry), 0, "ipfs://agent/cf", _emptyMetadata()
         );
@@ -1080,19 +1080,19 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentURIRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(registry), 0, "u");
     }
 
     function testCounterfactualSetMetadataRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.ERC721, address(registry), 0, "k", bytes("v"));
     }
 
     function testCounterfactualSetMetadataBatchRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetMetadataBatch(
             IERCAgentBindings.TokenStandard.ERC721, address(registry), 0, _emptyMetadata()
         );
@@ -1100,13 +1100,13 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentWalletRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(registry), 0, wallet);
     }
 
     function testCounterfactualUnsetAgentWalletRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(registry), 0);
     }
 
@@ -1288,7 +1288,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
         assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC1155));
-        assertEq(b.tokenContract, address(token1155));
+        assertEq(b.boundAddress, address(token1155));
         assertEq(b.tokenId, 10);
         assertTrue(adapter.isController(agentId, alice));
     }
@@ -1305,7 +1305,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
         assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC6909));
-        assertEq(b.tokenContract, address(token6909));
+        assertEq(b.boundAddress, address(token6909));
         assertEq(b.tokenId, 42);
         assertTrue(adapter.isController(agentId, alice));
     }
@@ -1322,7 +1322,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
         assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC1155F));
-        assertEq(b.tokenContract, address(token1155F));
+        assertEq(b.boundAddress, address(token1155F));
         assertEq(b.tokenId, 50);
         assertTrue(adapter.isController(agentId, alice));
     }
@@ -1339,7 +1339,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
         assertEq(uint8(b.standard), uint8(IERCAgentBindings.TokenStandard.ERC6909F));
-        assertEq(b.tokenContract, address(token6909F));
+        assertEq(b.boundAddress, address(token6909F));
         assertEq(b.tokenId, 60);
         assertTrue(adapter.isController(agentId, alice));
     }
@@ -1367,7 +1367,7 @@ contract Adapter8004Test is Test {
 
         IERCAgentBindings.Binding memory b1 = adapter.bindingOf(firstAgentId);
         IERCAgentBindings.Binding memory b2 = adapter.bindingOf(secondAgentId);
-        assertEq(b1.tokenContract, b2.tokenContract);
+        assertEq(b1.boundAddress, b2.boundAddress);
         assertEq(b1.tokenId, b2.tokenId);
     }
 
@@ -1410,12 +1410,12 @@ contract Adapter8004Test is Test {
     function _encodeLegacyBindingMetadata(
         address bindingContract,
         IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId
     ) internal pure returns (bytes memory) {
         bytes memory compactTokenId = _encodeCompactUint(tokenId);
         return abi.encodePacked(
-            bindingContract, uint8(standard), tokenContract, uint8(compactTokenId.length), compactTokenId
+            bindingContract, uint8(standard), boundAddress, uint8(compactTokenId.length), compactTokenId
         );
     }
 

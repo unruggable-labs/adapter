@@ -3,7 +3,9 @@
 **Status:** proposal (product intent locked; implementation plan TBD)  
 **Repo:** `/Users/nxt3d/projects/adapter`  
 **Touches:** `Adapter8004` counterfactual surface (`IERC8004AdapterCounterfactual`, `src/Adapter8004.sol`)  
-**Preserves:** existing controller-gated unsigned CF register and update family
+**Preserves:** existing controller-gated unsigned CF register and update family  
+**Field renamed since:** what this document calls `tokenContract` is now `boundAddress` in the contract and interfaces, because the field also holds a plain account under `ACCOUNT`. Kept as a dated design record rather than rewritten.  
+
 
 ## Problem
 

@@ -11,8 +11,8 @@ At the cutover block:
 - start separate full and counterfactual primary projections;
 - subscribe to the new full `uint256` primary topics and the new counterfactual primary family;
 - validate every counterfactual indexed hash as
-  `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId))`, with the dynamic
-  adapter bytes carrying the full chain plus proxy address and `tokenContract` kept as a naked EVM
+  `keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId))`, with the dynamic
+  adapter bytes carrying the full chain plus proxy address and `boundAddress` kept as a naked EVM
   address;
 - retain old mixed events and bare-chain-id hashes as versioned legacy history.
 

@@ -6,7 +6,7 @@ interface IERCAgentBindings {
     /// `AgentBound` / counterfactual events, so renumbering one would silently reinterpret existing
     /// bindings and indexed history. Add new standards at the end and never reorder these.
     ///
-    /// Values 0-4 name a token *within* a contract, so the binding coordinate is `(tokenContract,
+    /// Values 0-4 name a token *within* a contract, so the binding coordinate is `(boundAddress,
     /// tokenId)`. The three account standards name an address itself: there is no token to
     /// identify, so the binding has exactly one canonical coordinate, `tokenId == 0`. They differ
     /// only in who is authorized, and no two of them overlap. `ACCOUNT` grants authority to the
@@ -42,7 +42,7 @@ interface IERCAgentBindings {
 
     struct Binding {
         TokenStandard standard;
-        address tokenContract;
+        address boundAddress;
         uint256 tokenId;
     }
 

@@ -109,7 +109,7 @@ contract OwnerlessRegisterTest is Test {
             new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, true);
 
         uint256 agentId = collection.register(9);
-        assertEq(adapter.bindingOf(agentId).tokenContract, address(collection));
+        assertEq(adapter.bindingOf(agentId).boundAddress, address(collection));
     }
 
     function testAfterMintCollectionLosesSpecialPathAndBuyerControlsAgent() external {
@@ -166,7 +166,7 @@ contract OwnerlessRegisterTest is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(standard));
-        assertEq(binding.tokenContract, address(collection));
+        assertEq(binding.boundAddress, address(collection));
         assertEq(binding.tokenId, tokenId);
         assertEq(registry.ownerOf(agentId), address(adapter));
     }

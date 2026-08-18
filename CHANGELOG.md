@@ -68,7 +68,7 @@ seen neither. The changes with no other home are listed here.
 
   The motivation is a defect rather than new permissiveness. There was exactly one
   code test on the register path, and `ACCOUNT` authority is a bare
-  `msg.sender == tokenContract`. Under EIP-7702 a delegated externally owned account
+  `msg.sender == boundAddress`. Under EIP-7702 a delegated externally owned account
   carries a 23-byte designator, which cleared that test, and an ordinary transaction
   from the same key cleared the authority check. So the shipped rule was never
   "accounts are excluded", it was "accounts are excluded unless a 7702 delegation
@@ -82,7 +82,7 @@ seen neither. The changes with no other home are listed here.
   address and so genuinely need it. It is a precise early error rather than the only
   gate: each probe already fails closed against a code-less address. The zero address
   is now rejected explicitly under every standard, `ACCOUNT` included, because
-  `_bindings` uses a zero `tokenContract` as its unbound sentinel. The
+  `_bindings` uses a zero `boundAddress` as its unbound sentinel. The
   registry-address rejection is unchanged for every standard.
 
   **The consequence to document for integrators:** an address bound as `ACCOUNT` can
@@ -119,6 +119,38 @@ seen neither. The changes with no other home are listed here.
   failing state. Who may call `bindExisting` is unchanged. Saves two to three
   external calls, measured at roughly 2,700 gas on the per-token approval path
   and 4,000 on the operator path.
+- **The `tokenContract` field, parameter and event/error argument is renamed
+  `boundAddress`** throughout the contract and interfaces, including
+  `Binding.boundAddress`. The field is polymorphic: for values `0`-`4` it holds a
+  token contract and the coordinate is `(contract, tokenId)`, while `ACCOUNT`,
+  `CONTRACT_OWNABLE` and `CONTRACT_ADMIN` put the account itself there, and under
+  `ACCOUNT` that may be an externally owned account. `tokenContract` was therefore
+  factually wrong for the standard this release created, and it also disagreed with
+  `_requireValidBoundAddress`, so the contract was carrying two names for one thing.
+
+  **No function selector and no event `topic0` moves.** Solidity builds both from
+  parameter types, not names, so the rename is invisible in the ABI encoding.
+  Verified by diffing `forge inspect` method and event tables before and after: both
+  byte-identical. A consumer decoding by selector or subscribing by topic needs no
+  change. A consumer reading the field *by name* from a generated ABI, a typechain
+  binding or an indexer schema does, since `Binding.tokenContract` is now
+  `Binding.boundAddress`.
+
+  Two error names encoded the old noun for a field that may now be an EOA and are
+  renamed with it. **Error selectors do change with the name**, and both are listed
+  here for anyone decoding them: `InvalidTokenContract()` `0x29bdfb34` becomes
+  `InvalidBoundAddress()` `0xc243f1fe`, and `InvalidTokenContractIsRegistry()`
+  `0xad9f118b` becomes `BoundAddressIsRegistry()` `0x021cdfc0`.
+  (`NonZeroTokenIdForContract` became `NonZeroTokenIdForAccount` earlier in this
+  release, for the same reason.)
+
+  Prose that genuinely means a token contract is unchanged. The ownerless-collection
+  window is open only to an ERC-721/ERC-1155F/ERC-6909F token contract, and
+  `CONTRACT_OWNABLE` and `CONTRACT_ADMIN` really do require contract code, so those
+  sentences still say contract. Only the field was renamed, not the facts.
+
+  Free only because nothing is deployed. After an upgrade the parameter name is fixed
+  in every consumer's ABI artifact.
 - **`registerAndSetPrimary` is removed.** It was a one-transaction convenience
   wrapper: `register` followed by recording the new agent as the caller's own
   primary. The premise is that the caller wants the agent as *their* primary, and
@@ -152,10 +184,10 @@ work below; all three ship together in one implementation.
 
 - `bytes32 extraData` is folded into the counterfactual registration-hash
   preimage, which is now
-  `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))`.
+  `keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId, extraData))`.
   This implementation reserves `extraData` at `bytes32(0)` and has no way to
   supply another value; a future implementation may return non-zero values to
-  distinguish subjects that share a `(tokenContract, tokenId)`. This is a hard
+  distinguish subjects that share a `(boundAddress, tokenId)`. This is a hard
   identity cutover: every counterfactual `registrationHash` changes, so
   identities emitted by earlier implementations do not match anything recomputed
   by this one. On-chain `Binding` rows and full ERC-8004 registrations are
@@ -192,18 +224,18 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   no ERC-20-specific standard value. (ERC-20Agent is a separate metadata profile layered on top, not a
   binding standard.)
   - `tokenId` MUST be `0`: an account-level binding has exactly one canonical coordinate. Any other
-    id reverts the new `NonZeroTokenIdForAccount(tokenContract, tokenId)` error rather than being
+    id reverts the new `NonZeroTokenIdForAccount(boundAddress, tokenId)` error rather than being
     coerced, enforced at both authority choke points, so it covers `register`,
     `bindExisting`, and every unsigned counterfactual writer.
-  - The controller is the bound `tokenContract` itself and nothing else. No holder, delegate,
+  - The controller is the bound `boundAddress` itself and nothing else. No holder, delegate,
     optional `owner()`, or adapter admin has authority. The adapter probes neither `ownerOf` nor
-    either `balanceOf` shape; control is `msg.sender == tokenContract`, so a contract with no token
+    either `balanceOf` shape; control is `msg.sender == boundAddress`, so a contract with no token
     interface at all binds exactly like one that has one.
   - Unlike the transient ERC-721/ERC-1155F/ERC-6909F direct-collection window, which closes on mint
     and can reopen on burn, an account-level binding has no token whose ownership could change hands,
     so its authority window never closes. `ACCOUNT` is deliberately excluded from the single-owner
     set: no ownerless probe, no delegate.xyz route.
-  - The adapter's immediate EVM caller must be `tokenContract`. A router, forwarder, or multicall
+  - The adapter's immediate EVM caller must be `boundAddress`. A router, forwarder, or multicall
     contract that calls the adapter itself fails, because the adapter sees that contract as
     `msg.sender`. An external owner or governance address may instead call an entry point on the
     bound contract, which then makes the outbound adapter call (the planned reference pattern). As
@@ -252,7 +284,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     revoke or unbind API.
     Ownership transfer moves who may write; it never rebinds or unbinds an agent.
   - `tokenId` MUST be `0` for value `6` as well, enforced at both authority choke points and
-    reverting with the same `NonZeroTokenIdForAccount(tokenContract, tokenId)` error. Value `6`
+    reverting with the same `NonZeroTokenIdForAccount(boundAddress, tokenId)` error. Value `6`
     also stays outside the single-owner set, so it gets no ownerless-collection window. It does have
     a delegate.xyz route, added later in this release train and described above.
   - `registrationHash` is unchanged and the standard remains excluded from it, so a contract at
@@ -280,7 +312,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     the registry about, and a role is a membership predicate that many addresses can satisfy and none
     can enumerate, so there is no well-defined delegator to name.
   - `tokenId` MUST be `0`, enforced at both authority choke points with the same
-    `NonZeroTokenIdForAccount(tokenContract, tokenId)` error. Value `7` stays outside the
+    `NonZeroTokenIdForAccount(boundAddress, tokenId)` error. Value `7` stays outside the
     single-owner set, so it gets no ownerless-collection window. `registrationHash` is unchanged and
     still excludes the standard, and `7` is only a new value in the existing `uint8` field, so no
     event signature or topic moves.
@@ -308,8 +340,8 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   `PrimaryAgentSet` and `PrimaryAgentSetWithSig` now index a `uint256`, changing their topic0.
 - Counterfactual hashes now use
   `keccak256(abi.encode(interoperableAddress(address(adapter)),
-  tokenContract, tokenId))`. The adapter proxy is a full ERC-7930 v1 / CAIP-350 `eip155`
-  Interoperable Address containing the local chain and raw 20-byte proxy address. `tokenContract`
+  boundAddress, tokenId))`. The adapter proxy is a full ERC-7930 v1 / CAIP-350 `eip155`
+  Interoperable Address containing the local chain and raw 20-byte proxy address. `boundAddress`
   deliberately remains a naked EVM `address`; chain binding comes from the adapter Interoperable
   Address alone. `interoperableAddress(address)` exposes that encoding, while `chainIdentifier()`
   exposes its AddressLength=0 chain-only variant. This uses
@@ -326,7 +358,7 @@ Account-level bindings add no public selector, storage slot, or `@custom:version
 `AgentBound` keeps its layout with `standard` indexed, and `CounterfactualAgentRegistered`, the
 only counterfactual event carrying a standard, keeps its layout with `standard` non-indexed.
 `ACCOUNT` and `CONTRACT_OWNABLE` are only new values in the existing `uint8` field. Because the
-standard is excluded from `registrationHash`, any two standards claiming the same `(tokenContract,
+standard is excluded from `registrationHash`, any two standards claiming the same `(boundAddress,
 tokenId)` alias onto one hash; a contract at `(X, 0)` claiming its ERC-721 token `#0`, `ACCOUNT`,
 and `CONTRACT_OWNABLE` is the worked example. That is accepted and documented. Hashing the standard would break
 every existing hash. The claims are deliberately one identity with one current claim, and indexers
@@ -365,10 +397,10 @@ Source version. Not deployed. No storage migration or initializer.
 
 ### Added
 - Ownerless collection authority for every existing **unsigned** counterfactual write on
-  ERC-721, ERC-1155F, and ERC-6909F. When the directly calling `tokenContract` has deployed
+  ERC-721, ERC-1155F, and ERC-6909F. When the directly calling `boundAddress` has deployed
   code and `ownerOf(tokenId)` reverts or returns canonical `address(0)`, it may emit registration,
   URI, metadata, batch metadata, wallet-set, and wallet-unset events before mint. Events keep
-  `emitter = tokenContract`; multiple emissions remain allowed and latest log order wins.
+  `emitter = boundAddress`; multiple emissions remain allowed and latest log order wins.
 - Fail-closed `ownerOf` response validation. A successful result must be exactly one canonical
   ABI address word; wrong-length or dirty-upper-bit results revert `InvalidOwnerOfResponse`.
 
@@ -391,7 +423,7 @@ Source version. Not deployed. No storage/layout change (slots 0/1/2/3 identical
 to `0.0.11`).
 
 ### Added
-- **`registerAndSetPrimary(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI) -> uint256 agentId`**
+- **`registerAndSetPrimary(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI) -> uint256 agentId`**
   — a caller-paid, no-signature/no-relayer convenience wrapper: it runs the canonical `register`
   body (empty metadata) and then records the freshly minted `agentId` as the **caller's own** primary
   agent, in one transaction. Equivalent to calling `register(...)` then `setPrimaryAgent(bytes32(agentId))`
@@ -502,8 +534,8 @@ Source version. Not deployed.
 - **`registrationHash` no longer includes the token standard**, reverting the
   unreleased `0.0.6` change below and restoring the hash to the form that is live
   on Ethereum mainnet, Base, and Sepolia. The counterfactual identity is
-  `keccak256(chainId, adapter, tokenContract, tokenId)`; the `TokenStandard` is
-  dropped from the hash preimage and from the `registrationHash(tokenContract,
+  `keccak256(chainId, adapter, boundAddress, tokenId)`; the `TokenStandard` is
+  dropped from the hash preimage and from the `registrationHash(boundAddress,
   tokenId)` / internal `_registrationHash` signatures (and the
   `IERC8004AdapterCounterfactual` interface).
 
@@ -565,11 +597,11 @@ Source version. Safe TX payloads prepared 2026-05-20
 - `registrationHash` now binds the token `standard` in addition to chain id,
   adapter address, token contract, and token id.
   **Reverted in `0.0.8`; never deployed. The live implementations keep the
-  original standard-free hash `keccak256(chainId, adapter, tokenContract, tokenId)`.**
+  original standard-free hash `keccak256(chainId, adapter, boundAddress, tokenId)`.**
 
 ### Errors
 - `AlreadyBound`, `NotAgentOwner`, `AgentTransferNotApproved`,
-  `InvalidTokenContractIsRegistry`.
+  `BoundAddressIsRegistry`.
 
 ## Earlier history (pre-version-numbering)
 
@@ -608,7 +640,7 @@ report dates, not source-tag dates.
 ### 2026-05-15 — counterfactual registration family + full event coverage + reentrancy guards (current live implementation)
 - Emit-only counterfactual register family (`counterfactualRegister` plus five
   `counterfactual*` setters): mirrors the on-chain register surface but emits
-  events only, keyed by `registrationHash(chainid, adapter, tokenContract, tokenId)`
+  events only, keyed by `registrationHash(chainid, adapter, boundAddress, tokenId)`
   (the `standard` field was added later in 0.0.6).
 - Full on-chain event coverage: every state-mutating external function emits one
   adapter-level event (`AgentURISet`, `MetadataSet`, `AgentWalletSet`,
@@ -623,7 +655,7 @@ report dates, not source-tag dates.
   forwarders `getMetadata` / `getAgentWallet` / `ownerOf` / `tokenURI`
   (`IERC8004IdentityRecord`), the `register(string)` / `register()` overloads, the
   read/registration interface split, and a
-  `register(standard, tokenContract, tokenId, agentURI)` convenience overload.
+  `register(standard, boundAddress, tokenId, agentURI)` convenience overload.
   No new storage. See `deployments/2026-05-07-erc8004-coverage-upgrade-report.md`.
 
 ### 2026-04-30 — ERC-8217 binding-metadata migration

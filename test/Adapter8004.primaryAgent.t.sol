@@ -38,7 +38,7 @@ contract Adapter8004PrimaryAgentTest is Test {
     event PrimaryCounterfactualAgentSet(
         address indexed account,
         bytes32 indexed registrationHash,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         bytes32 extraData,
         address indexed setBy

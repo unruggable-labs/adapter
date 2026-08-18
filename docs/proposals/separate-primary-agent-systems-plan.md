@@ -4,6 +4,7 @@
 **Scope:** contracts, interfaces, fixtures, tests, release/deployment documentation  
 **Out of scope:** implementing this plan or changing the underlying full ERC-8004 registry
 **Superseded in part:** `registerAndSetPrimary`, referenced below, was removed in `0.0.16` before any deployment. This document is kept as the design record for the primary-agent split; see CHANGELOG.md for why the wrapper went away.  
+**Field renamed since:** what this document calls `tokenContract` is now `boundAddress` in the contract and interfaces, because the field also holds a plain account under `ACCOUNT`. Kept as a dated design record rather than rewritten.  
 
 ## Decision summary
 

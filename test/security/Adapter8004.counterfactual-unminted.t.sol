@@ -203,7 +203,7 @@ contract CounterfactualReentrantOwnerCollection {
 contract CounterfactualUnmintedTest is Test {
     event CounterfactualAgentURISet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         string newURI,
@@ -211,7 +211,7 @@ contract CounterfactualUnmintedTest is Test {
     );
     event CounterfactualMetadataSet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         string metadataKey,
@@ -220,7 +220,7 @@ contract CounterfactualUnmintedTest is Test {
     );
     event CounterfactualMetadataBatchSet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
@@ -228,7 +228,7 @@ contract CounterfactualUnmintedTest is Test {
     );
     event CounterfactualAgentWalletSet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         address newWallet,
@@ -236,7 +236,7 @@ contract CounterfactualUnmintedTest is Test {
     );
     event CounterfactualAgentWalletUnset(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         address emitter
@@ -407,7 +407,7 @@ contract CounterfactualUnmintedTest is Test {
         );
 
         vm.prank(eve);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, eve, 1, "ipfs://eoa");
     }
 

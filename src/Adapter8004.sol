@@ -87,7 +87,7 @@ contract Adapter8004 is
     /// implementation.
     ///
     /// It exists so that a later implementation can separate tokens that share a
-    /// `(tokenContract, tokenId)`, such as a contract with classes of ids where Class A id 1 and
+    /// `(boundAddress, tokenId)`, such as a contract with classes of ids where Class A id 1 and
     /// Class B id 1 are different tokens. The proxy is UUPS, so that implementation may compute
     /// this value however it needs to. Fixing the preimage shape here is what allows it to do so
     /// without breaking any identity again.
@@ -116,16 +116,18 @@ contract Adapter8004 is
     bytes32 private constant CLEAR_PRIMARY_AGENT_TYPEHASH =
         keccak256("ClearPrimary8004Agent(address account,uint256 nonce,uint256 deadline)");
 
-    error InvalidTokenContract();
+    /// @notice Thrown when the address a binding names is unusable: the zero address under any
+    /// standard, or an address with no runtime code under any standard except `ACCOUNT`.
+    error InvalidBoundAddress();
     /// @notice Thrown when a single-owner token's `ownerOf(tokenId)` call succeeds but does not
     /// return exactly one canonical ABI-encoded address word. Malformed success responses fail
     /// closed rather than opening the ownerless collection-authority window.
-    error InvalidOwnerOfResponse(address tokenContract, uint256 tokenId);
-    /// @notice Thrown when a binding attempts to set `tokenContract` to the ERC-8004 identity registry
+    error InvalidOwnerOfResponse(address boundAddress, uint256 tokenId);
+    /// @notice Thrown when a binding attempts to set `boundAddress` to the ERC-8004 identity registry
     /// itself. Permitted-and-then-bound, the agent would be permanently uncontrollable because
     /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
     /// through `_hasBindingControl`.
-    error InvalidTokenContractIsRegistry();
+    error BoundAddressIsRegistry();
     /// @notice Thrown by any `ACCOUNT`, `CONTRACT_OWNABLE` or `CONTRACT_ADMIN` operation called with a nonzero
     /// `tokenId`. This covers registration, `bindExisting` and the emit-only counterfactual calls
     /// alike, since all of them pass through the same authority choke points. An account-level binding names the address
@@ -133,7 +135,7 @@ contract Adapter8004 is
     /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
     /// its `registrationHash`, and any pointer derived from it can never disagree with the id the
     /// caller submitted.
-    error NonZeroTokenIdForAccount(address tokenContract, uint256 tokenId);
+    error NonZeroTokenIdForAccount(address boundAddress, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
     /// @notice Thrown when `setPrimaryAgentFor` / `clearPrimaryAgentFor` is called by an address that
@@ -164,7 +166,7 @@ contract Adapter8004 is
     event AgentBound(
         uint256 indexed agentId,
         TokenStandard indexed standard,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 tokenId,
         address registeredBy
     );
@@ -207,7 +209,7 @@ contract Adapter8004 is
     function initialize(address identityRegistry_, address initialOwner) external initializer {
         // 1. Reject an unusable registry target before any state is initialized.
         if (identityRegistry_ == address(0)) {
-            revert InvalidTokenContract();
+            revert InvalidBoundAddress();
         }
 
         // 2. Set the adapter admin who controls upgrades and registry repointing.
@@ -226,7 +228,7 @@ contract Adapter8004 is
     function setIdentityRegistry(address newIdentityRegistry) external onlyOwner nonReentrant {
         // 1. Reject an unusable registry target.
         if (newIdentityRegistry == address(0)) {
-            revert InvalidTokenContract();
+            revert InvalidBoundAddress();
         }
 
         // 2. Capture the previous address for upgrade/migration observability.
@@ -241,32 +243,32 @@ contract Adapter8004 is
 
     function register(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) public nonReentrant returns (uint256 agentId) {
-        return _register(standard, tokenContract, tokenId, agentURI, metadata);
+        return _register(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
-    function register(TokenStandard standard, address tokenContract, uint256 tokenId, string calldata agentURI)
+    function register(TokenStandard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
         external
         nonReentrant
         returns (uint256 agentId)
     {
-        return _register(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
+        return _register(standard, boundAddress, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
     }
 
-    function bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)
+    function bindExisting(uint256 agentId, TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
     {
-        // 1. Reject an unusable external token contract address (matches `register` taxonomy) and
+        // 1. Reject an unusable bound address (matches `register` taxonomy) and
         //    reject the registry itself, which would lock the agent permanently post-bind.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Reject an already-bound agent so adapter bindings remain immutable post-bind.
-        if (_bindings[agentId].tokenContract != address(0)) {
+        if (_bindings[agentId].boundAddress != address(0)) {
             revert AlreadyBound(agentId);
         }
 
@@ -275,7 +277,7 @@ contract Adapter8004 is
         //    requires the named address itself, `CONTRACT_OWNABLE` requires its current owner or a
         //    delegate of that owner, and `CONTRACT_ADMIN` requires a `DEFAULT_ADMIN_ROLE` holder.
         //    Agent ownership and adapter approval are enforced by the transfer in step 4.
-        _requireBindingControl(standard, tokenContract, tokenId, msg.sender);
+        _requireBindingControl(standard, boundAddress, tokenId, msg.sender);
 
         // 4. Transfer the ERC-8004 identity into the adapter before any adapter storage or
         //    registry-metadata writes. Any failure here reverts the whole transaction with no
@@ -292,7 +294,7 @@ contract Adapter8004 is
         IERC721(address(identityRegistry)).transferFrom(msg.sender, address(this), agentId);
 
         // 5. Persist the immutable adapter binding for this agent.
-        _bindings[agentId] = Binding({standard: standard, tokenContract: tokenContract, tokenId: tokenId});
+        _bindings[agentId] = Binding({standard: standard, boundAddress: boundAddress, tokenId: tokenId});
 
         // 6. Overwrite the canonical binding metadata to point at this adapter. Any pre-existing
         //    value at the reserved key (arbitrary user data or a value pointing at another adapter)
@@ -300,23 +302,23 @@ contract Adapter8004 is
         identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
 
         // 7. Emit the existing binding event so indexers do not need a separate event family.
-        emit AgentBound(agentId, standard, tokenContract, tokenId, msg.sender);
+        emit AgentBound(agentId, standard, boundAddress, tokenId, msg.sender);
     }
 
     function _register(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) private returns (uint256 agentId) {
-        // 1. Reject an unusable external token contract address, and reject the registry itself
+        // 1. Reject an unusable bound address, and reject the registry itself
         //    (binding to the registry would lock the agent permanently post-register).
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Confirm the caller currently controls the token being bound, or is the directly
         //    calling single-owner collection while the id has no current owner.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Reject user-supplied metadata entries that target reserved keys: the canonical
         //    binding record (agent-binding) and cf-registration, which no register path writes.
@@ -332,7 +334,7 @@ contract Adapter8004 is
         }
 
         // 5. Persist the immutable link from the ERC-8004 agent to the external token.
-        _bindings[agentId] = Binding({standard: standard, tokenContract: tokenContract, tokenId: tokenId});
+        _bindings[agentId] = Binding({standard: standard, boundAddress: boundAddress, tokenId: tokenId});
 
         // 6. Write the canonical binding metadata (binding contract address only; ERC-8217).
         identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
@@ -341,7 +343,7 @@ contract Adapter8004 is
         identityRegistry.unsetAgentWallet(agentId);
 
         // 8. Emit the final binding record for off-chain discovery.
-        emit AgentBound(agentId, standard, tokenContract, tokenId, msg.sender);
+        emit AgentBound(agentId, standard, boundAddress, tokenId, msg.sender);
     }
 
     function getMetadata(uint256 agentId, string memory metadataKey) external view returns (bytes memory) {
@@ -428,7 +430,7 @@ contract Adapter8004 is
     function rewriteBindingMetadata(uint256 agentId) external onlyOwner nonReentrant {
         // 1. Reject unknown agents before touching registry state.
         Binding memory binding = _bindings[agentId];
-        if (binding.tokenContract == address(0)) {
+        if (binding.boundAddress == address(0)) {
             revert UnknownAgent(agentId);
         }
 
@@ -469,7 +471,7 @@ contract Adapter8004 is
         Binding memory binding = _bindings[agentId];
 
         // 2. Reject unknown agents instead of returning an empty struct.
-        if (binding.tokenContract == address(0)) {
+        if (binding.boundAddress == address(0)) {
             revert UnknownAgent(agentId);
         }
 
@@ -499,7 +501,7 @@ contract Adapter8004 is
         Binding memory binding = _bindings[agentId];
 
         // 2. Unknown agents do not have a controller.
-        if (binding.tokenContract == address(0)) {
+        if (binding.boundAddress == address(0)) {
             return false;
         }
 
@@ -527,14 +529,14 @@ contract Adapter8004 is
     // off-chain identity to be promoted to an on-chain registration later.
     //
     // The identity is the `registrationHash` and nothing else. Each token
-    // has exactly one identity, but `(tokenContract, tokenId)` is not
+    // has exactly one identity, but `(boundAddress, tokenId)` is not
     // considered a unique identifier, because one contract may have more
     // than one set of ids. `extraData` is what separates those tokens.
     // Consumers must key on `registrationHash`, never on the token pair.
     // -----------------------------------------------------------------
 
-    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32) {
-        return _registrationHash(tokenContract, tokenId);
+    function registrationHash(address boundAddress, uint256 tokenId) external view returns (bytes32) {
+        return _registrationHash(boundAddress, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -551,54 +553,54 @@ contract Adapter8004 is
     /// ERC-8004 registry and without persisting any adapter storage. Authorized for a current controller,
     /// or for the directly calling token contract while an ERC-721/ERC-1155F/ERC-6909F id has no current
     /// owner. The same authority may re-emit any number of times; indexers MUST resolve the latest event
-    /// per `registrationHash` as authoritative, not per `(tokenContract, tokenId)`, which is not
-    /// considered a unique identifier. Collection-authorized events use `emitter = tokenContract`.
+    /// per `registrationHash` as authoritative, not per `(boundAddress, tokenId)`, which is not
+    /// considered a unique identifier. Collection-authorized events use `emitter = boundAddress`.
     function counterfactualRegister(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) public nonReentrant returns (bytes32 computedHash) {
-        return _counterfactualRegisterImpl(standard, tokenContract, tokenId, agentURI, metadata);
+        return _counterfactualRegisterImpl(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
     /// @notice Convenience overload equivalent to `counterfactualRegister(...)` with an empty metadata array.
     function counterfactualRegister(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI
     ) external nonReentrant returns (bytes32 computedHash) {
         return _counterfactualRegisterImpl(
-            standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0)
+            standard, boundAddress, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0)
         );
     }
 
     function _counterfactualRegisterImpl(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
     ) private returns (bytes32 computedHash) {
-        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Confirm the caller is a current controller, or the directly calling single-owner token
         //    contract while `tokenId` has no current owner.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
         _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Compute the deterministic registration hash used as the indexer key for this claim.
-        computedHash = _registrationHash(tokenContract, tokenId);
+        computedHash = _registrationHash(boundAddress, tokenId);
 
         // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
         emit CounterfactualAgentRegistered(
-            computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, agentURI, metadata, msg.sender
+            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, agentURI, metadata, msg.sender
         );
     }
 
@@ -606,25 +608,25 @@ contract Adapter8004 is
     /// event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage. A current
     /// controller may call it, as may the token contract itself while a supported single-owner id has
     /// no current owner. The emitted event is the single source of truth; indexers MUST treat the latest
-    /// event per `registrationHash` as authoritative, not per `(tokenContract, tokenId)`, which is
+    /// event per `registrationHash` as authoritative, not per `(boundAddress, tokenId)`, which is
     /// not considered a unique identifier.
     function counterfactualSetAgentURI(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata newURI
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Emit the URI update, which is the only on-chain record this function produces.
         emit CounterfactualAgentURISet(
-            _registrationHash(tokenContract, tokenId),
-            tokenContract,
+            _registrationHash(boundAddress, tokenId),
+            boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
             newURI,
@@ -638,17 +640,17 @@ contract Adapter8004 is
     /// single-owner id has no current owner.
     function counterfactualSetMetadata(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata metadataKey,
         bytes calldata metadataValue
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         //    Cache the key hash once: `metadataKey` is `calldata` but recomputing the hash twice in
@@ -660,8 +662,8 @@ contract Adapter8004 is
 
         // 4. Emit the metadata write, which is the only on-chain record this function produces.
         emit CounterfactualMetadataSet(
-            _registrationHash(tokenContract, tokenId),
-            tokenContract,
+            _registrationHash(boundAddress, tokenId),
+            boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
             metadataKey,
@@ -676,24 +678,24 @@ contract Adapter8004 is
     /// supported single-owner id has no current owner.
     function counterfactualSetMetadataBatch(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Emit the batch, which is the only on-chain record this function produces.
         emit CounterfactualMetadataBatchSet(
-            _registrationHash(tokenContract, tokenId),
-            tokenContract,
+            _registrationHash(boundAddress, tokenId),
+            boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
             metadata,
@@ -707,21 +709,21 @@ contract Adapter8004 is
     /// single-owner id has no current owner.
     function counterfactualSetAgentWallet(
         TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         address newWallet
     ) external nonReentrant {
-        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Emit the wallet assignment, which is the only on-chain record this function produces.
         emit CounterfactualAgentWalletSet(
-            _registrationHash(tokenContract, tokenId),
-            tokenContract,
+            _registrationHash(boundAddress, tokenId),
+            boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
             newWallet,
@@ -733,20 +735,20 @@ contract Adapter8004 is
     /// emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A current
     /// controller may call it, as may the token contract itself while a supported single-owner id has
     /// no current owner.
-    function counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)
+    function counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
     {
-        // 1. Reject an unusable external token contract address and reject the registry itself so the
+        // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
-        _requireValidBoundAddress(standard, tokenContract);
+        _requireValidBoundAddress(standard, boundAddress);
 
         // 2. Apply current-controller or ownerless collection authority.
-        _requireTokenAuthority(standard, tokenContract, tokenId, msg.sender);
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Emit the wallet clear, which is the only on-chain record this function produces.
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(tokenContract, tokenId), tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
+            _registrationHash(boundAddress, tokenId), boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
         );
     }
 
@@ -809,19 +811,19 @@ contract Adapter8004 is
     //  Counterfactual primary agent (reverse resolution: address -> registration hash)
     // -----------------------------------------------------------------
 
-    function setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)
+    function setPrimaryCounterfactualAgent(address boundAddress, uint256 tokenId)
         external
         returns (bytes32 computedHash)
     {
-        return _setPrimaryCounterfactualAgent(msg.sender, tokenContract, tokenId);
+        return _setPrimaryCounterfactualAgent(msg.sender, boundAddress, tokenId);
     }
 
-    function setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)
+    function setPrimaryCounterfactualAgentFor(address account, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 computedHash)
     {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        return _setPrimaryCounterfactualAgent(account, tokenContract, tokenId);
+        return _setPrimaryCounterfactualAgent(account, boundAddress, tokenId);
     }
 
     function clearPrimaryCounterfactualAgent() external {
@@ -838,17 +840,17 @@ contract Adapter8004 is
         return stored == bytes32(0) ? PRIMARY_COUNTERFACTUAL_AGENT_UNSET : ~stored;
     }
 
-    function _setPrimaryCounterfactualAgent(address account, address tokenContract, uint256 tokenId)
+    function _setPrimaryCounterfactualAgent(address account, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 computedHash)
     {
-        computedHash = _registrationHash(tokenContract, tokenId);
+        computedHash = _registrationHash(boundAddress, tokenId);
         if (computedHash == bytes32(type(uint256).max)) {
             revert PrimaryCounterfactualAgentHashReserved(computedHash);
         }
         _primaryCounterfactualAgent[account] = ~computedHash;
         emit PrimaryCounterfactualAgentSet(
-            account, computedHash, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
+            account, computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
         );
     }
 
@@ -1002,7 +1004,7 @@ contract Adapter8004 is
     /// while the same address before or after that delegation does not.
     ///
     /// The zero address is rejected under every standard, `ACCOUNT` included. `_bindings` uses a
-    /// zero `tokenContract` as its unbound sentinel, so a zero binding would be indistinguishable
+    /// zero `boundAddress` as its unbound sentinel, so a zero binding would be indistinguishable
     /// from no binding and would make `bindingOf` and `UnknownAgent` lie. Nothing could authorize it
     /// in any case, since `msg.sender` is never the zero address.
     ///
@@ -1011,13 +1013,13 @@ contract Adapter8004 is
     /// from any external controller.
     function _requireValidBoundAddress(TokenStandard standard, address boundAddress) internal view {
         if (boundAddress == address(0)) {
-            revert InvalidTokenContract();
+            revert InvalidBoundAddress();
         }
         if (standard != TokenStandard.ACCOUNT && boundAddress.code.length == 0) {
-            revert InvalidTokenContract();
+            revert InvalidBoundAddress();
         }
         if (boundAddress == address(identityRegistry)) {
-            revert InvalidTokenContractIsRegistry();
+            revert BoundAddressIsRegistry();
         }
     }
 
@@ -1026,7 +1028,7 @@ contract Adapter8004 is
         Binding memory binding = _bindings[agentId];
 
         // 2. Reject unknown agents before checking token ownership state.
-        if (binding.tokenContract == address(0)) {
+        if (binding.boundAddress == address(0)) {
             revert UnknownAgent(agentId);
         }
 
@@ -1036,16 +1038,16 @@ contract Adapter8004 is
         }
     }
 
-    function _requireBindingControl(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
+    function _requireBindingControl(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
     {
         // 1. Pin account-level bindings to the canonical id 0 in the same call that decides control,
         //    so no write path can reach storage or an event with a nonzero contract-binding id.
-        _requireCanonicalTokenId(standard, tokenContract, tokenId);
+        _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
         // 2. Reuse the token-standard-specific control check before first registration.
-        if (!_hasBindingControl(standard, tokenContract, tokenId, account)) {
+        if (!_hasBindingControl(standard, boundAddress, tokenId, account)) {
             revert NotController(account, type(uint256).max);
         }
     }
@@ -1057,7 +1059,7 @@ contract Adapter8004 is
     /// The latter window reopens after a burn if `ownerOf` again reverts or returns zero; preventing
     /// that would require historical-existence storage.
     ///
-    /// Every mode compares the adapter's immediate EVM caller against `tokenContract`, so a router,
+    /// Every mode compares the adapter's immediate EVM caller against `boundAddress`, so a router,
     /// forwarder, or multicall that calls the adapter itself cannot stand in for the bound address.
     /// An external owner or governance address may still drive this by calling an entry point on the
     /// bound contract that makes the outbound adapter call. `delegatecall` into this contract is
@@ -1067,20 +1069,19 @@ contract Adapter8004 is
     /// and one with a single hook binds once and then freezes. That hook may be the constructor, since
     /// `ACCOUNT` applies no code test. An externally owned account has no such constraint, because
     /// sending a transaction is itself the outbound path.
-    function _requireTokenAuthority(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
+    function _requireTokenAuthority(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
     {
         // 1. Pin account-level bindings to the canonical id 0 before any authority branch is taken,
         //    so the ownerless window cannot be entered and no emit-only path can escape the check.
-        _requireCanonicalTokenId(standard, tokenContract, tokenId);
+        _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
         // 2. Temporary single-owner collection authority, then the shared current-control chain.
-        if (account == tokenContract && _isSingleOwnerStandard(standard) && _hasNoCurrentOwner(tokenContract, tokenId))
-        {
+        if (account == boundAddress && _isSingleOwnerStandard(standard) && _hasNoCurrentOwner(boundAddress, tokenId)) {
             return;
         }
-        _requireBindingControl(standard, tokenContract, tokenId, account);
+        _requireBindingControl(standard, boundAddress, tokenId, account);
     }
 
     /// @dev The three account-level standards name the address itself rather than a token within it, so
@@ -1089,23 +1090,23 @@ contract Adapter8004 is
     /// an account-level binding sees the same id. Reverts rather than coercing a nonzero id to `0`:
     /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
     /// id they submitted. No-op for every other standard.
-    function _requireCanonicalTokenId(TokenStandard standard, address tokenContract, uint256 tokenId) internal pure {
+    function _requireCanonicalTokenId(TokenStandard standard, address boundAddress, uint256 tokenId) internal pure {
         if (_isAccountStandard(standard) && tokenId != 0) {
-            revert NonZeroTokenIdForAccount(tokenContract, tokenId);
+            revert NonZeroTokenIdForAccount(boundAddress, tokenId);
         }
     }
 
     /// @dev Probes `ownerOf` without assuming a universal nonexistent-token revert selector.
     /// Revert and canonical zero mean no current owner; canonical nonzero means owned. A successful
     /// response of any other shape fails closed.
-    function _hasNoCurrentOwner(address tokenContract, uint256 tokenId) private view returns (bool) {
+    function _hasNoCurrentOwner(address boundAddress, uint256 tokenId) private view returns (bool) {
         (bool success, bytes memory result) =
-            tokenContract.staticcall(abi.encodeCall(ISingleOwnerToken.ownerOf, (tokenId)));
+            boundAddress.staticcall(abi.encodeCall(ISingleOwnerToken.ownerOf, (tokenId)));
         if (!success) {
             return true;
         }
         if (result.length != 32) {
-            revert InvalidOwnerOfResponse(tokenContract, tokenId);
+            revert InvalidOwnerOfResponse(boundAddress, tokenId);
         }
 
         uint256 ownerWord;
@@ -1113,21 +1114,21 @@ contract Adapter8004 is
             ownerWord := mload(add(result, 0x20))
         }
         if (ownerWord >> 160 != 0) {
-            revert InvalidOwnerOfResponse(tokenContract, tokenId);
+            revert InvalidOwnerOfResponse(boundAddress, tokenId);
         }
         return address(uint160(ownerWord)) == address(0);
     }
 
     function _hasBindingControl(Binding memory binding, address account) internal view returns (bool) {
-        return _hasBindingControl(binding.standard, binding.tokenContract, binding.tokenId, account);
+        return _hasBindingControl(binding.standard, binding.boundAddress, binding.tokenId, account);
     }
 
-    function _hasBindingControl(TokenStandard standard, address tokenContract, uint256 tokenId, address account)
+    function _hasBindingControl(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
         returns (bool)
     {
-        // 1. An account-level binding names `tokenContract` itself rather than a token within it, so
+        // 1. An account-level binding names `boundAddress` itself rather than a token within it, so
         //    the bound address is the controller and nobody else is. There is no per-token owner or
         //    holder to resolve, and the adapter asks the address nothing: `ownerOf` and both
         //    `balanceOf` shapes are never probed on this branch, and `tokenId` is not consulted (it is
@@ -1150,7 +1151,7 @@ contract Adapter8004 is
         //    (An ERC-20 binding its own contract-level identity through `ACCOUNT` is the motivating
         //    example, but nothing here is specific to tokens.)
         if (standard == TokenStandard.ACCOUNT) {
-            return account == tokenContract;
+            return account == boundAddress;
         }
 
         // 2. `CONTRACT_OWNABLE` is the fourth member of the owner-and-delegate pattern described at
@@ -1177,14 +1178,14 @@ contract Adapter8004 is
         //    This standard remains outside the single-owner token set, so it gets no
         //    ownerless-collection window.
         if (standard == TokenStandard.CONTRACT_OWNABLE) {
-            address contractOwner = _currentContractOwner(tokenContract);
+            address contractOwner = _currentContractOwner(boundAddress);
             if (contractOwner == address(0)) {
                 return false;
             }
             if (account == contractOwner) {
                 return true;
             }
-            return _isOwnerDelegate(account, contractOwner, tokenContract);
+            return _isOwnerDelegate(account, contractOwner, boundAddress);
         }
 
         // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Authority
@@ -1201,7 +1202,7 @@ contract Adapter8004 is
         //    enumerate, so there is no well-defined delegator to name. Direct authority only, by
         //    design rather than by omission.
         if (standard == TokenStandard.CONTRACT_ADMIN) {
-            return _hasDefaultAdminRole(tokenContract, account);
+            return _hasDefaultAdminRole(boundAddress, account);
         }
 
         // 4. Single-owner standards are the other three members of the owner-and-delegate pattern.
@@ -1209,22 +1210,22 @@ contract Adapter8004 is
         //    current owner. Direct ownership is checked first so current owners never incur a
         //    registry call.
         if (_isSingleOwnerStandard(standard)) {
-            address owner = ISingleOwnerToken(tokenContract).ownerOf(tokenId);
+            address owner = ISingleOwnerToken(boundAddress).ownerOf(tokenId);
             if (account == owner) {
                 return true;
             }
-            return _isERC721Delegate(account, owner, tokenContract, tokenId);
+            return _isERC721Delegate(account, owner, boundAddress, tokenId);
         }
 
         // 5. ERC-1155 control means any positive balance for the bound id.
         //    No delegate.xyz check: the no-vault API cannot soundly map a delegation to a holder.
         if (standard == TokenStandard.ERC1155) {
-            return IERC1155(tokenContract).balanceOf(account, tokenId) > 0;
+            return IERC1155(boundAddress).balanceOf(account, tokenId) > 0;
         }
 
         // 6. ERC-6909 control also means any positive balance for the bound id.
         //    No delegate.xyz check: v2 has no ERC-6909 token-id delegation primitive.
-        return IERC6909(tokenContract).balanceOf(account, tokenId) > 0;
+        return IERC6909(boundAddress).balanceOf(account, tokenId) > 0;
     }
 
     /// @dev The three standards that name a contract rather than a token within it. They share the
@@ -1245,8 +1246,8 @@ contract Adapter8004 is
     /// the contract reports no usable owner, which every caller must read as nobody rather than as an
     /// owner of zero. In particular the delegation check must never run with a zero delegator, since
     /// that would ask the registry about an account nobody controls.
-    function _currentContractOwner(address tokenContract) private view returns (address) {
-        (bool success, bytes memory result) = tokenContract.staticcall(abi.encodeCall(IOwnableContract.owner, ()));
+    function _currentContractOwner(address boundAddress) private view returns (address) {
+        (bool success, bytes memory result) = boundAddress.staticcall(abi.encodeCall(IOwnableContract.owner, ()));
         if (!success || result.length != 32) {
             return address(0);
         }
@@ -1265,21 +1266,20 @@ contract Adapter8004 is
     /// @dev Consults the delegate.xyz v2 registry for a contract-scoped delegation from the bound
     /// contract's current `owner` to `account`. Fails closed in the same way as the token-scoped
     /// check: if the registry has no code on this chain, only direct authority applies.
-    function _isOwnerDelegate(address account, address owner, address tokenContract) private view returns (bool) {
+    function _isOwnerDelegate(address account, address owner, address boundAddress) private view returns (bool) {
         if (DELEGATE_REGISTRY.code.length == 0) {
             return false;
         }
 
-        return IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForContract(
-            account, owner, tokenContract, DELEGATE_RIGHTS
-        );
+        return
+            IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForContract(account, owner, boundAddress, DELEGATE_RIGHTS);
     }
 
     /// @dev Consults the immutable delegate.xyz v2 registry for an ERC-721 delegation from the current
     /// `owner` (the vault) to `account` (the hot wallet). `checkDelegateForERC721` already folds in
     /// token-level, contract-level, and all-wallet delegations, so no separate calls are needed.
     /// Fails closed: if the registry has no code on this chain, only direct ownership authorizes.
-    function _isERC721Delegate(address account, address owner, address tokenContract, uint256 tokenId)
+    function _isERC721Delegate(address account, address owner, address boundAddress, uint256 tokenId)
         internal
         view
         returns (bool)
@@ -1291,7 +1291,7 @@ contract Adapter8004 is
 
         // 2. Accept either a `DELEGATE_RIGHTS`-scoped delegation or an empty/full delegation.
         return IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForERC721(
-            account, owner, tokenContract, tokenId, DELEGATE_RIGHTS
+            account, owner, boundAddress, tokenId, DELEGATE_RIGHTS
         );
     }
 
@@ -1312,8 +1312,8 @@ contract Adapter8004 is
         }
     }
 
-    function _registrationHash(address tokenContract, uint256 tokenId) internal view virtual returns (bytes32) {
-        return _registrationHashFor(_interoperableAddress(address(this)), tokenContract, tokenId);
+    function _registrationHash(address boundAddress, uint256 tokenId) internal view virtual returns (bytes32) {
+        return _registrationHashFor(_interoperableAddress(address(this)), boundAddress, tokenId);
     }
 
     /// @dev ERC-7930 v1 Chain Identifier using the CAIP-350 `eip155` profile:
@@ -1372,13 +1372,13 @@ contract Adapter8004 is
     }
 
     /// @dev The canonical counterfactual identity is
-    /// `keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))`.
-    function _registrationHashFor(bytes memory adapterInteroperableAddress, address tokenContract, uint256 tokenId)
+    /// `keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId, extraData))`.
+    function _registrationHashFor(bytes memory adapterInteroperableAddress, address boundAddress, uint256 tokenId)
         internal
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, COUNTERFACTUAL_EXTRA_DATA));
+        return keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA));
     }
 
     /// @dev Stateless EIP-712 domain separator for the signed primary-agent surface. Computed inline

@@ -11,15 +11,15 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// Every counterfactual event below carries `bytes32 extraData` as its first non-indexed field.
 /// The three indexed slots are fixed across every event and already spent on
-/// `(registrationHash, tokenContract, tokenId)`. There is deliberately no in-payload schema
+/// `(registrationHash, boundAddress, tokenId)`. There is deliberately no in-payload schema
 /// version, because `topic0` is the keccak of the full event signature and so already discriminates
 /// schema on its own.
 ///
 /// The identity is the `registrationHash`. Each token has exactly one identity, but
-/// `(tokenContract, tokenId)` is not considered a unique identifier, because one contract may have
+/// `(boundAddress, tokenId)` is not considered a unique identifier, because one contract may have
 /// more than one set of ids. An example is a contract with classes of ids, where Class A id 1 and
 /// Class B id 1 are different tokens. `extraData` is what separates them, so consumers must key on
-/// `registrationHash` and must not collapse rows by `(tokenContract, tokenId)`.
+/// `registrationHash` and must not collapse rows by `(boundAddress, tokenId)`.
 ///
 /// Adapter8004's existing unsigned counterfactual functions accept either ordinary current-controller
 /// authority or, for ERC-721/ERC-1155F/ERC-6909F only, temporary authority from the directly calling
@@ -28,13 +28,13 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// canonical zero response opens that window; minting to a non-collection owner closes it, while a
 /// later burn can reopen it because the adapter deliberately stores no historical-existence bit.
 /// Plain ERC-1155/ERC-6909 remain positive-balance controlled. Collection-authorized events retain
-/// the existing schema and carry `emitter = tokenContract`; later owner/delegate events overwrite
+/// the existing schema and carry `emitter = boundAddress`; later owner/delegate events overwrite
 /// them by normal log ordering.
 ///
 /// `ACCOUNT` (`TokenStandard` value 5) uses the same unsigned
 /// functions under a different authority. It names an address itself rather than a token within it,
 /// so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForAccount`. The named address is
-/// the only authorized emitter: the adapter's immediate EVM caller must be `tokenContract`. A
+/// the only authorized emitter: the adapter's immediate EVM caller must be `boundAddress`. A
 /// router, forwarder, or multicall that calls the adapter itself fails, since the adapter sees that
 /// contract as `msg.sender`. Where the bound address is a contract, an external owner or governance
 /// address may instead call an entry point on it that makes the outbound adapter call; where it is an
@@ -49,12 +49,12 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// **`ACCOUNT` accepts any address, with or without runtime code, and applies no code test at all.**
 /// It is the only standard that does not, and it can afford not to because it never calls the
-/// address it names: authority is the single comparison `msg.sender == tokenContract`, which is well
+/// address it names: authority is the single comparison `msg.sender == boundAddress`, which is well
 /// defined either way. The zero address and the identity registry are still rejected. A plain
 /// externally-owned account and a deployed contract are therefore equally valid subjects, which is
 /// the point of the standard.
 ///
-/// Under EIP-7702 an externally-owned account can carry code, so `msg.sender == tokenContract` is
+/// Under EIP-7702 an externally-owned account can carry code, so `msg.sender == boundAddress` is
 /// not proof of key possession. Authority means, exactly, whoever can cause a call to originate from
 /// that address. For an undelegated account that is the key holder. For a delegated one it is the
 /// key holder plus anyone who can drive the delegate to make an outbound call, which for the common
@@ -94,7 +94,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// account-level standard. `CounterfactualAgentRegistered.standard` is the only
 /// counterfactual event field that carries a standard, and it remains non-indexed. The on-chain
 /// `AgentBound.standard` keeps its own indexed slot. Because the standard is excluded from the hash,
-/// any two standards claiming the same `(tokenContract, tokenId)` alias onto one `registrationHash`.
+/// any two standards claiming the same `(boundAddress, tokenId)` alias onto one `registrationHash`.
 /// A contract that is also an ERC-721 collection, claiming token `#0`, `ACCOUNT`, and
 /// `CONTRACT_OWNABLE` at `(X, 0)`, is the worked example. That is accepted and documented, because
 /// they are deliberately one identity with one current claim, and consumers read the latest
@@ -111,12 +111,12 @@ interface IERC8004AdapterCounterfactual {
     /// @notice Computes the canonical counterfactual registration hash, scoped to this chain and this
     /// adapter proxy, so off-chain consumers can derive it without reimplementing the rules. The
     /// identity is
-    /// `keccak256(abi.encode(interoperableAddress(adapter), tokenContract, tokenId, extraData))`,
+    /// `keccak256(abi.encode(interoperableAddress(adapter), boundAddress, tokenId, extraData))`,
     /// where `extraData` is `bytes32(0)` for every implementation of this baseline.
     /// @dev `extraData` is deliberately not a parameter anywhere on this surface, because it is
     /// reserved rather than used. Read its value from the `extraData` field on any counterfactual
     /// event.
-    function registrationHash(address tokenContract, uint256 tokenId) external view returns (bytes32);
+    function registrationHash(address boundAddress, uint256 tokenId) external view returns (bytes32);
 
     /// @notice Announces a counterfactual identity claim for an external token. The claim is recorded
     /// only as an event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage.
@@ -124,7 +124,7 @@ interface IERC8004AdapterCounterfactual {
     /// highest block number, then highest log index.
     event CounterfactualAgentRegistered(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
@@ -137,7 +137,7 @@ interface IERC8004AdapterCounterfactual {
     /// event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage.
     event CounterfactualAgentURISet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         string newURI,
@@ -148,7 +148,7 @@ interface IERC8004AdapterCounterfactual {
     /// this event, so nothing is written to the ERC-8004 registry or to adapter storage.
     event CounterfactualMetadataSet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         string metadataKey,
@@ -161,7 +161,7 @@ interface IERC8004AdapterCounterfactual {
     /// adapter storage.
     event CounterfactualMetadataBatchSet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
@@ -172,7 +172,7 @@ interface IERC8004AdapterCounterfactual {
     /// the assignment is carried only by this event, so nothing is written to the ERC-8004 registry.
     event CounterfactualAgentWalletSet(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         address newWallet,
@@ -183,7 +183,7 @@ interface IERC8004AdapterCounterfactual {
     /// event, so nothing is written to the ERC-8004 registry or to adapter storage.
     event CounterfactualAgentWalletUnset(
         bytes32 indexed registrationHash,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
         address emitter

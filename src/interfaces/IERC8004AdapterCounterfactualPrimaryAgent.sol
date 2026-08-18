@@ -8,11 +8,11 @@ interface IERC8004AdapterCounterfactualPrimaryAgent {
     function PRIMARY_COUNTERFACTUAL_AGENT_UNSET() external pure returns (bytes32);
 
     /// @notice `extraData` is the discriminator folded into `registrationHash`. It is carried here
-    /// because `(tokenContract, tokenId)` alone is not unique. See `IERC8004AdapterCounterfactual`.
+    /// because `(boundAddress, tokenId)` alone is not unique. See `IERC8004AdapterCounterfactual`.
     event PrimaryCounterfactualAgentSet(
         address indexed account,
         bytes32 indexed registrationHash,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         bytes32 extraData,
         address indexed setBy
@@ -24,7 +24,7 @@ interface IERC8004AdapterCounterfactualPrimaryAgent {
     /// compute from a real token pair. This is a self-assertion and is not proof: nothing here checks
     /// that the caller holds the token, so a consumer must verify the claim reciprocally before
     /// treating it as identity. Emits `PrimaryCounterfactualAgentSet` and returns the derived hash.
-    function setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)
+    function setPrimaryCounterfactualAgent(address boundAddress, uint256 tokenId)
         external
         returns (bytes32 registrationHash);
 
@@ -32,7 +32,7 @@ interface IERC8004AdapterCounterfactualPrimaryAgent {
     /// caller is the account itself, its `owner()` or `getOwner()`, or a holder of its
     /// `DEFAULT_ADMIN_ROLE`, and reverts `NotAccountController` otherwise. An account that misreports
     /// its controller can only affect its own entry.
-    function setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)
+    function setPrimaryCounterfactualAgentFor(address account, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 registrationHash);
 

@@ -18,12 +18,12 @@ contract Adapter8004HashHarness is Adapter8004 {
         return _interoperableAddressFor(chainId, account);
     }
 
-    function registrationHashFor(bytes memory adapterInteroperableAddress, address tokenContract, uint256 tokenId)
+    function registrationHashFor(bytes memory adapterInteroperableAddress, address boundAddress, uint256 tokenId)
         external
         pure
         returns (bytes32)
     {
-        return _registrationHashFor(adapterInteroperableAddress, tokenContract, tokenId);
+        return _registrationHashFor(adapterInteroperableAddress, boundAddress, tokenId);
     }
 
     /// @dev TEST-ONLY parameterized preimage. Production deliberately exposes no way to vary
@@ -32,12 +32,12 @@ contract Adapter8004HashHarness is Adapter8004 {
     /// formula rather than calling production code, so every test using it MUST first anchor it:
     /// with `extraData == bytes32(0)` it has to equal what production computes. See
     /// `_assertParameterizedPreimageMatchesProduction`.
-    function registrationHashWithExtra(address tokenContract, uint256 tokenId, bytes32 extraData)
+    function registrationHashWithExtra(address boundAddress, uint256 tokenId, bytes32 extraData)
         external
         view
         returns (bytes32)
     {
-        return keccak256(abi.encode(_interoperableAddress(address(this)), tokenContract, tokenId, extraData));
+        return keccak256(abi.encode(_interoperableAddress(address(this)), boundAddress, tokenId, extraData));
     }
 }
 
@@ -124,7 +124,7 @@ contract Adapter8004ERC7930Test is Test {
         );
     }
 
-    /// @dev The motivating collision: one `(tokenContract, tokenId)`, two classes, two identities.
+    /// @dev The motivating collision: one `(boundAddress, tokenId)`, two classes, two identities.
     /// Nothing produces this today, because production reserves the field and never varies it, so
     /// the property is pinned through the test-only parameterized preimage, anchored to production
     /// at `extraData == bytes32(0)`.
@@ -149,10 +149,10 @@ contract Adapter8004ERC7930Test is Test {
     /// stops committing to a trailing `bytes32(0)`, whether by a different constant, a different
     /// position, or a dropped field, this fails. Without it the two class tests above would stay
     /// green against a formula production no longer uses.
-    function _assertParameterizedPreimageMatchesProduction(address tokenContract, uint256 tokenId) internal view {
+    function _assertParameterizedPreimageMatchesProduction(address boundAddress, uint256 tokenId) internal view {
         assertEq(
-            harness.registrationHash(tokenContract, tokenId),
-            harness.registrationHashWithExtra(tokenContract, tokenId, bytes32(0)),
+            harness.registrationHash(boundAddress, tokenId),
+            harness.registrationHashWithExtra(boundAddress, tokenId, bytes32(0)),
             "production must commit to a trailing bytes32(0)"
         );
     }

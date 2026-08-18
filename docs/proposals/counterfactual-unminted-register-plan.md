@@ -4,6 +4,7 @@
 **Target contract:** `src/Adapter8004.sol`  
 **Target source version:** `0.0.13` (unreleased, following current `0.0.12`)  
 **Storage migration:** none  
+**Field renamed since:** what this document calls `tokenContract` is now `boundAddress` in the contract and interfaces, because the field also holds a plain account under `ACCOUNT`. Kept as a dated design record rather than rewritten.  
 **Event/schema migration:** none
 
 ## Decision summary

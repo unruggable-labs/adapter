@@ -248,7 +248,7 @@ contract AdversarialAdapter8004Test is Test {
             adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(binding.tokenContract, address(mal));
+        assertEq(binding.boundAddress, address(mal));
         assertEq(binding.tokenId, 1);
     }
 
@@ -270,7 +270,7 @@ contract AdversarialAdapter8004Test is Test {
         adapter.setIdentityRegistry(address(newRegistry));
 
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
-        assertEq(b.tokenContract, address(token1155));
+        assertEq(b.boundAddress, address(token1155));
         assertTrue(adapter.isController(agentId, alice));
 
         // Writes now forward into the new registry, which doesn't know this

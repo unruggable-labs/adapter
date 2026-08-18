@@ -58,9 +58,9 @@ contract Adapter8004ContractAdminTest is Test {
 
     /// @dev An admin registers, not the contract. Contract-self authority was removed, so a bound
     /// contract can no longer create its own binding either.
-    function _bindAs(address caller, address tokenContract) internal returns (uint256) {
+    function _bindAs(address caller, address boundAddress) internal returns (uint256) {
         vm.prank(caller);
-        return adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, tokenContract, 0, "ipfs://admin");
+        return adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, boundAddress, 0, "ipfs://admin");
     }
 
     function setUp() external {

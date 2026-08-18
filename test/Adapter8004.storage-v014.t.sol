@@ -36,11 +36,11 @@ abstract contract Adapter8004LiveBaseline is Initializable, OwnableUpgradeable, 
     function seedLiveBinding(
         uint256 agentId,
         IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId
     ) external onlyOwner {
         _bindings[agentId] =
-            IERCAgentBindings.Binding({standard: standard, tokenContract: tokenContract, tokenId: tokenId});
+            IERCAgentBindings.Binding({standard: standard, boundAddress: boundAddress, tokenId: tokenId});
     }
 
     function bindingOf(uint256 agentId) external view returns (IERCAgentBindings.Binding memory) {
@@ -49,11 +49,11 @@ abstract contract Adapter8004LiveBaseline is Initializable, OwnableUpgradeable, 
 
     function isController(uint256 agentId, address account) external view returns (bool) {
         IERCAgentBindings.Binding memory binding = _bindings[agentId];
-        address tokenOwner = IERC721(binding.tokenContract).ownerOf(binding.tokenId);
-        return account == tokenOwner || _isDelegate(account, tokenOwner, binding.tokenContract, binding.tokenId);
+        address tokenOwner = IERC721(binding.boundAddress).ownerOf(binding.tokenId);
+        return account == tokenOwner || _isDelegate(account, tokenOwner, binding.boundAddress, binding.tokenId);
     }
 
-    function _isDelegate(address account, address owner, address tokenContract, uint256 tokenId)
+    function _isDelegate(address account, address owner, address boundAddress, uint256 tokenId)
         internal
         view
         virtual
@@ -72,7 +72,7 @@ contract Adapter8004SepoliaBaseline is Adapter8004LiveBaseline {
     address public constant DELEGATE_REGISTRY = 0x00000000000000447e69651d841bD8D104Bed493;
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
 
-    function _isDelegate(address account, address owner, address tokenContract, uint256 tokenId)
+    function _isDelegate(address account, address owner, address boundAddress, uint256 tokenId)
         internal
         view
         override
@@ -80,7 +80,7 @@ contract Adapter8004SepoliaBaseline is Adapter8004LiveBaseline {
     {
         if (DELEGATE_REGISTRY.code.length == 0) return false;
         return IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForERC721(
-            account, owner, tokenContract, tokenId, DELEGATE_RIGHTS
+            account, owner, boundAddress, tokenId, DELEGATE_RIGHTS
         );
     }
 }
@@ -114,7 +114,7 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(address(adapter.identityRegistry()), address(registry));
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(7);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(binding.tokenContract, address(token));
+        assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 41);
         assertEq(adapter.primaryAgentOf(account), type(uint256).max);
         assertEq(adapter.primaryCounterfactualAgentOf(account), bytes32(type(uint256).max));
@@ -157,7 +157,7 @@ contract Adapter8004StorageV014Test is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(7);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC6909F));
-        assertEq(binding.tokenContract, address(token6909F));
+        assertEq(binding.boundAddress, address(token6909F));
         assertEq(binding.tokenId, 60);
 
         // Value 4 still resolves through `ownerOf`, not through the appended contract-binding branch.

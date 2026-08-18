@@ -35,7 +35,7 @@ contract SecurityAdapter8004Test is Test {
     event AgentBound(
         uint256 indexed agentId,
         IERCAgentBindings.TokenStandard indexed standard,
-        address indexed tokenContract,
+        address indexed boundAddress,
         uint256 tokenId,
         address registeredBy
     );
@@ -71,7 +71,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testInitializeRejectsZeroRegistry() external {
         Adapter8004 impl = new Adapter8004();
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(0), admin)));
     }
 
@@ -97,7 +97,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testSetIdentityRegistryRejectsZero() external {
         vm.prank(admin);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.setIdentityRegistry(address(0));
     }
 
@@ -114,7 +114,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testRegisterRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(0), 1, "", _emptyMetadata());
     }
 
@@ -139,7 +139,7 @@ contract SecurityAdapter8004Test is Test {
     }
 
     function testRegisterSameTokenAcrossStandardsProducesDistinctAgents() external {
-        // Same tokenContract/tokenId pair but different standards hash to
+        // Same boundAddress/tokenId pair but different standards hash to
         // different binding keys — each should yield a fresh agentId.
         vm.prank(alice);
         uint256 a1 =
@@ -294,7 +294,7 @@ contract SecurityAdapter8004Test is Test {
         uint256 agentId = _register721(alice, 1);
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
         assertEq(uint256(b.standard), uint256(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(b.tokenContract, address(token721));
+        assertEq(b.boundAddress, address(token721));
         assertEq(b.tokenId, 1);
     }
 

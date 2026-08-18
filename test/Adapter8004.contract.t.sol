@@ -32,8 +32,8 @@ contract ProbeTrapBinder is MockERC20 {
 /// @dev One contract that can claim under two standards at the same coordinate: an ERC-721-shaped
 /// collection whose ids are all unminted, so the temporary single-owner window is open for id 0, and
 /// a contract binding of itself at id 0. Used to pin the deliberate alias: `registrationHash` is
-/// computed from `(adapter, tokenContract, tokenId)` only, so it is standard-independent — any two
-/// standards claiming the same `(tokenContract, tokenId)` land on one counterfactual identity and
+/// computed from `(adapter, boundAddress, tokenId)` only, so it is standard-independent — any two
+/// standards claiming the same `(boundAddress, tokenId)` land on one counterfactual identity and
 /// last-event-wins applies. Nothing about the alias depends on the fixture being a token; it
 /// inherits `MockERC20` only because that is a convenient concrete binder.
 contract HybridERC721Contract is MockERC20 {
@@ -185,7 +185,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(binding.tokenContract, address(token));
+        assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 0);
 
         assertEq(registry.ownerOf(agentId), address(adapter));
@@ -215,7 +215,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(binding.tokenContract, address(binder));
+        assertEq(binding.boundAddress, address(binder));
         assertEq(binding.tokenId, 0);
         assertEq(registry.ownerOf(agentId), address(adapter));
 
@@ -318,7 +318,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(ownerRegisteredId);
         assertEq(uint8(binding.standard), 6);
-        assertEq(binding.tokenContract, address(ownable));
+        assertEq(binding.boundAddress, address(ownable));
         assertEq(binding.tokenId, 0);
 
         // The bound contract cannot create its own binding either, since registration runs the same
@@ -365,7 +365,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), 6, "authority changes, binding does not");
-        assertEq(binding.tokenContract, address(ownable));
+        assertEq(binding.boundAddress, address(ownable));
         assertEq(binding.tokenId, 0);
     }
 
@@ -536,7 +536,7 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(registry.ownerOf(agentId), address(adapter));
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(binding.tokenContract, address(token));
+        assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 0);
         assertEq(registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY()), abi.encodePacked(address(adapter)));
     }
@@ -698,7 +698,7 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(_word(logs[0].data, 0), 0, "reserved extraData rides as the first non-indexed word");
         assertEq(_word(logs[0].data, 1), 5, "non-indexed standard is the appended CONTRACT value");
 
-        // Whole body, including `emitter == tokenContract` for a contract-authorized claim.
+        // Whole body, including `emitter == boundAddress` for a contract-authorized claim.
         assertEq(
             keccak256(logs[0].data),
             keccak256(
@@ -846,7 +846,7 @@ contract Adapter8004ContractBindingTest is Test {
         // metadata-bearing full register overload, whose entries must land in the registry.
         uint256 secondAgentId = token.registerWithMetadata(0, _metadata("role", "treasury"));
         assertTrue(secondAgentId != firstAgentId);
-        assertEq(adapter.bindingOf(secondAgentId).tokenContract, address(token));
+        assertEq(adapter.bindingOf(secondAgentId).boundAddress, address(token));
         assertEq(uint8(adapter.bindingOf(secondAgentId).standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(registry.getMetadata(secondAgentId, "role"), bytes("treasury"));
         assertEq(registry.tokenURI(secondAgentId), "ipfs://erc20-agent");
@@ -870,7 +870,7 @@ contract Adapter8004ContractBindingTest is Test {
         // The original binding is byte-for-byte what it was at registration.
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(firstAgentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(binding.tokenContract, address(token));
+        assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 0);
     }
 
@@ -879,19 +879,19 @@ contract Adapter8004ContractBindingTest is Test {
     // -----------------------------------------------------------------
 
     function testIdentityRegistryCannotBeBoundAsAContract() external {
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
         // The registry rejection precedes the canonical-id check, matching the other standards.
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 1, "ipfs://registry");
 
         // The zero address is still the generic rejection. Under `ACCOUNT` that comes from the sentinel
         // clause rather than the code test, which this standard does not apply.
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://zero");
     }
 
@@ -985,8 +985,8 @@ contract Adapter8004ContractBindingTest is Test {
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, account, agentId));
     }
 
-    function _expectNonZeroTokenId(address tokenContract, uint256 tokenId) internal {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, tokenContract, tokenId));
+    function _expectNonZeroTokenId(address boundAddress, uint256 tokenId) internal {
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, boundAddress, tokenId));
     }
 
     function _signAgentWallet(uint256 agentId, address newWallet, address owner, uint256 deadline)

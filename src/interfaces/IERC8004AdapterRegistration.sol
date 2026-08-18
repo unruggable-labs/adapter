@@ -20,7 +20,7 @@ interface IERC8004AdapterRegistration {
     /// Emits `AgentBound` and returns the new `agentId`.
     function register(
         IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
@@ -29,7 +29,7 @@ interface IERC8004AdapterRegistration {
     /// @notice Convenience overload equivalent to `register(...)` with an empty metadata array.
     function register(
         IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId,
         string calldata agentURI
     ) external returns (uint256 agentId);
@@ -44,7 +44,7 @@ interface IERC8004AdapterRegistration {
     function bindExisting(
         uint256 agentId,
         IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
+        address boundAddress,
         uint256 tokenId
     ) external;
 }

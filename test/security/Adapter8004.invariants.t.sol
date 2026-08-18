@@ -88,7 +88,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         IERCAgentBindings.Binding memory afterBinding = adapter.bindingOf(agentId);
         assertEq(uint256(afterBinding.standard), uint256(beforeBinding.standard), "standard mutated");
-        assertEq(afterBinding.tokenContract, beforeBinding.tokenContract, "tokenContract mutated");
+        assertEq(afterBinding.boundAddress, beforeBinding.boundAddress, "boundAddress mutated");
         assertEq(afterBinding.tokenId, beforeBinding.tokenId, "tokenId mutated");
     }
 

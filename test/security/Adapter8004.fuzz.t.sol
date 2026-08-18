@@ -50,7 +50,7 @@ contract FuzzAdapter8004Test is Test {
             adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
-        assertEq(b.tokenContract, address(token721));
+        assertEq(b.boundAddress, address(token721));
         assertEq(b.tokenId, tokenId);
         assertEq(uint256(b.standard), uint256(IERCAgentBindings.TokenStandard.ERC721));
     }

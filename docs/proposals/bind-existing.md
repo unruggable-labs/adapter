@@ -1,5 +1,7 @@
 # Adapter8004 `bindExisting` Proposal
 
+> **Field renamed since:** `tokenContract` is now `boundAddress`.
+>
 > **Partly superseded by the implementation.** `bindExisting` shipped, but the two pre-checks this
 > document proposes for agent ownership and adapter approval were later removed. Both re-derived, by
 > hand and from the registry itself, rules that `transferFrom` on the very next line already enforces.

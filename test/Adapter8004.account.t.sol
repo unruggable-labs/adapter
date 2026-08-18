@@ -80,7 +80,7 @@ contract Adapter8004AccountTest is Test {
 
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT), "standard");
-        assertEq(binding.tokenContract, eoa, "bound address");
+        assertEq(binding.boundAddress, eoa, "bound address");
         assertEq(binding.tokenId, 0, "token id");
         assertTrue(adapter.isController(agentId, eoa), "the account controls its own identity");
     }
@@ -101,7 +101,7 @@ contract Adapter8004AccountTest is Test {
         vm.prank(eoa);
         adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0);
 
-        assertEq(adapter.bindingOf(agentId).tokenContract, eoa, "bound address");
+        assertEq(adapter.bindingOf(agentId).boundAddress, eoa, "bound address");
         assertEq(registry.ownerOf(agentId), address(adapter), "identity moved into the adapter");
     }
 
@@ -141,30 +141,30 @@ contract Adapter8004AccountTest is Test {
 
         for (uint256 i; i < standards.length; ++i) {
             vm.prank(eoa);
-            vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+            vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
             adapter.register(standards[i], eoa, 0, "ipfs://x");
 
             vm.prank(eoa);
-            vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+            vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
             adapter.counterfactualRegister(standards[i], eoa, 0, "ipfs://x");
         }
     }
 
-    /// @dev `_bindings` uses a zero `tokenContract` as its unbound sentinel, so a zero binding would
+    /// @dev `_bindings` uses a zero `boundAddress` as its unbound sentinel, so a zero binding would
     /// be indistinguishable from no binding. `ACCOUNT` waives the code test but must not waive this.
     function testAccountRejectsZeroAddress() external {
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
 
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
     }
 
     function testAccountRejectsRegistryAddress() external {
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
+        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://x");
     }
 
@@ -203,7 +203,7 @@ contract Adapter8004AccountTest is Test {
         uint256 agentId = binder.agentId();
         IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT), "standard");
-        assertEq(binding.tokenContract, address(binder), "bound address");
+        assertEq(binding.boundAddress, address(binder), "bound address");
         assertEq(binding.tokenId, 0, "canonical id");
         assertTrue(adapter.isController(agentId, address(binder)), "sole controller after deployment");
         assertFalse(adapter.isController(agentId, eoa), "and nobody else");
@@ -237,7 +237,7 @@ contract Adapter8004AccountTest is Test {
         ];
 
         for (uint256 i; i < standards.length; ++i) {
-            vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+            vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
             new ConstructorCodeRequiringBinder(adapter, standards[i]);
         }
     }
@@ -296,27 +296,27 @@ contract Adapter8004AccountTest is Test {
     function testAccountRejectsZeroAddressAtEveryEntryPoint() external {
         vm.startPrank(eoa);
 
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
 
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
 
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
 
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "k", bytes("v"));
 
         IERC8004IdentityRegistry.MetadataEntry[] memory batch = new IERC8004IdentityRegistry.MetadataEntry[](1);
         batch[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, batch);
 
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, eoa);
 
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
 
         vm.stopPrank();
@@ -326,7 +326,7 @@ contract Adapter8004AccountTest is Test {
         vm.prank(eoa);
         IERC721(address(registry)).approve(address(adapter), agentId);
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         adapter.bindExisting(agentId, IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
     }
 

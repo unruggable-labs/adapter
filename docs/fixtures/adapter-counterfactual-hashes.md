@@ -3,7 +3,7 @@
 Canonical formula:
 
 ```text
-keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraData))
+keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId, extraData))
 ```
 
 > **Scheme revision, v0.0.15, unchanged since.** A trailing `bytes32 extraData` was appended to the
@@ -14,13 +14,13 @@ keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId, extraD
 > argument. Read its value from the `extraData` field now emitted on every counterfactual event.
 
 **Identity.** The identity is the `registrationHash`. Each token has exactly one identity, but
-`(tokenContract, tokenId)` is not considered a unique identifier, because one contract may have more
+`(boundAddress, tokenId)` is not considered a unique identifier, because one contract may have more
 than one set of ids. An example is a contract with classes of ids, where Class A id 1 and Class B
 id 1 are different tokens. `extraData` is what separates them, so key on the `registrationHash` and
-do not collapse rows by `(tokenContract, tokenId)`.
+do not collapse rows by `(boundAddress, tokenId)`.
 
 Use ABI encoding for `(bytes,address,uint256,bytes32)`, not packed encoding. The adapter is a full
-ERC-7930 Interoperable Address and is not hashed first. `tokenContract` is deliberately a naked EVM
+ERC-7930 Interoperable Address and is not hashed first. `boundAddress` is deliberately a naked EVM
 `address`; do not encode it as an Interoperable Address. Chain binding comes from the adapter
 Interoperable Address alone. For EVM, the adapter address is ERC-7930 v1 plus CAIP-350 `eip155`:
 
@@ -46,28 +46,28 @@ a native Solana CAIP-350 address.
 import { encodeAbiParameters, keccak256 } from 'viem'
 export function registrationHash(
   adapterInteroperableAddress: `0x${string}`,
-  tokenContract: `0x${string}`,
+  boundAddress: `0x${string}`,
   tokenId: bigint,
   extraData: `0x${string}` = `0x${'00'.repeat(32)}`,
 ) {
   return keccak256(encodeAbiParameters(
     [{type:'bytes'}, {type:'address'}, {type:'uint256'}, {type:'bytes32'}],
-    [adapterInteroperableAddress, tokenContract, tokenId, extraData],
+    [adapterInteroperableAddress, boundAddress, tokenId, extraData],
   ))
 }
 ```
 
 Negative vectors that MUST differ include `abi.encodePacked(...)`, the superseded pre-v0.0.15
 preimage, the same fields with `extraData` leading rather than trailing, a different `extraData`
-value, the superseded `abi.encode(chainIdentifier, adapter, tokenContract, tokenId)` candidate, a
-naked adapter address, and any preimage that encodes `tokenContract` as an Interoperable Address.
+value, the superseded `abi.encode(chainIdentifier, adapter, boundAddress, tokenId)` candidate, a
+naked adapter address, and any preimage that encodes `boundAddress` as an Interoperable Address.
 
 ## Superseded: pre-v0.0.15 scheme (no `extraData`)
 
 Retained for identification only. Do not implement.
 
 ```text
-keccak256(abi.encode(adapterInteroperableAddress, tokenContract, tokenId))
+keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId))
 ```
 
 Same inputs as above (adapter `0x1111…1111`, token `0x2222…2222`, token ID `42`):

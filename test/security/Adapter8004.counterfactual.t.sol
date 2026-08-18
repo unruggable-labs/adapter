@@ -19,7 +19,7 @@ interface ICounterfactualReentrancyErrors {
 
 /// @notice Counterfactual surface security tests: prove the broadcast-only claim functions cannot
 /// mutate ERC-8004 registry state, cannot mutate adapter storage, and cannot create a wallet binding
-/// without a signature. Indexer policy (latest event per (tokenContract, tokenId) wins) is documented
+/// without a signature. Indexer policy (latest event per (boundAddress, tokenId) wins) is documented
 /// here as an off-chain behavior — the chain only emits events, it does not enforce ordering.
 contract CounterfactualSecurityTest is Test {
     MockIdentityRegistry internal registry;

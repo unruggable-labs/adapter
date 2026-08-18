@@ -17,7 +17,7 @@ Registration flow:
   │ Token holder │
   └──────────────┘
          │
-         │ register(standard, tokenContract, tokenId, agentURI)
+         │ register(standard, boundAddress, tokenId, agentURI)
          ▼
   ┌──────────────┐      register       ┌─────────────────────┐
   │   Adapter    │ ──────────────────▶ │  ERC-8004 Registry  │
@@ -137,14 +137,14 @@ ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path bec
 
 `ACCOUNT` is value `5`, `CONTRACT_OWNABLE` is appended as value `6`, and `CONTRACT_ADMIN` as value `7`. Values `0`-`4` are unchanged. Value `5` keeps its position and was renamed from `CONTRACT`, which moves no stored binding and no indexed history.
 
-Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(tokenContract, tokenId)`. Values `5`, `6` and `7` name an address itself rather than a token within it, so there is no token to identify:
+Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(boundAddress, tokenId)`. Values `5`, `6` and `7` name an address itself rather than a token within it, so there is no token to identify:
 
-- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(tokenContract, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `bindExisting`, and every unsigned counterfactual writer.
+- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `bindExisting`, and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
-- Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `tokenContract` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
+- Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `boundAddress` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
 - Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's primary agent while being unable to manage an identity bound to it.
-- **`ACCOUNT` accepts any address, with or without runtime code.** It is the only standard that applies no code test, and it can afford not to because it is the only one that never calls the address it names: authority is the single comparison `msg.sender == tokenContract`. Every other standard still requires code, because `ownerOf`, `balanceOf`, `owner()` or `hasRole` must be callable, and a code-less address reverts `InvalidTokenContract`. The zero address and the identity registry are rejected under every standard, `ACCOUNT` included.
-- **EIP-7702 changes what `ACCOUNT` authority means, and this is worth reading before using it.** A delegation designator puts code behind an externally owned account, so `msg.sender == tokenContract` is not proof of key possession. Authority is precisely *whoever can cause a call to originate from that address*: the key holder, plus anyone able to drive the delegate to make an outbound call if a delegation is installed. **An address bound as `ACCOUNT` can install a delegation afterwards, permanently widening who can act for that identity, and a binding is immutable so this cannot be undone.** Revoking the delegation narrows the set again. This is the same accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership: an action taken outside the adapter, by the party the standard trusts, that permanently changes who can authorize. Counterfactual claims are less exposed, because they are emit-only and last-event-wins, so a key holder who revokes can re-emit and win again.
+- **`ACCOUNT` accepts any address, with or without runtime code.** It is the only standard that applies no code test, and it can afford not to because it is the only one that never calls the address it names: authority is the single comparison `msg.sender == boundAddress`. Every other standard still requires code, because `ownerOf`, `balanceOf`, `owner()` or `hasRole` must be callable, and a code-less address reverts `InvalidBoundAddress`. The zero address and the identity registry are rejected under every standard, `ACCOUNT` included.
+- **EIP-7702 changes what `ACCOUNT` authority means, and this is worth reading before using it.** A delegation designator puts code behind an externally owned account, so `msg.sender == boundAddress` is not proof of key possession. Authority is precisely *whoever can cause a call to originate from that address*: the key holder, plus anyone able to drive the delegate to make an outbound call if a delegation is installed. **An address bound as `ACCOUNT` can install a delegation afterwards, permanently widening who can act for that identity, and a binding is immutable so this cannot be undone.** Revoking the delegation narrows the set again. This is the same accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership: an action taken outside the adapter, by the party the standard trusts, that permanently changes who can authorize. Counterfactual claims are less exposed, because they are emit-only and last-event-wins, so a key holder who revokes can re-emit and win again.
 
 - The value-7 `hasRole(bytes32,address)` probe is a `STATICCALL` and fails closed. A revert, returndata whose length is not exactly 32 bytes, or a zero word each grant nobody. Any non-zero word counts as holding the role, which is deliberately more permissive than the value-6 address probe: there is no value being extracted, so a non-canonical `true` from an honest implementation is accepted rather than reverted. Role membership is read on every call, so revoking the role removes authority in the same transaction.
 - `CONTRACT_ADMIN` has no delegate.xyz route, by design rather than omission. Delegation requires one delegator to ask the registry about, and a role is a membership predicate that many addresses can satisfy and none can enumerate, so there is no well-defined delegator to name.
@@ -156,10 +156,10 @@ An ERC-20 claiming its own identity is the motivating example: it has one fungib
 
 Calling rules:
 
-- For `ACCOUNT`, the adapter's immediate EVM caller must be `tokenContract`. A router, forwarder, or multicall contract that calls the adapter itself fails because the adapter sees that intermediary as `msg.sender`.
+- For `ACCOUNT`, the adapter's immediate EVM caller must be `boundAddress`. A router, forwarder, or multicall contract that calls the adapter itself fails because the adapter sees that intermediary as `msg.sender`.
 - For `CONTRACT_OWNABLE`, the immediate caller must be the current canonical nonzero `owner()` returned by the bound contract, or a delegate.xyz delegate of that owner. The bound contract, holders, the adapter admin, roles, and strangers gain nothing from this model.
 - For `CONTRACT_ADMIN`, the immediate caller must hold the bound contract's `DEFAULT_ADMIN_ROLE`. The bound contract, holders, the adapter admin, and strangers gain nothing from this model.
-- For `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, a call from the bound contract's constructor fails, because the adapter requires deployed runtime code at `tokenContract` and there is none yet. The same holds for values `0`-`4`. Under `ACCOUNT` it succeeds: no code test applies, and `msg.sender` during construction is already the contract's final address, so a contract can bind itself as `ACCOUNT` from its own constructor.
+- For `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, a call from the bound contract's constructor fails, because the adapter requires deployed runtime code at `boundAddress` and there is none yet. The same holds for values `0`-`4`. Under `ACCOUNT` it succeeds: no code test applies, and `msg.sender` during construction is already the contract's final address, so a contract can bind itself as `ACCOUNT` from its own constructor.
 - Do not `delegatecall` into `Adapter8004`. That is unsupported and dangerous. The adapter is a UUPS proxy implementation with its own storage layout, and borrowing its code into another contract's storage is not a supported integration. This is about calling *into* the adapter; how the bound contract is implemented internally is its own business, and a contract that is itself a proxy binds fine because its proxy address is the caller the adapter sees.
 - `bindExisting` additionally requires the authorized caller to already own the ERC-8004 agent in the registry and to have approved the adapter to transfer it (`approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`).
 
@@ -271,13 +271,13 @@ After deployment:
 A current controller, or a supported single-owner collection registering before mint, calls:
 
 ```solidity
-register(standard, tokenContract, tokenId, agentURI, metadata)
+register(standard, boundAddress, tokenId, agentURI, metadata)
 ```
 
 The adapter does this:
 
 1. verifies the caller currently controls the external token, or that the direct caller is the
-   ERC-721/ERC-1155F/ERC-6909F `tokenContract` and `ownerOf(tokenId)` reports no current owner
+   ERC-721/ERC-1155F/ERC-6909F `boundAddress` and `ownerOf(tokenId)` reports no current owner
 2. rejects user metadata that tries to overwrite the canonical binding record
 3. calls `identityRegistry.register(...)`
 4. becomes owner of the new ERC-8004 identity token
@@ -287,7 +287,7 @@ The adapter does this:
 
 That last step matters because ERC-8004 sets `agentWallet = msg.sender` during registration. Since `msg.sender` is the adapter, the adapter clears that default wallet immediately.
 
-A convenience overload, `register(standard, tokenContract, tokenId, agentURI)`, registers with an empty metadata array.
+A convenience overload, `register(standard, boundAddress, tokenId, agentURI)`, registers with an empty metadata array.
 
 The ownerless collection window is the same narrow authority used by unsigned counterfactual
 writes: the collection must call the adapter directly for its own deployed address, and the window
@@ -327,7 +327,7 @@ it continues to require ordinary current control of an already-existing external
 2. the same owner calls:
 
 ```solidity
-bindExisting(agentId, standard, tokenContract, tokenId)
+bindExisting(agentId, standard, boundAddress, tokenId)
 ```
 
 The adapter does this:
@@ -354,7 +354,7 @@ On a successful `register` or `bindExisting`, the adapter writes canonical ERC-8
 The token coordinates are not stored in the metadata blob. A verifier reads the binding-contract address from the metadata and then reads the full binding from `bindingOf(agentId)` on that contract:
 
 ```solidity
-struct Binding { TokenStandard standard; address tokenContract; uint256 tokenId; }
+struct Binding { TokenStandard standard; address boundAddress; uint256 tokenId; }
 ```
 
 Token standard enum values:
@@ -374,8 +374,8 @@ The adapter reserves the `agent-binding` key and rejects user attempts to set or
 
 Note:
 
-- `bindingContract` and `tokenContract` may be different addresses
-- `bindingContract` and `tokenContract` may also be the same address if the token contract directly implements the binding logic
+- `bindingContract` and `boundAddress` may be different addresses
+- `bindingContract` and `boundAddress` may also be the same address if the token contract directly implements the binding logic
 
 ### Binding Verification
 
@@ -383,7 +383,7 @@ The ERC-facing verification flow is:
 
 1. read the `agent-binding` metadata from the ERC-8004 record (20-byte binding-contract address)
 2. call `bindingOf(agentId)` on that binding contract
-3. decode `standard`, `tokenContract`, and `tokenId` from the returned struct
+3. decode `standard`, `boundAddress`, and `tokenId` from the returned struct
 4. verify control against the bound token
 
 That is the interoperable part.
@@ -475,7 +475,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 }
 ```
 
-The collection must be the direct adapter caller and pass its own deployed address as `tokenContract`; a router, forwarded sender, `delegatecall`, or call from the collection constructor does not establish this authority. Register first and mint second. After `ownerOf` returns a nonzero owner, the collection has no special privilege and calls revert unless it separately qualifies under the normal owner/delegate controller model. The buyer or an authorized delegate can then overwrite the collection payload, and latest log order wins. Multiple emissions are allowed while no owner exists and share the same `registrationHash`.
+The collection must be the direct adapter caller and pass its own deployed address as `boundAddress`; a router, forwarded sender, `delegatecall`, or call from the collection constructor does not establish this authority. Register first and mint second. After `ownerOf` returns a nonzero owner, the collection has no special privilege and calls revert unless it separately qualifies under the normal owner/delegate controller model. The buyer or an authorized delegate can then overwrite the collection payload, and latest log order wins. Multiple emissions are allowed while no owner exists and share the same `registrationHash`.
 
 `ACCOUNT` uses the same unsigned functions but a different authority: the bound address is the permanent sole controller at `tokenId 0`, so its counterfactual calls never stop working and never depend on an ownership probe. `CONTRACT_OWNABLE` also fixes `tokenId` at `0`, but accepts only the current canonical nonzero `owner()` and its delegates, not the bound contract; ownership transfers therefore change who may emit updates for existing claims. A failed or malformed `owner()` probe grants nobody authority, and there is no contract-self fallback. `CONTRACT_ADMIN` behaves the same way with `DEFAULT_ADMIN_ROLE` in place of `owner()`, so granting or revoking the role changes who may emit. A counterfactual claim has no whole-claim tombstone. There is no way to delete one. A later authorized event supersedes an earlier one under the usual last-event-wins rule, and `counterfactualUnsetAgentWallet` clears only the wallet field, not the claim.
 
@@ -483,40 +483,40 @@ Plain ERC-1155 and ERC-6909 do not gain this ownerless path because neither stan
 
 Functions:
 
-- `counterfactualRegister(standard, tokenContract, tokenId, agentURI, metadata)` and the empty-metadata overload `counterfactualRegister(standard, tokenContract, tokenId, agentURI)`
-- `counterfactualSetAgentURI(standard, tokenContract, tokenId, newURI)`
-- `counterfactualSetMetadata(standard, tokenContract, tokenId, key, value)`
-- `counterfactualSetMetadataBatch(standard, tokenContract, tokenId, entries)`
-- `counterfactualSetAgentWallet(standard, tokenContract, tokenId, newWallet)` (no signature because no ERC-8004 wallet binding is created)
-- `counterfactualUnsetAgentWallet(standard, tokenContract, tokenId)`
-- `registrationHash(tokenContract, tokenId)` (view)
+- `counterfactualRegister(standard, boundAddress, tokenId, agentURI, metadata)` and the empty-metadata overload `counterfactualRegister(standard, boundAddress, tokenId, agentURI)`
+- `counterfactualSetAgentURI(standard, boundAddress, tokenId, newURI)`
+- `counterfactualSetMetadata(standard, boundAddress, tokenId, key, value)`
+- `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries)`
+- `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet)` (no signature because no ERC-8004 wallet binding is created)
+- `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId)`
+- `registrationHash(boundAddress, tokenId)` (view)
 - `interoperableAddress(account)` (view)
 - `chainIdentifier()` (view)
 
 Indexer rules:
 
 - each event carries `bytes32 extraData` as its first non-indexed field; this baseline emits `bytes32(0)`. There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
-- the three indexed topics are fixed across every event: `(registrationHash, tokenContract, tokenId)`
+- the three indexed topics are fixed across every event: `(registrationHash, boundAddress, tokenId)`
 - the `registrationHash` is
-  `keccak256(abi.encode(interoperableAddress(adapterProxy), tokenContract, tokenId))`,
+  `keccak256(abi.encode(interoperableAddress(adapterProxy), boundAddress, tokenId))`,
   using standard `(bytes,address,uint256)` ABI encoding (not packed); the adapter proxy carries the
-  full local ERC-7930 envelope, `tokenContract` remains a naked EVM address, and the token standard
+  full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, and the token standard
   remains excluded
 - `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
   chain plus AddressLength `20` and the raw EVM address
 - `chainIdentifier()` returns the same local chain envelope with AddressLength `0`; it remains a
   useful chain diagnostic but is not one of the canonical hash fields
 - chain binding comes from the adapter proxy's Interoperable Address alone; do not encode
-  `tokenContract` as an Interoperable Address
+  `boundAddress` as an Interoperable Address
 - indexers MUST treat the latest event per `registrationHash` as authoritative, latest meaning
   highest block number, then highest log index
 - a later full registration replaces the earlier full payload and later setters update individual
   fields
-- ownerless collection events carry `emitter == tokenContract`; this records the authorizing caller,
+- ownerless collection events carry `emitter == boundAddress`; this records the authorizing caller,
   but is not a permanent proof that the token was pre-mint because the collection may later be a
   normal owner or delegate
 - the token standard is excluded from `registrationHash`, so **any two standards** claiming the same
-  `(tokenContract, tokenId)` alias onto one `registrationHash`. The worked example is a contract at
+  `(boundAddress, tokenId)` alias onto one `registrationHash`. The worked example is a contract at
   `(X, 0)` that claims as ERC-721 token `#0`, `ACCOUNT`, and `CONTRACT_OWNABLE`. All three alias.
   This is accepted, not a bug:
   adding the standard to the hash would change every existing hash. They are deliberately one
@@ -546,7 +546,7 @@ Full ERC-8004:
 
 Counterfactual:
 
-- `setPrimaryCounterfactualAgent(tokenContract, tokenId)` / `setPrimaryCounterfactualAgentFor(account, tokenContract, tokenId)`
+- `setPrimaryCounterfactualAgent(boundAddress, tokenId)` / `setPrimaryCounterfactualAgentFor(account, boundAddress, tokenId)`
 - `clearPrimaryCounterfactualAgent()` / `clearPrimaryCounterfactualAgentFor(account)`
 - `primaryCounterfactualAgentOf(account) -> bytes32`
 - setters derive the hash; callers cannot store an arbitrary value
@@ -596,9 +596,9 @@ The admin does not have a function to rewrite user bindings. The admin controls 
 
 User-facing functions:
 
-- `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
-- `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI)`
-- `bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)`
+- `register(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
+- `register(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI)`
+- `bindExisting(uint256 agentId, TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `setAgentURI(uint256 agentId, string newURI)`
 - `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`
 - `setMetadataBatch(uint256 agentId, MetadataEntry[] metadata)`
@@ -613,14 +613,14 @@ User-facing functions:
 
 Counterfactual (emit-only) functions:
 
-- `counterfactualRegister(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
-- `counterfactualRegister(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI)`
-- `counterfactualSetAgentURI(TokenStandard standard, address tokenContract, uint256 tokenId, string newURI)`
-- `counterfactualSetMetadata(TokenStandard standard, address tokenContract, uint256 tokenId, string metadataKey, bytes metadataValue)`
-- `counterfactualSetMetadataBatch(TokenStandard standard, address tokenContract, uint256 tokenId, MetadataEntry[] metadata)`
-- `counterfactualSetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId, address newWallet)`
-- `counterfactualUnsetAgentWallet(TokenStandard standard, address tokenContract, uint256 tokenId)`
-- `registrationHash(address tokenContract, uint256 tokenId)`
+- `counterfactualRegister(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
+- `counterfactualRegister(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI)`
+- `counterfactualSetAgentURI(TokenStandard standard, address boundAddress, uint256 tokenId, string newURI)`
+- `counterfactualSetMetadata(TokenStandard standard, address boundAddress, uint256 tokenId, string metadataKey, bytes metadataValue)`
+- `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata)`
+- `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet)`
+- `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `registrationHash(address boundAddress, uint256 tokenId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
 - `setPrimaryAgent(uint256 agentId)`
@@ -631,8 +631,8 @@ Counterfactual (emit-only) functions:
 - `setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes signature)`
 - `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
 - `primaryAgentNonces(address account)`
-- `setPrimaryCounterfactualAgent(address tokenContract, uint256 tokenId)`
-- `setPrimaryCounterfactualAgentFor(address account, address tokenContract, uint256 tokenId)`
+- `setPrimaryCounterfactualAgent(address boundAddress, uint256 tokenId)`
+- `setPrimaryCounterfactualAgentFor(address account, address boundAddress, uint256 tokenId)`
 - `clearPrimaryCounterfactualAgent()`
 - `clearPrimaryCounterfactualAgentFor(address account)`
 - `primaryCounterfactualAgentOf(address account)`
