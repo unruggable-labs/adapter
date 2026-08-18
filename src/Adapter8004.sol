@@ -281,7 +281,7 @@ contract Adapter8004 is
             agentId = identityRegistry.register(agentURI, metadata);
         }
 
-        // 5. Persist the immutable link from the ERC-8004 agent to the external token.
+        // 5. Persist the immutable link from the ERC-8004 agent to the bound address.
         _bindings[agentId] = Binding({standard: standard, boundAddress: boundAddress, tokenId: tokenId});
 
         // 6. Write the canonical binding metadata (binding contract address only; ERC-8217).
@@ -407,22 +407,14 @@ contract Adapter8004 is
     }
 
     /// @notice Whether `account` may act for `agentId` right now. This is the same check every
-    /// adapter write performs, so it answers whether a write would be authorized rather than merely
-    /// who owns something.
-    /// @dev Authority is resolved live from the bound token on every call and is not stored, so the
+    /// adapter write performs.
+    /// @dev Authority is resolved live from the bound token on every call and is never stored, so the
     /// answer can change in the same block that a token transfers or a bound contract's `owner()`
-    /// changes. A consumer must not cache it.
+    /// changes. A consumer must not cache it. `_hasBindingControl` carries the per-standard rules.
     ///
-    /// Four standards share one rule. `ERC721`, `ERC1155F`, `ERC6909F` and `CONTRACT_OWNABLE` each
-    /// have an owner that can be identified and can change, so each resolves that owner live and
-    /// accepts either the owner acting directly or a delegate.xyz delegate of that owner. The
-    /// remaining standards have no such owner: `ERC1155` and `ERC6909` grant control to any positive
-    /// balance, and `ACCOUNT` grants it to the named address alone.
-    ///
-    /// Delegation carries a consequence worth knowing before relying on it. A wallet holding a
-    /// blanket delegate.xyz delegation from the owner, one that names no rights at all, is accepted
-    /// here even though the owner never named `adapter8004.manage`. The registry offers no way to ask
-    /// for a scoped-only match, so this cannot be narrowed on-chain.
+    /// A blanket delegate.xyz delegation, one naming no rights at all, is accepted even though the
+    /// owner never named `adapter8004.manage`. The registry offers no way to ask for a scoped-only
+    /// match, so this cannot be narrowed on-chain.
     function isController(uint256 agentId, address account) external view returns (bool) {
         // 1. Load the binding that defines who controls this agent.
         Binding memory binding = _bindings[agentId];
@@ -445,21 +437,10 @@ contract Adapter8004 is
     // COUNTERFACTUAL FUNCTIONS
     // -----------------------------------------------------------------
     // Emit-only mirrors of the on-chain register surface. They write nothing to adapter storage and
-    // make no ERC-8004 registry calls. Each is gated by current bound-token control, by the temporary
-    // direct ownerless-collection authority documented below, or by an account-level binding's
-    // authority, which is the bound address itself for value 5, the current owner or its delegate for
-    // value 6, and a `DEFAULT_ADMIN_ROLE` holder for value 7, always at `tokenId 0`.
-    //
-    // There is no whole-claim tombstone. A claim can only be superseded by a later event, and
-    // unsetting the wallet clears that field alone. Indexers consume the emitted events as
-    // soft-state claims, where the latest event per `registrationHash` wins, which is what allows an
-    // off-chain identity to be promoted to an on-chain registration later.
-    //
-    // The identity is the `registrationHash` and nothing else. Each token
-    // has exactly one identity, but `(boundAddress, tokenId)` is not
-    // considered a unique identifier, because one contract may have more
-    // than one set of ids. `extraData` is what separates those tokens.
-    // Consumers must key on `registrationHash`, never on the token pair.
+    // make no ERC-8004 registry calls, so a claim can never be withdrawn, only superseded by a later
+    // event. Authority matches the on-chain surface, plus the temporary
+    // ownerless-collection route documented below. `IERC8004AdapterCounterfactual` states the rule
+    // that consumers must key on `registrationHash` rather than on `(boundAddress, tokenId)`.
     // -----------------------------------------------------------------
 
     function registrationHash(address boundAddress, uint256 tokenId) external view returns (bytes32) {
@@ -476,12 +457,10 @@ contract Adapter8004 is
         return _chainIdentifier();
     }
 
-    /// @notice Counterfactual registration: claim an identity for an external token without minting in the
-    /// ERC-8004 registry and without persisting any adapter storage. Authorized for a current controller,
-    /// or for the directly calling token contract while an ERC-721/ERC-1155F/ERC-6909F id has no current
-    /// owner. The same authority may re-emit any number of times; indexers MUST resolve the latest event
-    /// per `registrationHash` as authoritative, not per `(boundAddress, tokenId)`, which is not
-    /// considered a unique identifier. Collection-authorized events use `emitter = boundAddress`.
+    /// @notice Announce an identity claim for a bound address. The claim lives entirely in the event
+    /// log. A current controller may call this, as may a collection calling directly while one of its
+    /// ERC-721, ERC-1155F or ERC-6909F ids has no current owner. The same authority may re-emit any
+    /// number of times. Collection-authorized events set `emitter = boundAddress`.
     function counterfactualRegister(
         TokenStandard standard,
         address boundAddress,
@@ -531,12 +510,9 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Updates the agent URI for a counterfactual identity. The update is recorded only as an
-    /// event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage. A current
-    /// controller may call it, as may the token contract itself while a supported single-owner id has
-    /// no current owner. The emitted event is the single source of truth; indexers MUST treat the latest
-    /// event per `registrationHash` as authoritative, not per `(boundAddress, tokenId)`, which is
-    /// not considered a unique identifier.
+    /// @notice Update the agent URI for a counterfactual identity. The update lives entirely in the
+    /// event log. A current controller may call this, as may a collection calling directly while a
+    /// supported single-owner id has no current owner.
     function counterfactualSetAgentURI(
         TokenStandard standard,
         address boundAddress,

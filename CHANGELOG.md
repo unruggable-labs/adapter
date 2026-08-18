@@ -321,8 +321,8 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     pass-through outbound path.
   - Post-bind, the mutable registry fields are bound-contract-only and its latest write wins. The
     `Binding` stays immutable with deliberately no revoke or unbind API. Register a fresh ERC-8004
-    identity instead. Counterfactual claims likewise have no whole-claim tombstone: later events
-    from the contract supersede earlier ones by last-event-wins, and wallet unset is field-level.
+    identity instead. Counterfactual claims likewise cannot be withdrawn. Later events from the
+    contract supersede earlier ones by last-event-wins, and wallet unset is field-level.
 - Ownable contract bindings. `CONTRACT_OWNABLE` is appended to `TokenStandard` as value `6`; values
   `0`-`5` are unchanged, so stored bindings and indexed history keep their meaning.
   - Authority is the current address returned by the bound contract's `owner()`, and delegate.xyz

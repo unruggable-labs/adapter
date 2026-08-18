@@ -88,7 +88,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// none can enumerate, so there is no well-defined delegator to name. Like the other two contract
 /// values it is outside the single-owner token set and gets no ownerless window.
 ///
-/// A counterfactual claim has no whole-claim tombstone. Later events from the same contract only
+/// A counterfactual claim cannot be withdrawn. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
 /// wallet field alone. The event schema, indexed topics, and `registrationHash` do not vary by
 /// account-level standard. `CounterfactualAgentRegistered.standard` is the only
@@ -118,10 +118,9 @@ interface IERC8004AdapterCounterfactual {
     /// event.
     function registrationHash(address boundAddress, uint256 tokenId) external view returns (bytes32);
 
-    /// @notice Announces a counterfactual identity claim for an external token. The claim is recorded
-    /// only as an event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage.
-    /// Indexers MUST treat the latest event per `registrationHash` as authoritative, latest meaning
-    /// highest block number, then highest log index.
+    /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
+    /// entirely in the event log. Indexers MUST treat the latest event per `registrationHash` as
+    /// authoritative, latest meaning highest block number, then highest log index.
     event CounterfactualAgentRegistered(
         bytes32 indexed registrationHash,
         address indexed boundAddress,
@@ -133,8 +132,8 @@ interface IERC8004AdapterCounterfactual {
         address emitter
     );
 
-    /// @notice Updates the agent URI for a counterfactual identity. The update is recorded only as an
-    /// event, so it writes nothing to the ERC-8004 registry and nothing to adapter storage.
+    /// @notice Updates the agent URI for a counterfactual identity. The update lives entirely in the
+    /// event log.
     event CounterfactualAgentURISet(
         bytes32 indexed registrationHash,
         address indexed boundAddress,
