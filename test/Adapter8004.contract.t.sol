@@ -248,40 +248,6 @@ contract Adapter8004ContractBindingTest is Test {
         assertTrue(adapter.isController(secondAgentId, address(binder)));
     }
 
-    function testRegisterAndSetPrimaryGivesThePrimaryToTheCallingContract() external {
-        uint256 agentId = token.registerAndSetPrimary(0);
-
-        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
-        assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(binding.tokenContract, address(token));
-        assertEq(binding.tokenId, 0);
-        assertEq(registry.ownerOf(agentId), address(adapter));
-
-        // The primary belongs to the bound contract — the caller — and to nobody else.
-        assertEq(adapter.primaryAgentOf(address(token)), agentId);
-        assertTrue(adapter.primaryAgentOf(address(token)) != adapter.PRIMARY_AGENT_UNSET());
-        assertEq(adapter.primaryAgentOf(holder), adapter.PRIMARY_AGENT_UNSET());
-        assertEq(adapter.primaryAgentOf(admin), adapter.PRIMARY_AGENT_UNSET());
-        assertEq(adapter.primaryAgentOf(stranger), adapter.PRIMARY_AGENT_UNSET());
-    }
-
-    function testRegisterAndSetPrimaryRejectsEveryCallerThatIsNotTheBoundContract() external {
-        _expectNotController(holder);
-        vm.prank(holder);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://holder");
-        assertEq(adapter.primaryAgentOf(holder), adapter.PRIMARY_AGENT_UNSET());
-
-        _expectNotController(admin);
-        vm.prank(admin);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://admin");
-        assertEq(adapter.primaryAgentOf(admin), adapter.PRIMARY_AGENT_UNSET());
-
-        _expectNotController(stranger);
-        vm.prank(stranger);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0, "ipfs://stranger");
-        assertEq(adapter.primaryAgentOf(stranger), adapter.PRIMARY_AGENT_UNSET());
-    }
-
     function testHolderAdminAndStrangerCannotRegisterAContractBinding() external {
         _expectNotController(holder);
         vm.prank(holder);
@@ -674,9 +640,6 @@ contract Adapter8004ContractBindingTest is Test {
         token.registerWithMetadata(1, metadata);
 
         _expectNonZeroTokenId(address(token), 1);
-        token.registerAndSetPrimary(1);
-
-        _expectNonZeroTokenId(address(token), 1);
         token.bindExisting(agentId, 1);
 
         _expectNonZeroTokenId(address(token), 1);
@@ -918,9 +881,6 @@ contract Adapter8004ContractBindingTest is Test {
     function testIdentityRegistryCannotBeBoundAsAContract() external {
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
-
-        vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
         vm.expectRevert(Adapter8004.InvalidTokenContractIsRegistry.selector);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(registry), 0, "ipfs://registry");

@@ -257,21 +257,6 @@ contract Adapter8004 is
         return _register(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
     }
 
-    function registerAndSetPrimary(
-        TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI
-    ) external nonReentrant returns (uint256 agentId) {
-        // 1. Run the canonical register body (shared with `register`); reverts identically when the
-        //    caller does not control the token.
-        agentId = _register(standard, tokenContract, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0));
-
-        // 2. Record the freshly minted agent as the caller's own primary agent through the shared
-        //    helper (keeps the all-ones `PrimaryAgentIdReserved` guard; a fresh incremental id is small).
-        _setPrimaryAgent(msg.sender, agentId);
-    }
-
     function bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)
         external
         nonReentrant

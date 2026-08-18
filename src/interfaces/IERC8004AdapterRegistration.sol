@@ -34,21 +34,6 @@ interface IERC8004AdapterRegistration {
         string calldata agentURI
     ) external returns (uint256 agentId);
 
-    /// @notice One-transaction wrapper: `register(standard, tokenContract, tokenId,
-    /// agentURI)` (empty metadata) immediately followed by recording the returned `agentId` as the
-    /// CALLER's own full primary agent (`setPrimaryAgent(agentId)`). No signature or relayer. Same
-    /// token-authority rules and `AgentBound` event/return as `register`, plus a
-    /// `PrimaryAgentSet(caller, agentId, caller)`. The primary is recorded for whoever made the call,
-    /// with no exceptions. When an ownerless collection calls, that is the collection and not a future
-    /// buyer. For an `ACCOUNT` binding it is the named address, and for `CONTRACT_OWNABLE` or
-    /// `CONTRACT_ADMIN` it is whichever authorized account called.
-    function registerAndSetPrimary(
-        IERCAgentBindings.TokenStandard standard,
-        address tokenContract,
-        uint256 tokenId,
-        string calldata agentURI
-    ) external returns (uint256 agentId);
-
     /// @notice Bind an already-minted ERC-8004 `agentId` into adapter management against an external
     /// token. The caller MUST own the agent in the ERC-8004 registry and MUST currently control the
     /// external token under the ordinary current-control model (the ownerless collection window

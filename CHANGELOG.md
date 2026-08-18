@@ -119,6 +119,21 @@ seen neither. The changes with no other home are listed here.
   failing state. Who may call `bindExisting` is unchanged. Saves two to three
   external calls, measured at roughly 2,700 gas on the per-token approval path
   and 4,000 on the operator path.
+- **`registerAndSetPrimary` is removed.** It was a one-transaction convenience
+  wrapper: `register` followed by recording the new agent as the caller's own
+  primary. The premise is that the caller wants the agent as *their* primary, and
+  the authority model has two paths where that does not hold. A delegate.xyz
+  delegate may register on the token owner's behalf, and the wrapper then pointed
+  the *delegate's* primary at an agent bound to somebody else's token. An
+  ownerless collection registering its own id got its own primary pointed at one
+  arbitrary token's agent rather than the future buyer's. Neither is what a caller
+  would want, and neither is fixable inside a function whose whole shape is
+  "primary goes to `msg.sender`". It also bought nothing beyond one transaction:
+  there is no atomicity to protect, since nothing can take your primary-agent slot
+  between two transactions. `register` and `setPrimaryAgent` remain available
+  separately and compose into exactly the intended case. This is breaking for any
+  caller holding its selector, which is free to do now and would not be after a
+  deployment.
 - Built with **solc 0.8.30** targeting the **prague** EVM, both pinned in
   `foundry.toml` rather than left to the toolchain default. The bytecode and
   therefore the implementation `EXTCODEHASH` differ from any earlier build even
@@ -179,7 +194,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   - `tokenId` MUST be `0`: an account-level binding has exactly one canonical coordinate. Any other
     id reverts the new `NonZeroTokenIdForAccount(tokenContract, tokenId)` error rather than being
     coerced, enforced at both authority choke points, so it covers `register`,
-    `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
+    `bindExisting`, and every unsigned counterfactual writer.
   - The controller is the bound `tokenContract` itself and nothing else. No holder, delegate,
     optional `owner()`, or adapter admin has authority. The adapter probes neither `ownerOf` nor
     either `balanceOf` shape; control is `msg.sender == tokenContract`, so a contract with no token
@@ -196,8 +211,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     v0.0.16 removes that requirement for this standard, so a constructor call now succeeds.
     `delegatecall` into `Adapter8004` is unsupported and dangerous: it is a UUPS implementation with
     its own storage layout, not a library. `bindExisting` additionally requires the bound address to
-    own the ERC-8004 agent and to have approved the adapter. `registerAndSetPrimary` records the bound
-    address's own primary agent.
+    own the ERC-8004 agent and to have approved the adapter.
   - Permanent authority is worth nothing without a repeatable outbound path to the adapter. A
     contract that cannot call out cannot bind at all; one with a single post-deployment hook binds
     once and then freezes. Repeatable management needs a governance-gated, upgradeable, or
@@ -270,7 +284,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     single-owner set, so it gets no ownerless-collection window. `registrationHash` is unchanged and
     still excludes the standard, and `7` is only a new value in the existing `uint8` field, so no
     event signature or topic moves.
-- Full ERC-8004 `register` (including `registerAndSetPrimary`) now accepts the same temporary
+- Full ERC-8004 `register` now accepts the same temporary
   ownerless collection authority as unsigned counterfactual writes: the directly calling
   ERC-721/ERC-1155F/ERC-6909F token contract may register its own id while `ownerOf(tokenId)`
   reverts or returns canonical `address(0)`. Minting to a non-collection owner closes the window;
@@ -282,16 +296,14 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
 - Generalized `_requireCounterfactualControl` to the shared `_requireTokenAuthority` helper and
   routed both full registration and every unsigned counterfactual write through it so their
   ownerless-collection rule cannot drift.
-- `registerAndSetPrimary` remains caller-scoped: when a collection uses the ownerless window, it
-  records the new full agent as the collection's primary. An authorized mint flow that wants the
-  buyer's primary uses `register`, mints, then calls `setPrimaryAgentFor(buyer, agentId)`; otherwise
-  the buyer sets it separately.
+- Registration never writes a primary-agent pointer. An authorized mint flow that wants the buyer's
+  primary uses `register`, mints, then calls `setPrimaryAgentFor(buyer, agentId)`; otherwise the buyer
+  sets it separately with `setPrimaryAgent`.
 - Split reverse resolution into two independent systems:
   - full ERC-8004: `uint256` `setPrimaryAgent`, `primaryAgentOf`, full-only events, and
     `primaryAgentNonces`;
   - counterfactual: new `set/clear/primaryCounterfactualAgent...` APIs, coordinate-bearing
     `PrimaryCounterfactualAgent...` events.
-- `registerAndSetPrimary` writes only the full mapping.
 - Removed the ambiguous `nonces(address)` API and old `setPrimaryAgent(bytes32)` selector.
   `PrimaryAgentSet` and `PrimaryAgentSetWithSig` now index a `uint256`, changing their topic0.
 - Counterfactual hashes now use
@@ -386,6 +398,7 @@ to `0.0.11`).
   yourself: identical token-control authorization, `AgentBound` event, and returned id, plus a
   standard `PrimaryAgentSet(caller, bytes32(agentId), caller)`. No new storage, authorization, or event
   families.
+  (Removed again in `0.0.16` before any deployment; see that section for why.)
 
 ### Changed
 - Refactor only: the shared register body helper is renamed `_registerImpl` → `_register` (no

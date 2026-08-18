@@ -5,6 +5,7 @@
 **Repo:** `/Users/nxt3d/projects/adapter`  
 **Touches:** primary-agent reverse resolution (`IERC8004AdapterPrimaryAgent`, `Adapter8004` storage/API); counterfactual `registrationHash` domain  
 **Related:** ownerless CF registration (`0.0.13` work) is independent and can ship first; `0.0.14` is the reverse-resolution split **plus** ERC-7930 chain binding for CF hashes
+**Superseded in part:** `registerAndSetPrimary`, referenced below, was removed in `0.0.16` before any deployment. This document is kept as the design record for the primary-agent split; see CHANGELOG.md for why the wrapper went away.  
 
 ## Problem
 

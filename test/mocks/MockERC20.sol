@@ -70,12 +70,6 @@ contract MockERC20 {
         return ADAPTER.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
-    function registerAndSetPrimary(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.registerAndSetPrimary(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent"
-        );
-    }
-
     function registerWithMetadata(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         returns (uint256)

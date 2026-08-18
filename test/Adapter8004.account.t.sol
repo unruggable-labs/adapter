@@ -300,9 +300,6 @@ contract Adapter8004AccountTest is Test {
         adapter.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
 
         vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
-        adapter.registerAndSetPrimary(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
-
-        vm.expectRevert(Adapter8004.InvalidTokenContract.selector);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0, "ipfs://x");
 
         vm.expectRevert(Adapter8004.InvalidTokenContract.selector);

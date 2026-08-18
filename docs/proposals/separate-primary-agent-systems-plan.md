@@ -3,6 +3,7 @@
 **Locked release:** `0.0.14`  
 **Scope:** contracts, interfaces, fixtures, tests, release/deployment documentation  
 **Out of scope:** implementing this plan or changing the underlying full ERC-8004 registry
+**Superseded in part:** `registerAndSetPrimary`, referenced below, was removed in `0.0.16` before any deployment. This document is kept as the design record for the primary-agent split; see CHANGELOG.md for why the wrapper went away.  
 
 ## Decision summary
 

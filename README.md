@@ -139,7 +139,7 @@ ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path bec
 
 Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(tokenContract, tokenId)`. Values `5`, `6` and `7` name an address itself rather than a token within it, so there is no token to identify:
 
-- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(tokenContract, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `registerAndSetPrimary`, `bindExisting`, and every unsigned counterfactual writer.
+- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(tokenContract, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register`, `bindExisting`, and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `tokenContract` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
 - Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's primary agent while being unable to manage an identity bound to it.
@@ -162,7 +162,6 @@ Calling rules:
 - For `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`, a call from the bound contract's constructor fails, because the adapter requires deployed runtime code at `tokenContract` and there is none yet. The same holds for values `0`-`4`. Under `ACCOUNT` it succeeds: no code test applies, and `msg.sender` during construction is already the contract's final address, so a contract can bind itself as `ACCOUNT` from its own constructor.
 - Do not `delegatecall` into `Adapter8004`. That is unsupported and dangerous. The adapter is a UUPS proxy implementation with its own storage layout, and borrowing its code into another contract's storage is not a supported integration. This is about calling *into* the adapter; how the bound contract is implemented internally is its own business, and a contract that is itself a proxy binds fine because its proxy address is the caller the adapter sees.
 - `bindExisting` additionally requires the authorized caller to already own the ERC-8004 agent in the registry and to have approved the adapter to transfer it (`approve(adapter, agentId)` or `setApprovalForAll(adapter, true)`).
-- `registerAndSetPrimary` remains caller-scoped: it records the new agent as the immediate caller's primary agent.
 
 That value-5 call requirement has a design consequence worth stating plainly, and it applies only where the bound address is a contract: **permanent self-authority is worth nothing unless the bound contract has a repeatable outbound path to the adapter.** A contract with no way to call out cannot bind under value 5, and one with only a single hook can bind once and then freezes. That hook may be the constructor. An owner-driven contract that intentionally wants direct external-owner management should choose `CONTRACT_OWNABLE` at bind time instead. An externally owned account has no such constraint, since sending a transaction is itself the outbound path.
 
@@ -317,8 +316,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 
 If the collection cannot authorize `setPrimaryAgentFor(buyer, agentId)`, the buyer can set the
 pointer separately with `setPrimaryAgent(agentId)` (or use the signed full-primary path).
-`registerAndSetPrimary` remains caller-scoped: an ownerless collection using it sets the collection's
-own primary, not the future buyer's. `bindExisting` does not receive ownerless collection authority;
+`bindExisting` does not receive ownerless collection authority;
 it continues to require ordinary current control of an already-existing external token.
 
 ### 2b. Bind An Existing Agent
@@ -554,7 +552,7 @@ Counterfactual:
 - setters derive the hash; callers cannot store an arbitrary value
 - unset is `PRIMARY_COUNTERFACTUAL_AGENT_UNSET == bytes32(type(uint256).max)`
 
-Paid `...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. The full-system signed reverse-pointer calls are strictly account-self through EOA/ERC-1271 `SignatureChecker`, allow any relayer, and retain the inclusive 30-minute deadline cap. Counterfactual primaries intentionally have no signed/gasless surface; collections use the direct unsigned register-at-mint path and `setPrimaryCounterfactualAgentFor`. `registerAndSetPrimary` writes only the full mapping.
+Paid `...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. The full-system signed reverse-pointer calls are strictly account-self through EOA/ERC-1271 `SignatureChecker`, allow any relayer, and retain the inclusive 30-minute deadline cap. Counterfactual primaries intentionally have no signed/gasless surface; collections use the direct unsigned register-at-mint path and `setPrimaryCounterfactualAgentFor`.
 
 Each full-system signed reverse-pointer path emits its state event first and its `WithSig` provenance event second.
 
@@ -600,7 +598,6 @@ User-facing functions:
 
 - `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
 - `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI)`
-- `registerAndSetPrimary(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI)` — caller-paid `register` + set the new agent as the caller's own primary agent, in one tx
 - `bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)`
 - `setAgentURI(uint256 agentId, string newURI)`
 - `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`

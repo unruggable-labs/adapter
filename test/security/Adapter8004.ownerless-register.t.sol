@@ -38,10 +38,6 @@ contract OwnerlessRegisterCollection {
         return ADAPTER.register(STANDARD, address(this), tokenId, "ipfs://agent");
     }
 
-    function registerAndSetPrimary(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.registerAndSetPrimary(STANDARD, address(this), tokenId, "ipfs://agent");
-    }
-
     function prepareExistingAgent(MockIdentityRegistry registry) external returns (uint256 agentId) {
         agentId = registry.register("ipfs://existing");
         IERC721(address(registry)).approve(address(ADAPTER), agentId);
@@ -142,15 +138,6 @@ contract OwnerlessRegisterTest is Test {
 
         uint256 agentId = collection.register(12);
         assertTrue(adapter.isController(agentId, address(collection)));
-    }
-
-    function testRegisterAndSetPrimarySetsPrimaryForCallingCollection() external {
-        OwnerlessRegisterCollection collection =
-            new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, false);
-
-        uint256 agentId = collection.registerAndSetPrimary(13);
-        assertEq(adapter.primaryAgentOf(address(collection)), agentId);
-        assertEq(adapter.primaryAgentOf(buyer), adapter.PRIMARY_AGENT_UNSET());
     }
 
     function testBindExistingStillRejectsOwnerlessCollectionWithoutCurrentControl() external {
