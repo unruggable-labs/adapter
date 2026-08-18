@@ -305,25 +305,6 @@ contract Adapter8004Test is Test {
         assertEq(binding.tokenId, 1);
     }
 
-    function testRewriteBindingMetadataRewritesLegacyPayloadToTwentyBytes() external {
-        uint256 agentId = _register721(alice, 1);
-        string memory key = adapter.BINDING_METADATA_KEY();
-        bytes memory legacy =
-            _encodeLegacyBindingMetadata(address(adapter), IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
-        assertGt(legacy.length, 20);
-
-        vm.prank(address(adapter));
-        registry.setMetadata(agentId, key, legacy);
-        assertEq(registry.getMetadata(agentId, key), legacy);
-
-        vm.prank(admin);
-        adapter.rewriteBindingMetadata(agentId);
-
-        bytes memory stored = registry.getMetadata(agentId, key);
-        assertEq(stored.length, 20);
-        assertEq(stored, abi.encodePacked(address(adapter)));
-    }
-
     function testRegisterRejectsReservedBindingMetadataKey() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
@@ -401,13 +382,6 @@ contract Adapter8004Test is Test {
     }
 
     // --- Audit fixes: I-5 test gaps ---
-
-    function testRewriteBindingMetadataRevertsForUnknownAgent() external {
-        uint256 unknownAgentId = 999;
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, unknownAgentId));
-        vm.prank(admin);
-        adapter.rewriteBindingMetadata(unknownAgentId);
-    }
 
     function testRegisterArrayOverloadWithEmptyMetadata() external {
         // Explicitly exercise the metadata.length == 0 branch of the array overload.
@@ -517,27 +491,6 @@ contract Adapter8004Test is Test {
             }
         }
         assertEq(matches, 1, "AgentWalletUnset must fire exactly once from the adapter");
-    }
-
-    function testRewriteBindingMetadataEmitsAdapterEvent() external {
-        uint256 agentId = _register721(alice, 1);
-
-        vm.recordLogs();
-        vm.prank(admin);
-        adapter.rewriteBindingMetadata(agentId);
-
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 topic = keccak256("BindingMetadataRewritten(uint256,address)");
-        uint256 matches;
-        for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].emitter != address(adapter) || logs[i].topics.length == 0) continue;
-            if (logs[i].topics[0] == topic) {
-                assertEq(logs[i].topics[1], bytes32(agentId));
-                assertEq(logs[i].topics[2], bytes32(uint256(uint160(admin))));
-                ++matches;
-            }
-        }
-        assertEq(matches, 1, "BindingMetadataRewritten must fire exactly once from the adapter");
     }
 
     function testSetAgentWalletPassesThroughNativeSignatureCheck() external {
@@ -1062,18 +1015,6 @@ contract Adapter8004Test is Test {
 
     function _emptyMetadata() internal pure returns (IERC8004IdentityRegistry.MetadataEntry[] memory metadata) {
         metadata = new IERC8004IdentityRegistry.MetadataEntry[](0);
-    }
-
-    function _encodeLegacyBindingMetadata(
-        address bindingContract,
-        IERCAgentBindings.TokenStandard standard,
-        address boundAddress,
-        uint256 tokenId
-    ) internal pure returns (bytes memory) {
-        bytes memory compactTokenId = _encodeCompactUint(tokenId);
-        return abi.encodePacked(
-            bindingContract, uint8(standard), boundAddress, uint8(compactTokenId.length), compactTokenId
-        );
     }
 
     function _encodeCompactUint(uint256 value) internal pure returns (bytes memory out) {

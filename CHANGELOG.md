@@ -108,6 +108,55 @@ seen neither. The changes with no other home are listed here.
   error's selector. Free only because value `5` has never been deployed, confirmed by
   reading the EIP-1967 implementation slots on Mainnet, Base and Sepolia and probing
   each live implementation for the selector, which is absent from all three.
+- **`rewriteBindingMetadata` is removed**, along with the
+  `BindingMetadataRewritten` event and `script/MigrateBindingMetadata.s.sol`. It was
+  an owner-only helper that rewrote a legacy `agent-binding` row into the ERC-8217
+  20-byte format.
+
+  It is obsolete on its own terms, verified against the source rather than assumed.
+  Commit `a20035c`, the implementation live on Mainnet and Base, already writes
+  `abi.encodePacked(address(this))` on the register path and already contains this
+  helper. So it migrates away from a format the live contract does not produce, and
+  the tool has been deployed and available to the Safe the entire time it could have
+  been needed. `deployments/2026-04-30-erc8217-migration-plan.md` records the migration
+  script as "presently a prepared no-op for all three production proxies", and
+  `deployments/2026-04-30-erc8217-upgrade-report.md` as "Today, no such rewrite is
+  required".
+
+  The decisive argument is the asymmetry that decided `bindExisting`. Removal is
+  reversible through a later upgrade. Keeping an owner privilege that is not needed is
+  not free: it has to be justified to every reviewer, forever.
+
+  **Unlike the other removals in this release, this one withdraws a live surface.**
+  `rewriteBindingMetadata` shipped in the deployed implementation, so the following
+  identifiers disappear from Mainnet and Base at the upgrade and are listed here for
+  anyone holding them:
+
+  - `rewriteBindingMetadata(uint256)` selector `0x1ea11df7`
+  - `BindingMetadataRewritten(uint256,address)` topic0
+    `0xd8258bc58ec87d943ef12a8fb055cdfe4ca6adb9557a64fd8a3a36d0f3dec638`
+
+  **The on-chain check for surviving legacy rows was deliberately not performed.** No
+  scan of Mainnet, Base or Sepolia was run to confirm that no `agent-binding` row is
+  still in the old format. That is recorded here so the record is honest rather than
+  implied. Residual risk is low and bounded: a stranded legacy row is a
+  discoverability defect, because `agent-binding` is what tells a consumer which
+  adapter manages an agent, and it never affects authority, because
+  `_hasBindingControl` reads `_bindings` and never reads the metadata. If such rows
+  turn up, the helper can be reintroduced in a later version.
+
+  **The invariant this completes:** `onlyOwner` is now exactly `setIdentityRegistry`
+  and `_authorizeUpgrade`, both contract-level administration. **No owner function
+  reaches into an individual agent's state.** The adapter owner cannot rewrite a
+  binding, rewrite an agent's metadata, move an agent, or act as a controller for one.
+  Changing `identityRegistry` is contract-wide configuration that changes where every
+  agent resolves, which is why it stays Safe-owned, but it writes to no agent. This
+  could not be claimed before, because this helper wrote to one agent's registry row
+  on the owner's authority alone.
+
+  `UnknownAgent` is **not** removed: `bindingOf` and the controller check still throw
+  it.
+
 - **`bindExisting` is removed.** It pulled an already-minted ERC-8004 agent into
   adapter management against an external token. The asymmetry with `register` is the
   whole argument. `register` mints an agent that is born bound, so nothing pre-existed

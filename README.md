@@ -572,9 +572,8 @@ The adapter owner can:
 - upgrade the adapter implementation
 - change `identityRegistry`
 - transfer adapter ownership to a new admin
-- rewrite legacy `agent-binding` metadata into the current 20-byte format with `rewriteBindingMetadata(agentId)`
 
-The admin does not have a function to rewrite user bindings. The admin controls upgradeability, registry configuration, and binding-metadata migration, not per-agent reassignment of the bound token through the current implementation.
+That is the whole owner surface. **No owner function reaches into an individual agent's state.** The owner cannot rewrite a binding, cannot rewrite an agent's metadata, cannot move an agent, and cannot act as a controller for one. Changing `identityRegistry` is contract-level configuration and changes where every agent resolves, which is why it is Safe-owned, but it writes to no agent.
 
 ## Contract Surface
 
@@ -632,7 +631,6 @@ Admin-facing functions:
 
 - `initialize(address identityRegistry, address initialOwner)`
 - `setIdentityRegistry(address newIdentityRegistry)`
-- `rewriteBindingMetadata(uint256 agentId)`
 - `upgradeToAndCall(address newImplementation, bytes data)`
 
 ## Build And Test

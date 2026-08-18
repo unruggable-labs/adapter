@@ -174,7 +174,6 @@ contract Adapter8004 is
     event MetadataSet(uint256 indexed agentId, string metadataKey, bytes metadataValue, address indexed updatedBy);
     event AgentWalletSet(uint256 indexed agentId, address indexed newWallet, address indexed updatedBy);
     event AgentWalletUnset(uint256 indexed agentId, address indexed updatedBy);
-    event BindingMetadataRewritten(uint256 indexed agentId, address indexed updatedBy);
 
     IERC8004IdentityRegistry public identityRegistry;
 
@@ -373,21 +372,6 @@ contract Adapter8004 is
             identityRegistry.setMetadata(agentId, metadata[i].metadataKey, metadata[i].metadataValue);
             emit MetadataSet(agentId, metadata[i].metadataKey, metadata[i].metadataValue, msg.sender);
         }
-    }
-
-    /// @notice Owner-only migration helper to rewrite legacy `agent-binding` rows into the ERC-8217 20-byte format.
-    function rewriteBindingMetadata(uint256 agentId) external onlyOwner nonReentrant {
-        // 1. Reject unknown agents before touching registry state.
-        Binding memory binding = _bindings[agentId];
-        if (binding.boundAddress == address(0)) {
-            revert UnknownAgent(agentId);
-        }
-
-        // 2. Rewrite the canonical metadata using the proxy address as the binding contract.
-        identityRegistry.setMetadata(agentId, BINDING_METADATA_KEY, abi.encodePacked(address(this)));
-
-        // 3. Emit the adapter-level rewrite event after the forwarded registry call succeeds.
-        emit BindingMetadataRewritten(agentId, msg.sender);
     }
 
     function setAgentWallet(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature)

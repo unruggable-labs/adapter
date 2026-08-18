@@ -278,14 +278,6 @@ contract SecurityAdapter8004Test is Test {
         assertEq(registry.getAgentWallet(agentId), address(0));
     }
 
-    function testRewriteBindingMetadataIsOwnerOnly() external {
-        uint256 agentId = _register721(alice, 1);
-
-        vm.prank(alice);
-        vm.expectRevert();
-        adapter.rewriteBindingMetadata(agentId);
-    }
-
     // -----------------------------------------------------------------
     // views: bindingOf, isController
     // -----------------------------------------------------------------

@@ -1,5 +1,10 @@
 # Adapter8004 ERC-8217 Upgrade Report - 2026-04-30
 
+> **Superseded:** `rewriteBindingMetadata` and `script/MigrateBindingMetadata.s.sol` were removed in
+> `0.0.16`. The migration they describe was a prepared no-op for all three production proxies and was
+> never required. See CHANGELOG.md. This report is kept as the dated record.
+
+
 ## Summary
 
 UUPS upgrade aligning all three production proxies with [ERC-8217](https://github.com/ethereum/ERCs/commit/9159eb386cb437d2989d1c341a5955d78398705e). The new implementation writes `agent-binding` as exactly the 20-byte binding contract address (`abi.encodePacked(address(this))`) instead of the prior multi-field packed payload. Token standard, token contract, and token id are read only from `bindingOf(agentId)`.

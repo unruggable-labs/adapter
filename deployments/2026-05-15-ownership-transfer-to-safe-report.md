@@ -1,5 +1,10 @@
 # Adapter8004 Ownership Transfer to Safe Multisig Report - 2026-05-15
 
+> **Superseded:** `rewriteBindingMetadata` and `script/MigrateBindingMetadata.s.sol` were removed in
+> `0.0.16`. The migration they describe was a prepared no-op for all three production proxies and was
+> never required. See CHANGELOG.md. This report is kept as the dated record.
+
+
 ## Summary
 
 `OwnableUpgradeable` ownership of every production `Adapter8004` proxy
