@@ -594,7 +594,7 @@ Everything else is the reader's: target resolution, payload well-formedness, whe
 
 **Emit-only, with two consequences.** No contract can read attestations on chain — nothing needs to today, and a stored system can be added later if that changes. And the surface adds no storage slot, so the layout still ends at slot 4. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
 
-Execution gas, excluding the fixed 21,000 per transaction: `attest` with a small payload 13,387, `confirmAdditionalAccount` 12,904, `revoke` 1,889, plus roughly 9 gas per payload byte. Most of the attest cost is the shared ERC-7930 envelope construction that every counterfactual write already pays.
+Execution gas, excluding the fixed 21,000 per transaction: `attest` with a small payload 6,385, `confirmAdditionalAccount` 5,902, `revoke` 1,889, plus roughly 9 gas per payload byte. `revoke` is much the cheapest because it derives no identifier. The other two were about 7,000 gas dearer before the ERC-7930 encoder was word-aligned at `0.0.17`; that same saving applies to every counterfactual write, since they share the helper.
 
 **Joining to a registration.** For any adapter-registered agent the two histories merge with no transaction and no link assertion: `bindingOf(agentId)` yields the standard, bound address and token id from which the agent's counterfactual-era `registrationHash` derives. A registration joins only the counterfactual history claimed under its own standard, which is one of the reasons the standard is in the identifier.
 

@@ -1366,7 +1366,37 @@ contract Adapter8004 is
             remaining >>= 8;
         }
 
-        identifier = new bytes(referenceLength + 6 + (includeAddress ? 20 : 0));
+        uint256 length = referenceLength + 6 + (includeAddress ? 20 : 0);
+        identifier = new bytes(length);
+
+        // Fast path: the whole envelope fits in one 32-byte word, so it is one MSTORE instead of up
+        // to twenty-six bounds-checked byte writes. `length <= 32` is the exact condition for both
+        // shapes at once: with an address that is `referenceLength <= 6`, so chain ids below 2^48;
+        // without one it is `referenceLength <= 26`. Every chain in existence is far inside both.
+        //
+        // Byte `i` of the envelope occupies bits `248 - 8i` upward, which is where each shift below
+        // comes from. The pieces cover disjoint byte ranges, so OR-ing them is assembly, not
+        // arithmetic. Bytes 0, 2 and 3 stay zero because nothing writes them, and so does the
+        // trailing AddressLength byte when `includeAddress` is false.
+        if (length <= 32) {
+            uint256 word = (uint256(1) << 240) // version 0x0001 at bytes 0-1; ChainType 0x0000 follows
+                | (referenceLength << 216) // ReferenceLength at byte 4
+                | (chainId << (216 - 8 * referenceLength)); // reference at bytes 5..4+L
+            if (includeAddress) {
+                word |= (uint256(0x14) << (208 - 8 * referenceLength)) // AddressLength at byte 5+L
+                    | (uint256(uint160(account)) << (48 - 8 * referenceLength)); // address at bytes 6+L..25+L
+            }
+            assembly ("memory-safe") {
+                // `new bytes` rounds its data region up to a whole word and `length` is at least 7
+                // here, so the data region is exactly 32 bytes and this store stays inside it.
+                mstore(add(identifier, 32), word)
+            }
+            return identifier;
+        }
+
+        // Fallback for chain ids too large to fit the envelope in one word. Unreachable on any real
+        // chain, kept so the encoder stays total. `Adapter8004.erc7930.t.sol` fuzzes this against the
+        // fast path, because a divergence here would silently re-key identities rather than revert.
         identifier[1] = 0x01;
         identifier[4] = bytes1(uint8(referenceLength));
         for (uint256 i; i < referenceLength; ++i) {

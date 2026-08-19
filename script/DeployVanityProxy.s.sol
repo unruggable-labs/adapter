@@ -7,10 +7,24 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 /// @notice Deploys the canonical Adapter8004 proxy at a CREATE2 vanity address.
 ///
+/// **These scripts describe a deployment that was never performed.** As of 2026-08-19 the live
+/// proxies and implementations sit at unrelated addresses on all three chains:
+/// implementations `0xa6D23f27…` (Mainnet), `0x0f81bd4E…` (Base), `0x31a68E5b…` (Sepolia), and
+/// proxies `0xde152AfB…`, `0x270d25D2…`, `0x7621630c…`. Mainnet and Base run identical source, so
+/// CREATE2 at a fixed salt would have put their implementations at one address; it did not. The
+/// 2026-04-05 report records why — each chain got "a fresh implementation contract and a fresh
+/// `ERC1967Proxy`" — and `DeployAdapterImplementation.s.sol`, the script upgrades actually use,
+/// calls plain `new Adapter8004()` with no salt, so every future implementation is nonce-derived
+/// and per-chain by construction. Cross-chain address determinism is therefore a property this
+/// deployment has never had, and no change to the contract can cost it something it does not hold.
+/// Treat the paragraphs below as a design sketch for a future redeployment, not a description of
+/// what is live.
+///
 /// Two CREATE2 deploys via the canonical factory (forge-std `CREATE2_FACTORY`,
 /// 0x4e59...), both idempotent:
-///   1. The implementation at a fixed salt (deterministic, same address on every
-///      chain). The address is cosmetic; the proxy stays upgradeable via UUPS.
+///   1. The implementation at a fixed salt, which WOULD put it at the same address
+///      on every chain. The live implementations are not deployed this way, see the
+///      note above. The address is cosmetic; the proxy stays upgradeable via UUPS.
 ///   2. The proxy at the mined `PROXY_SALT`, with `initialize(registry, owner)`
 ///      baked into the constructor data so deployment is atomic (no front-run
 ///      window). On chains that share REGISTRY + OWNER (Mainnet + Base) the init

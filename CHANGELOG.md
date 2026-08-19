@@ -196,29 +196,70 @@ transaction, warm:
 
 | Function | Measured | Earlier estimate |
 | --- | ---: | --- |
-| `attest`, small payload | 13,387 | 4,700–5,400 |
-| `confirmAdditionalAccount` | 12,904 | 4,500–5,100 |
+| `attest`, small payload | 6,385 | 4,700–5,400 |
+| `confirmAdditionalAccount` | 5,902 | 4,500–5,100 |
 | `revoke` | 1,889 | 2,200–2,700 |
-
-The enum did not make these cheaper. It made them very slightly dearer than the
-`bytes32` constants did — `attest` by 109 gas, `confirmAdditionalAccount` by 38,
-`revoke` by 44 — because the decoder's range check is real work and because
-removing five public getters reshuffles the selector dispatch the other functions
-walk through. The enum's saving is in code size, not gas.
 
 Payload bytes add roughly 9 gas each, the author's cost by design for `REVIEW`.
 
-`revoke` came in under its estimate; the two attest paths came in at about two
-and a half times theirs. The gap is not the event and not the guards. It is
-`_interoperableAddress`, which builds the ERC-7930 envelope byte by byte on every
-call and costs roughly 8,000 gas on its own — the same cost every counterfactual
-write already pays, since `registrationHash` measures 10,657 through the same
-path. The estimate had assumed about 290 gas for deriving an identifier, which
-modelled the keccak and not the envelope. Reducing it would mean changing a
-helper shared with the counterfactual identity derivation, which is
-identity-critical code, so it is recorded here rather than attempted.
+These numbers are what they are because of the ERC-7930 encoder rewrite recorded
+under "Changed" below. Before it, `attest` measured 13,387 and
+`confirmAdditionalAccount` 12,904 — about two and a half times their estimates —
+and an earlier revision of this section attributed the gap to `_interoperableAddress`
+building the envelope byte by byte, at roughly 8,000 gas a call. That diagnosis
+was right and has now been acted on, so the numbers it described no longer hold
+and the table above replaces them. `revoke` is unchanged at 1,889, because it
+derives no identifier and so never touches the encoder.
+
+The `AttestationType` enum, separately, did not make any of these cheaper. It made
+them very slightly dearer than the `bytes32` constants did — `attest` by 109 gas,
+`confirmAdditionalAccount` by 38, `revoke` by 44 — because the decoder's range
+check is real work and because removing five public getters reshuffles the
+selector dispatch the other functions walk through. The enum's saving is in code
+size, not gas.
 
 ### Changed
+
+- **`_erc7930AddressFor` is word-aligned.** The ERC-7930 envelope is now built
+  with a single `MSTORE` for every case that fits in a 32-byte word, instead of up
+  to twenty-six bounds-checked byte writes. The byte-at-a-time loop is kept as the
+  fallback for chain ids too large to fit, so the encoder stays total.
+
+  `length <= 32` is the exact condition for both shapes at once: with an address
+  the envelope is `26 + L` bytes, so the fast path covers `L <= 6`, meaning chain
+  ids below 2^48; without one it is `6 + L`, covering `L <= 26`. Every chain in
+  existence is far inside both.
+
+  **Every identity this contract derives comes through this helper** — every
+  counterfactual `registrationHash`, every `attestationId`, and the EIP-712
+  surface — and a one-byte divergence would silently re-key identities rather than
+  revert. So byte-identity is the safety argument, not a nicety. The pre-rewrite
+  encoder is kept verbatim as `ReferenceErc7930` in
+  [`test/Adapter8004.erc7930.t.sol`](./test/Adapter8004.erc7930.t.sol) and the
+  rewrite is fuzzed against it across both shapes and all 32 reference lengths,
+  with the fast-path/fallback handoff pinned explicitly from both sides and a
+  memory-guard fuzz proving the store stays inside its allocation. The published
+  vectors in both fixture documents still pass untouched, which is the same
+  property checked from the outside. Do not delete that reference: a test that
+  compares the new encoder to itself proves nothing.
+
+  Measured saving, on the same basis before and after:
+
+  | Function | Before | After | Δ |
+  | --- | ---: | ---: | ---: |
+  | `attest`, small payload | 13,387 | 6,385 | −7,002 |
+  | `confirmAdditionalAccount` | 12,904 | 5,902 | −7,002 |
+  | `registrationHash` | 9,647 | 2,645 | −7,002 |
+  | `revoke` | 1,889 | 1,889 | 0 |
+
+  Exactly one derivation's worth in each case. The alternatives were priced and
+  rejected: caching the chain-dependent prefix in an `immutable` recovers only
+  about 3,300 of that, because the expensive half is the twenty address bytes and
+  `address(this)` in a constructor is the implementation rather than the proxy; a
+  storage cache is the only mechanism that can capture the proxy address, and it
+  wins about 700 gas warm while losing about 1,400 on the cold first touch that
+  most transactions actually pay, in exchange for a storage slot. This option
+  changes no deployment property at all.
 
 - **The counterfactual identity gains the token standard.** The
   `registrationHash` preimage becomes five components:
@@ -299,7 +340,7 @@ identity-critical code, so it is recorded here rather than attempted.
 
 | Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
 | --- | ---: | ---: | ---: |
-| `Adapter8004` | 19,365 | 19,650 | 5,211 |
+| `Adapter8004` | 19,492 | 19,777 | 5,084 |
 
 Against the 24,576-byte cap, built up from `0.0.16`:
 
@@ -309,9 +350,15 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | + the standard in the counterfactual identifier | 18,660 | 5,916 |
 | + the attestation surface | 19,707 | 4,869 |
 | − the five type-constant readers, replaced by the enum | 19,365 | 5,211 |
+| + the word-aligned ERC-7930 encoder | 19,492 | 5,084 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
-at, and the enum handed 342 of them back by deleting five public getters. A test fails the suite if the margin ever falls below 2,000 bytes; if it
+at, and the enum handed 342 of them back by deleting five public getters. The
+encoder rewrite cost 127. That was predicted to land neutral or smaller, on the
+reasoning that replacing the byte loops in place would delete more than the fast
+path adds; it did not, because the fallback keeps those loops and the fast path's
+shift arithmetic is added on top. It came in well under the +267 upper bound the
+investigation gave, but it is a cost, not a saving. A test fails the suite if the margin ever falls below 2,000 bytes; if it
 does, the fix is the extraction the upgrade docs describe, not a lower floor.
 Extraction would re-key every attestation identifier, because the identifier
 binds the emitting address, so it is a one-way door.

@@ -9,6 +9,49 @@ import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
+/// @notice The pre-`0.0.17` byte-at-a-time ERC-7930 encoder, kept verbatim as the reference the
+/// word-aligned rewrite is measured against.
+///
+/// **Do not delete, and do not "fix" it to match production.** Its whole value is that it was
+/// written independently of the code it now checks; a test that compares the new encoder to itself
+/// proves nothing. This encoding is the preimage of every counterfactual `registrationHash`, every
+/// `attestationId`, and the EIP-712 surface, and a one-byte divergence would silently re-key
+/// identities rather than revert, so byte-identity against this reference is the safety argument for
+/// the rewrite. If it ever disagrees with production, the question is which one moved, and every
+/// existing identity depends on the answer.
+library ReferenceErc7930 {
+    error InvalidChainId();
+
+    function encode(uint256 chainId, address account, bool includeAddress)
+        internal
+        pure
+        returns (bytes memory identifier)
+    {
+        if (chainId == 0) revert InvalidChainId();
+
+        uint256 referenceLength;
+        uint256 remaining = chainId;
+        while (remaining != 0) {
+            ++referenceLength;
+            remaining >>= 8;
+        }
+
+        identifier = new bytes(referenceLength + 6 + (includeAddress ? 20 : 0));
+        identifier[1] = 0x01;
+        identifier[4] = bytes1(uint8(referenceLength));
+        for (uint256 i; i < referenceLength; ++i) {
+            identifier[5 + referenceLength - 1 - i] = bytes1(uint8(chainId >> (i * 8)));
+        }
+        if (includeAddress) {
+            identifier[5 + referenceLength] = 0x14;
+            bytes20 rawAddress = bytes20(account);
+            for (uint256 i; i < 20; ++i) {
+                identifier[6 + referenceLength + i] = rawAddress[i];
+            }
+        }
+    }
+}
+
 contract Adapter8004HashHarness is Adapter8004 {
     function chainIdentifierFor(uint256 chainId) external pure returns (bytes memory) {
         return _chainIdentifierFor(chainId);
@@ -25,6 +68,43 @@ contract Adapter8004HashHarness is Adapter8004 {
         uint256 tokenId
     ) external pure returns (bytes32) {
         return _registrationHashFor(adapterInteroperableAddress, standard, boundAddress, tokenId);
+    }
+
+    /// @dev Paints a sentinel into the free memory the encoder must not reach, runs the encoder in
+    /// the SAME frame, and reports whether the sentinel survived. An external call would prove
+    /// nothing here, because the callee's memory is a separate frame and the returned bytes are
+    /// re-decoded into the caller's.
+    ///
+    /// The sentinel goes immediately past where the array will end. `new bytes(n)` takes one word of
+    /// length plus `ceil(n/32)` words of data, so the first byte the encoder must never touch is
+    /// `free + 32 + ceil(n/32) * 32`. Placing it at a fixed offset instead would sit inside the
+    /// allocation for any `n` above 32 and report a false failure, which is exactly what a first
+    /// draft of this did.
+    function encodeWithMemoryGuard(uint256 chainId, address account, bool includeAddress)
+        external
+        pure
+        returns (bytes memory encoded, bool guardIntact)
+    {
+        uint256 referenceLength;
+        uint256 remaining = chainId;
+        while (remaining != 0) {
+            ++referenceLength;
+            remaining >>= 8;
+        }
+        uint256 allocated = 32 + ((referenceLength + 6 + (includeAddress ? 20 : 0) + 31) / 32) * 32;
+
+        bytes32 sentinel = keccak256("erc7930 memory guard");
+        uint256 free;
+        assembly ("memory-safe") {
+            free := mload(0x40)
+            mstore(add(free, allocated), sentinel)
+            mstore(add(free, add(allocated, 0x20)), sentinel)
+        }
+        encoded = includeAddress ? _interoperableAddressFor(chainId, account) : _chainIdentifierFor(chainId);
+        assembly ("memory-safe") {
+            guardIntact :=
+                and(eq(mload(add(free, allocated)), sentinel), eq(mload(add(free, add(allocated, 0x20))), sentinel))
+        }
     }
 
     /// @dev TEST-ONLY parameterized preimage. Production deliberately exposes no way to vary
@@ -239,6 +319,134 @@ contract Adapter8004ERC7930Test is Test {
             harness.registrationHashWithExtra(standard, boundAddress, tokenId, bytes32(0)),
             "production must commit to a trailing bytes32(0)"
         );
+    }
+
+    // ----------------------------------------------------------------
+    //  Word-aligned encoder vs the reference, both shapes
+    // ----------------------------------------------------------------
+    //  The rewrite at `0.0.17` replaced up to twenty-six bounds-checked byte writes with one MSTORE
+    //  for every envelope that fits in a word. These are the tests that make that safe: the encoding
+    //  is the preimage of every identity this contract derives, so a divergence re-keys silently.
+
+    /// @dev The reference length is chosen explicitly rather than left to the fuzzer. A raw
+    /// `uint256` is almost always 32 bytes long, so an unconstrained fuzz would spend nearly every
+    /// run comparing the fallback against itself and prove nothing about the fast path. Foundry's
+    /// small-value bias does reach it, but not by a margin worth trusting for the property that keeps
+    /// identities stable. Picking the length covers all 32 of them in proportion instead.
+    function testFuzzWordAlignedMatchesReferenceWithAddress(uint256 seed, uint8 lengthPick, address account)
+        external
+        view
+    {
+        uint256 l = bound(lengthPick, 1, 32);
+        uint256 chainId = _chainIdOfLength(seed, l);
+
+        bytes memory actual = harness.interoperableAddressFor(chainId, account);
+        assertEq(actual.length, l + 26, "premise: the fuzz built the reference length it intended");
+        assertEq(actual, ReferenceErc7930.encode(chainId, account, true), "must match the reference encoder");
+    }
+
+    function testFuzzWordAlignedMatchesReferenceChainIdentifierOnly(uint256 seed, uint8 lengthPick) external view {
+        uint256 l = bound(lengthPick, 1, 32);
+        uint256 chainId = _chainIdOfLength(seed, l);
+
+        bytes memory actual = harness.chainIdentifierFor(chainId);
+        assertEq(actual.length, l + 6, "premise: the fuzz built the reference length it intended");
+        assertEq(actual, ReferenceErc7930.encode(chainId, address(0), false), "must match the reference encoder");
+    }
+
+    /// @dev Builds a chain id whose shortest big-endian encoding is exactly `l` bytes, by masking the
+    /// seed to `l` bytes and forcing the top bit of the top byte so it cannot be shorter.
+    function _chainIdOfLength(uint256 seed, uint256 l) private pure returns (uint256) {
+        uint256 topBit = uint256(1) << (8 * l - 1);
+        if (l == 32) return seed | topBit;
+        return (seed & ((uint256(1) << (8 * l)) - 1)) | topBit;
+    }
+
+    /// @dev The handoff, pinned from both sides. With an address the envelope is `26 + L` bytes, so
+    /// the fast path covers `L <= 6` and `L == 7` is the first fallback case. Without an address it
+    /// is `6 + L`, so the same `L` values are all comfortably inside the fast path — which is exactly
+    /// why the two shapes need separate coverage rather than one loop.
+    function testHandoffBoundaryIsIdenticalOnBothSides() external view {
+        // Smallest and largest chain id at each reference length 1 through 7.
+        uint256[14] memory ids = [
+            uint256(0x01),
+            0xFF,
+            0x0100,
+            0xFFFF,
+            0x010000,
+            0xFFFFFF,
+            0x01000000,
+            0xFFFFFFFF,
+            0x0100000000,
+            0xFFFFFFFFFF,
+            0x010000000000,
+            0xFFFFFFFFFFFF,
+            0x01000000000000,
+            0xFFFFFFFFFFFFFF
+        ];
+        address account = 0x1234567890AbcdEF1234567890aBcdef12345678;
+
+        for (uint256 i; i < ids.length; ++i) {
+            uint256 l = i / 2 + 1;
+            bytes memory withAddress = harness.interoperableAddressFor(ids[i], account);
+            bytes memory bare = harness.chainIdentifierFor(ids[i]);
+
+            assertEq(withAddress, ReferenceErc7930.encode(ids[i], account, true), "with address");
+            assertEq(bare, ReferenceErc7930.encode(ids[i], address(0), false), "chain identifier only");
+            assertEq(withAddress.length, l + 26, "length with address");
+            assertEq(bare.length, l + 6, "length without address");
+            assertEq(uint8(withAddress[4]), l, "reference length byte");
+        }
+    }
+
+    /// @dev The fallback is not dead code that never runs: `L == 7` genuinely takes it for the
+    /// address shape while the same chain id stays on the fast path for the bare shape. Asserting the
+    /// lengths straddle 32 is what proves the two branches were both exercised above.
+    function testFallbackAndFastPathAreBothReachedAtLengthSeven() external view {
+        uint256 chainId = 0x01000000000000; // 2^48, the first chain id needing seven reference bytes
+        assertEq(harness.interoperableAddressFor(chainId, VECTOR_TOKEN).length, 33, "address shape takes the fallback");
+        assertEq(harness.chainIdentifierFor(chainId).length, 13, "bare shape stays on the fast path");
+
+        assertEq(
+            harness.interoperableAddressFor(chainId, VECTOR_TOKEN), ReferenceErc7930.encode(chainId, VECTOR_TOKEN, true)
+        );
+        assertEq(harness.chainIdentifierFor(chainId), ReferenceErc7930.encode(chainId, address(0), false));
+    }
+
+    /// @dev The bare shape's own handoff, at `L == 27`, far past any real chain but the boundary the
+    /// second branch condition actually turns on.
+    function testChainIdentifierHandoffAtTwentySeven() external view {
+        uint256 justInside = (uint256(1) << 208) - 1; // 26 reference bytes
+        uint256 justOutside = uint256(1) << 208; // 27 reference bytes
+
+        assertEq(harness.chainIdentifierFor(justInside).length, 32, "26 bytes still fits one word");
+        assertEq(harness.chainIdentifierFor(justOutside).length, 33, "27 bytes needs the fallback");
+
+        assertEq(harness.chainIdentifierFor(justInside), ReferenceErc7930.encode(justInside, address(0), false));
+        assertEq(harness.chainIdentifierFor(justOutside), ReferenceErc7930.encode(justOutside, address(0), false));
+        assertEq(
+            harness.interoperableAddressFor(justOutside, VECTOR_TOKEN),
+            ReferenceErc7930.encode(justOutside, VECTOR_TOKEN, true)
+        );
+    }
+
+    /// @dev The single MSTORE must not write past the array's data region. Checked inside the
+    /// encoder's own memory frame, with a sentinel painted into the words the allocation must not
+    /// reach; an external call could not see this, because the callee's memory is a separate frame.
+    function testFuzzFastPathDoesNotWritePastTheAllocation(uint256 seed, uint8 lengthPick, address account)
+        external
+        view
+    {
+        uint256 l = bound(lengthPick, 1, 32);
+        uint256 chainId = _chainIdOfLength(seed, l);
+
+        (bytes memory withAddress, bool guardA) = harness.encodeWithMemoryGuard(chainId, account, true);
+        assertTrue(guardA, "address shape wrote past its allocation");
+        assertEq(withAddress, ReferenceErc7930.encode(chainId, account, true));
+
+        (bytes memory bare, bool guardB) = harness.encodeWithMemoryGuard(chainId, address(0), false);
+        assertTrue(guardB, "chain-identifier shape wrote past its allocation");
+        assertEq(bare, ReferenceErc7930.encode(chainId, address(0), false));
     }
 
     function testLocalKnownChainIdentifiers() external {

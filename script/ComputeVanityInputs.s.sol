@@ -7,13 +7,28 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 
 /// @notice Computes the CREATE2 inputs for the vanity miner.
 ///
+/// **These scripts describe a deployment that was never performed.** As of 2026-08-19 the live
+/// proxies and implementations sit at unrelated addresses on all three chains:
+/// implementations `0xa6D23f27…` (Mainnet), `0x0f81bd4E…` (Base), `0x31a68E5b…` (Sepolia), and
+/// proxies `0xde152AfB…`, `0x270d25D2…`, `0x7621630c…`. Mainnet and Base run identical source, so
+/// CREATE2 at a fixed salt would have put their implementations at one address; it did not. The
+/// 2026-04-05 report records why — each chain got "a fresh implementation contract and a fresh
+/// `ERC1967Proxy`" — and `DeployAdapterImplementation.s.sol`, the script upgrades actually use,
+/// calls plain `new Adapter8004()` with no salt, so every future implementation is nonce-derived
+/// and per-chain by construction. Cross-chain address determinism is therefore a property this
+/// deployment has never had, and no change to the contract can cost it something it does not hold.
+/// Treat the paragraphs below as a design sketch for a future redeployment, not a description of
+/// what is live.
+///
 /// The canonical proxy is deployed as `ERC1967Proxy(impl, "")` — empty init data —
 /// so its init code is byte-identical on every chain, which is what lets one mined
 /// salt produce the same vanity address everywhere. `initialize(registry, owner)`
 /// is called separately, per chain.
 ///
-/// The implementation is deployed deterministically (CREATE2 salt 0) so its address
-/// is identical across chains; that address is baked into the proxy init code.
+/// The implementation would be deployed deterministically (CREATE2 salt 0) so its
+/// address is identical across chains; that address is baked into the proxy init code.
+/// The live implementations are NOT deployed this way and sit at three unrelated
+/// addresses; see `DeployVanityProxy.s.sol` for the evidence.
 ///
 /// Run: forge script script/ComputeVanityInputs.s.sol:ComputeVanityInputs
 contract ComputeVanityInputs is Script {
