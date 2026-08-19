@@ -59,7 +59,7 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(IERC8004AdapterPrimaryAgent.setPrimaryAgent.selector, bytes4(keccak256("setPrimaryAgent(uint256)")));
         assertEq(
             IERC8004AdapterCounterfactualPrimaryAgent.setPrimaryCounterfactualAgent.selector,
-            bytes4(keccak256("setPrimaryCounterfactualAgent(address,uint256)"))
+            bytes4(keccak256("setPrimaryCounterfactualAgent(uint8,address,uint256)"))
         );
         (bool oldNonceGetter,) = address(adapter).staticcall(abi.encodeWithSignature("nonces(address)", alice));
         assertFalse(oldNonceGetter);
@@ -89,7 +89,10 @@ contract Adapter8004InterfacesTest is Test {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(cf.chainIdentifier(), adapter.chainIdentifier());
         assertEq(cf.interoperableAddress(alice), adapter.interoperableAddress(alice));
-        assertEq(cf.registrationHash(alice, 7), adapter.registrationHash(alice, 7));
+        assertEq(
+            cf.registrationHash(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
+        );
         assertEq(
             IERC8004AdapterCounterfactual.interoperableAddress.selector,
             bytes4(keccak256("interoperableAddress(address)"))
@@ -102,7 +105,7 @@ contract Adapter8004InterfacesTest is Test {
         );
         assertEq(
             IERC8004AdapterCounterfactualPrimaryAgent.PrimaryCounterfactualAgentSet.selector,
-            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,address)")
+            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,uint8,address)")
         );
     }
 

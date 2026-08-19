@@ -2,9 +2,17 @@
 pragma solidity ^0.8.24;
 
 interface IERCAgentBindings {
-    /// @dev Append-only. Every value is persisted inside its stored `Binding` and emitted in
-    /// `AgentBound` / counterfactual events, so renumbering one would silently reinterpret existing
-    /// bindings and indexed history. Add new standards at the end and never reorder these.
+    /// @dev **APPEND ONLY. NEVER RENUMBER, NEVER REORDER, NEVER REMOVE A MEMBER.** These numbers are
+    /// identity-critical, not merely descriptive. The `uint8` of this enum sits in the preimage of
+    /// every counterfactual `registrationHash`, so renumbering a member silently re-keys every
+    /// counterfactual identity claimed under it and every attestation and reverse pointer that names
+    /// one. That is unrecoverable: nothing on chain records the old value, and the identities do not
+    /// move with it. The numbers are also persisted inside each stored `Binding` and emitted in
+    /// `AgentBound` and every counterfactual event, so a renumbering would reinterpret stored
+    /// bindings and indexed history as well.
+    ///
+    /// Before this constraint existed the numbering was only event-critical, which tolerated
+    /// renumbering with a re-index. It no longer does. Add new standards at the end.
     ///
     /// Values 0-4 name a token *within* a contract, so the binding coordinate is `(boundAddress,
     /// tokenId)`. The three account standards name an address itself: there is no token to
@@ -29,6 +37,7 @@ interface IERCAgentBindings {
     /// without the same executor it used to delegate. For `CONTRACT_ADMIN` there is no single
     /// delegator to name, since the role is a membership predicate that many addresses can satisfy
     /// and none can enumerate.
+    /// @dev Identity-critical numbering: append only, never renumber or reorder. See the note above.
     enum TokenStandard {
         ERC721,
         ERC1155,

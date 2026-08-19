@@ -1,4 +1,8 @@
-# Adapter8004 v0.0.14 indexer cutover
+# Adapter8004 indexer cutover
+
+Written for the `0.0.14` cutover and updated through `0.0.17`. The `0.0.14`-`0.0.17` source
+versions are one cutover, not four: none of them is deployed, so an indexer moves from the live
+pre-ERC-7930 scheme straight to the `0.0.17` shape in a single step.
 
 Record the upgrade block, exact `chainIdentifier()` bytes, and sample adapter/token
 `interoperableAddress(address)` bytes per deployment. Before proposing an upgrade, verify the
@@ -11,13 +15,21 @@ At the cutover block:
 - start separate full and counterfactual primary projections;
 - subscribe to the new full `uint256` primary topics and the new counterfactual primary family;
 - validate every counterfactual indexed hash as
-  `keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId))`, with the dynamic
-  adapter bytes carrying the full chain plus proxy address and `boundAddress` kept as a naked EVM
-  address;
+  `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId, extraData))`,
+  with the dynamic adapter bytes carrying the full chain plus proxy address, `boundAddress` kept as a
+  naked EVM address, `standard` the `TokenStandard` enum value, and `extraData` the reserved
+  discriminator, `bytes32(0)` in this release;
+- key rows by that hash alone. One `(boundAddress, tokenId)` under two standards is two identities
+  from this cutover forward, so a projection that collapses by coordinate merges histories belonging
+  to different claimants;
 - retain old mixed events and bare-chain-id hashes as versioned legacy history.
 
-Existing counterfactual event topic0 values do not change, but their indexed hash values do. Never
-silently re-key historical logs into the new namespace. Optional old-to-new coordinate redirects
+Counterfactual event topic0 values change as well as their indexed hash values. Every counterfactual
+event gained a non-indexed `bytes32 extraData` at `0.0.15`, and at `0.0.17` the five update events
+and `PrimaryCounterfactualAgentSet` each gained a non-indexed `uint8 standard` after it, so
+subscriptions must be rewritten rather than reused. `CounterfactualAgentRegistered` already carried
+the standard in that position and its `0.0.17` signature is unchanged from `0.0.15`. Never silently
+re-key historical logs into the new namespace. Optional old-to-new coordinate redirects
 are discovery hints, not proof of a new claim. Do not seed either new pointer from frozen mixed
 storage or legacy events; accounts re-attest. Record implementation addresses/code hashes, Safe
 calldata, cutover/rollback blocks, old/new primary topics, post-upgrade reads, and sample hashes in

@@ -206,6 +206,7 @@ contract CounterfactualUnmintedTest is Test {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         string newURI,
         address emitter
     );
@@ -214,6 +215,7 @@ contract CounterfactualUnmintedTest is Test {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         string metadataKey,
         bytes metadataValue,
         address emitter
@@ -223,6 +225,7 @@ contract CounterfactualUnmintedTest is Test {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
     );
@@ -231,6 +234,7 @@ contract CounterfactualUnmintedTest is Test {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         address newWallet,
         address emitter
     );
@@ -239,6 +243,7 @@ contract CounterfactualUnmintedTest is Test {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         address emitter
     );
 
@@ -261,7 +266,7 @@ contract CounterfactualUnmintedTest is Test {
     function testERC721OwnerlessCollectionCanUseFullRegisterOverload() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("role", "builder");
-        bytes32 expectedHash = adapter.registrationHash(address(collection), 1);
+        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1);
 
         vm.recordLogs();
         assertEq(collection.registerFull(1, "ipfs://full", metadata), expectedHash);
@@ -270,7 +275,7 @@ contract CounterfactualUnmintedTest is Test {
 
     function testERC721OwnerlessCollectionCanUseShortRegisterOverload() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
-        bytes32 expectedHash = adapter.registrationHash(address(collection), 1);
+        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1);
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         vm.recordLogs();
         assertEq(collection.registerShort(1, "ipfs://short"), expectedHash);
@@ -279,34 +284,63 @@ contract CounterfactualUnmintedTest is Test {
 
     function testOwnerlessCollectionCanUseEveryUnsignedSetter() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
-        bytes32 hash = adapter.registrationHash(address(collection), 7);
+        bytes32 hash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(collection), 7);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
 
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualAgentURISet(hash, address(collection), 7, bytes32(0), "ipfs://uri", address(collection));
+        emit CounterfactualAgentURISet(
+            hash,
+            address(collection),
+            7,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ERC721,
+            "ipfs://uri",
+            address(collection)
+        );
         collection.setURI(7, "ipfs://uri");
 
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualMetadataSet(hash, address(collection), 7, bytes32(0), "k", bytes("v"), address(collection));
+        emit CounterfactualMetadataSet(
+            hash,
+            address(collection),
+            7,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ERC721,
+            "k",
+            bytes("v"),
+            address(collection)
+        );
         collection.setMetadata(7, "k", bytes("v"));
 
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualMetadataBatchSet(hash, address(collection), 7, bytes32(0), metadata, address(collection));
+        emit CounterfactualMetadataBatchSet(
+            hash,
+            address(collection),
+            7,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ERC721,
+            metadata,
+            address(collection)
+        );
         collection.setMetadataBatch(7, metadata);
 
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualAgentWalletSet(hash, address(collection), 7, bytes32(0), alice, address(collection));
+        emit CounterfactualAgentWalletSet(
+            hash, address(collection), 7, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, alice, address(collection)
+        );
         collection.setWallet(7, alice);
 
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualAgentWalletUnset(hash, address(collection), 7, bytes32(0), address(collection));
+        emit CounterfactualAgentWalletUnset(
+            hash, address(collection), 7, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, address(collection)
+        );
         collection.unsetWallet(7);
     }
 
     function testRegisterThenMintOrdersRegistrationBeforeTransfer() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
-        bytes32 expectedHash = adapter.registrationHash(address(collection), 11);
+        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(collection), 11);
 
         vm.recordLogs();
         assertEq(collection.registerThenMint(alice, 11, "ipfs://born", metadata), expectedHash);
@@ -370,13 +404,21 @@ contract CounterfactualUnmintedTest is Test {
 
     function _assertOwnerCanOverwriteEveryField(CounterfactualCollection collection, uint256 tokenId) internal {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
-        bytes32 hash = adapter.registrationHash(address(collection), tokenId);
+        bytes32 hash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId);
         vm.startPrank(alice);
         adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId, "ipfs://owner", metadata
         );
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualAgentURISet(hash, address(collection), tokenId, bytes32(0), "ipfs://latest", alice);
+        emit CounterfactualAgentURISet(
+            hash,
+            address(collection),
+            tokenId,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ERC721,
+            "ipfs://latest",
+            alice
+        );
         adapter.counterfactualSetAgentURI(
             IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId, "ipfs://latest"
         );

@@ -29,13 +29,13 @@ contract ProbeTrapBinder is MockERC20 {
     }
 }
 
-/// @dev One contract that can claim under two standards at the same coordinate: an ERC-721-shaped
-/// collection whose ids are all unminted, so the temporary single-owner window is open for id 0, and
-/// a contract binding of itself at id 0. Used to pin the deliberate alias: `registrationHash` is
-/// computed from `(adapter, boundAddress, tokenId)` only, so it is standard-independent — any two
-/// standards claiming the same `(boundAddress, tokenId)` land on one counterfactual identity and
-/// last-event-wins applies. Nothing about the alias depends on the fixture being a token; it
-/// inherits `MockERC20` only because that is a convenient concrete binder.
+/// @dev One contract that can claim under three standards at the same coordinate: an ERC-721-shaped
+/// collection whose ids are all unminted, so the temporary single-owner window is open for id 0, an
+/// account binding of itself, and an ownable-contract binding of itself. Used to pin the separation:
+/// `registrationHash` is computed from `(adapter, standard, boundAddress, tokenId)`, so the three
+/// claims land on three counterfactual identities and last-event-wins resolves within each one
+/// separately. Nothing about this depends on the fixture being a token; it inherits `MockERC20` only
+/// because that is a convenient concrete binder.
 contract HybridERC721Contract is MockERC20 {
     constructor(Adapter8004 adapter) MockERC20(adapter) {}
 
@@ -437,7 +437,7 @@ contract Adapter8004ContractBindingTest is Test {
     // -----------------------------------------------------------------
 
     function testEveryUnsignedCounterfactualWriterAcceptsTheBoundContract() external {
-        bytes32 expectedHash = adapter.registrationHash(address(token), 0);
+        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
@@ -471,31 +471,50 @@ contract Adapter8004ContractBindingTest is Test {
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentURISet(
-            expectedHash, address(token), 0, bytes32(0), "ipfs://cf-uri", address(token)
+            expectedHash,
+            address(token),
+            0,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ACCOUNT,
+            "ipfs://cf-uri",
+            address(token)
         );
         token.counterfactualSetAgentURI(0, "ipfs://cf-uri");
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataSet(
-            expectedHash, address(token), 0, bytes32(0), "k", bytes("v"), address(token)
+            expectedHash,
+            address(token),
+            0,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ACCOUNT,
+            "k",
+            bytes("v"),
+            address(token)
         );
         token.counterfactualSetMetadata(0, "k", bytes("v"));
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataBatchSet(
-            expectedHash, address(token), 0, bytes32(0), metadata, address(token)
+            expectedHash,
+            address(token),
+            0,
+            bytes32(0),
+            IERCAgentBindings.TokenStandard.ACCOUNT,
+            metadata,
+            address(token)
         );
         token.counterfactualSetMetadataBatch(0, metadata);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletSet(
-            expectedHash, address(token), 0, bytes32(0), wallet, address(token)
+            expectedHash, address(token), 0, bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, wallet, address(token)
         );
         token.counterfactualSetAgentWallet(0, wallet);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletUnset(
-            expectedHash, address(token), 0, bytes32(0), address(token)
+            expectedHash, address(token), 0, bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, address(token)
         );
         token.counterfactualUnsetAgentWallet(0);
     }
@@ -699,45 +718,57 @@ contract Adapter8004ContractBindingTest is Test {
     }
 
     // -----------------------------------------------------------------
-    //  Alias (the standard is deliberately excluded from registrationHash)
+    //  Separation (the standard is part of registrationHash)
     // -----------------------------------------------------------------
 
-    function testHybridContractAliasesERC721ContractAndOwnableClaimsOntoOneIdentity() external {
+    /// @dev Inverted at `0.0.17`. This test previously asserted that the three claims below aliased
+    /// onto one `registrationHash` and were resolved by last-event-wins across standards. They no
+    /// longer do. The standard is in the preimage, so the contract that is also an ERC-721 collection
+    /// claiming `(hybrid, 0)` three ways holds three separate identities, and no claimant's history
+    /// can be superseded by, or attributed to, a claimant who reached the same pair through a
+    /// different authority route.
+    function testHybridContractGetsOneIdentityPerStandardRatherThanOneShared() external {
         HybridERC721Contract hybrid = new HybridERC721Contract(adapter);
-        bytes32 expectedHash = adapter.registrationHash(address(hybrid), 0);
+        bytes32 hash721 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 0);
+        bytes32 hashAccount = adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(hybrid), 0);
+        bytes32 hashOwnable =
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(hybrid), 0);
+
+        assertTrue(hash721 != hashAccount, "ERC721 and ACCOUNT are different identities");
+        assertTrue(hash721 != hashOwnable, "ERC721 and CONTRACT_OWNABLE are different identities");
+        assertTrue(hashAccount != hashOwnable, "ACCOUNT and CONTRACT_OWNABLE are different identities");
 
         vm.recordLogs();
         // Authorized as an unminted single-owner id 0, then under both contract authority models.
-        assertEq(hybrid.counterfactualRegisterAsERC721(0, "ipfs://as-721"), expectedHash);
-        assertEq(hybrid.counterfactualRegister(0), expectedHash);
-        assertEq(hybrid.counterfactualRegisterAsOwnable(0, "ipfs://as-ownable"), expectedHash);
+        assertEq(hybrid.counterfactualRegisterAsERC721(0, "ipfs://as-721"), hash721);
+        assertEq(hybrid.counterfactualRegister(0), hashAccount);
+        assertEq(hybrid.counterfactualRegisterAsOwnable(0, "ipfs://as-ownable"), hashOwnable);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         assertEq(logs.length, 3);
         bytes32 topic0 = keccak256(
             "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
         );
+        bytes32[3] memory expectedHashes = [hash721, hashAccount, hashOwnable];
         for (uint256 i; i < 3; ++i) {
             assertEq(logs[i].emitter, address(adapter));
             assertEq(logs[i].topics[0], topic0);
-            // Identical identity topics: the hash is standard-independent, and the standard is not
-            // indexed either.
-            assertEq(logs[i].topics[1], expectedHash);
+            // The identity topic now differs per claim. The coordinate topics still do not, which is
+            // exactly why a consumer must key on the hash and never on `(boundAddress, tokenId)`.
+            assertEq(logs[i].topics[1], expectedHashes[i]);
             assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(hybrid)))));
             assertEq(logs[i].topics[3], bytes32(uint256(0)));
         }
 
-        // Only the non-indexed body distinguishes them, and log order decides the winner: the losing
-        // ERC-721 and CONTRACT bodies are emitted first and the winning CONTRACT_OWNABLE body last,
-        // so last-event-wins
-        // resolves the identity to that claim's content — standard *and* agentURI *and* emitter.
+        // Each body still carries its own standard, agentURI and emitter, but nothing here supersedes
+        // anything: these are three live claims on three identities, not three claims on one.
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         assertEq(
             keccak256(logs[0].data),
             keccak256(
                 abi.encode(bytes32(0), IERCAgentBindings.TokenStandard.ERC721, "ipfs://as-721", empty, address(hybrid))
             ),
-            "log 0 is the superseded ERC-721 claim"
+            "log 0 is the ERC-721 identity's claim"
         );
         assertEq(
             keccak256(logs[1].data),
@@ -746,7 +777,7 @@ contract Adapter8004ContractBindingTest is Test {
                     bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://erc20-agent", empty, address(hybrid)
                 )
             ),
-            "log 1 is the superseded contract-self claim"
+            "log 1 is the ACCOUNT identity's claim"
         );
         assertEq(
             keccak256(logs[2].data),
@@ -759,11 +790,24 @@ contract Adapter8004ContractBindingTest is Test {
                     address(hybrid)
                 )
             ),
-            "log 2 is the winning ownable-contract claim"
+            "log 2 is the CONTRACT_OWNABLE identity's claim"
         );
         assertEq(_word(logs[0].data, 1), uint8(IERCAgentBindings.TokenStandard.ERC721));
         assertEq(_word(logs[1].data, 1), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
         assertEq(_word(logs[2].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE));
+
+        // The standard each log advertises is the one folded into the hash that log names, so a
+        // reader verifies a line without looking up anything else.
+        bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
+        for (uint256 i; i < 3; ++i) {
+            assertEq(
+                logs[i].topics[1],
+                keccak256(
+                    abi.encode(adapterAddress, uint8(_word(logs[i].data, 1)), address(hybrid), uint256(0), bytes32(0))
+                ),
+                "log is self-verifying"
+            );
+        }
     }
 
     // -----------------------------------------------------------------
@@ -774,7 +818,10 @@ contract Adapter8004ContractBindingTest is Test {
         uint256 firstAgentId = token.register(0);
 
         // The permanent authority can re-emit a counterfactual claim at any later time...
-        assertEq(token.counterfactualRegister(0), adapter.registrationHash(address(token), 0));
+        assertEq(
+            token.counterfactualRegister(0),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0)
+        );
 
         // ...and mint further, distinct ERC-8004 identities for the same contract, here through the
         // metadata-bearing full register overload, whose entries must land in the registry.

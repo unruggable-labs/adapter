@@ -89,7 +89,18 @@ contract Adapter8004AccountTest is Test {
         vm.prank(eoa);
         bytes32 registrationHash =
             adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://cf");
-        assertEq(registrationHash, adapter.registrationHash(eoa, 0), "hash is standard-independent");
+        assertEq(
+            registrationHash,
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0),
+            "hash is the ACCOUNT identity for this pair"
+        );
+        // Inverted from the pre-`0.0.17` assertion, which required this to equal the hash for any
+        // other standard at the same pair. The standard is in the preimage now, so `(eoa, 0)` claimed
+        // as `ACCOUNT` and the same pair claimed as `ERC721` are two identities, not one.
+        assertTrue(
+            registrationHash != adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, eoa, 0),
+            "hash is standard-specific"
+        );
     }
 
     /// @dev The motivating defect. Before this change the code test was the only gate, so whether an
@@ -207,7 +218,11 @@ contract Adapter8004AccountTest is Test {
         ConstructorAccountBinder binder = new ConstructorAccountBinder(adapter, true);
 
         assertEq(binder.codeLengthDuringConstruction(), 0, "premise: no runtime code during construction");
-        assertEq(binder.registrationHash(), adapter.registrationHash(address(binder), 0), "hash matches the pair");
+        assertEq(
+            binder.registrationHash(),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
+            "hash matches the pair under the standard it claimed"
+        );
     }
 
     /// @dev The contrast. Every standard that calls into the bound address still rejects a constructor-time

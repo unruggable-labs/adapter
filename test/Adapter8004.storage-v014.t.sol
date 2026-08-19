@@ -123,11 +123,14 @@ contract Adapter8004StorageV014Test is Test {
 
         vm.startPrank(account);
         adapter.setPrimaryAgent(9);
-        adapter.setPrimaryCounterfactualAgent(address(token), 41);
+        adapter.setPrimaryCounterfactualAgent(IERCAgentBindings.TokenStandard.ERC721, address(token), 41);
         vm.stopPrank();
 
         assertEq(uint256(vm.load(proxy, _mappingSlot(account, 2))), ~uint256(9));
-        assertEq(vm.load(proxy, _mappingSlot(account, 3)), ~adapter.registrationHash(address(token), 41));
+        assertEq(
+            vm.load(proxy, _mappingSlot(account, 3)),
+            ~adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 41)
+        );
 
         vm.store(proxy, _mappingSlot(account, 4), bytes32(uint256(11)));
         assertEq(adapter.primaryAgentNonces(account), 11);

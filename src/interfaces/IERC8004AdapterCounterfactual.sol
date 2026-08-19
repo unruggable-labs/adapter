@@ -9,17 +9,19 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// declarations so off-chain consumers and tests can depend on a stable type without importing
 /// the full contract.
 ///
-/// Every counterfactual event below carries `bytes32 extraData` as its first non-indexed field.
-/// The three indexed slots are fixed across every event and already spent on
-/// `(registrationHash, boundAddress, tokenId)`. There is deliberately no in-payload schema
+/// Every counterfactual event below carries `bytes32 extraData` as its first non-indexed field,
+/// followed by the `TokenStandard`. The three indexed slots are fixed across every event and already
+/// spent on `(registrationHash, boundAddress, tokenId)`, so the standard is non-indexed; carrying it
+/// on every event is what makes a single log line verifiable against the hash on its own, with no
+/// lookup of the claim that created the identity. There is deliberately no in-payload schema
 /// version, because `topic0` is the keccak of the full event signature and so already discriminates
 /// schema on its own.
 ///
-/// The identity is the `registrationHash`. Each token has exactly one identity, but
-/// `(boundAddress, tokenId)` is not considered a unique identifier, because one contract may have
-/// more than one set of ids. An example is a contract with classes of ids, where Class A id 1 and
-/// Class B id 1 are different tokens. `extraData` is what separates them, so consumers must key on
-/// `registrationHash` and must not collapse rows by `(boundAddress, tokenId)`.
+/// The identity is the `registrationHash`. Each token under each standard has exactly one identity,
+/// but `(boundAddress, tokenId)` is not considered a unique identifier, because one contract may
+/// have more than one set of ids. An example is a contract with classes of ids, where Class A id 1
+/// and Class B id 1 are different tokens. `extraData` is what separates them, so consumers must key
+/// on `registrationHash` and must not collapse rows by `(boundAddress, tokenId)`.
 ///
 /// Adapter8004's existing unsigned counterfactual functions accept either ordinary current-controller
 /// authority or, for ERC-721/ERC-1155F/ERC-6909F only, temporary authority from the directly calling
@@ -90,15 +92,23 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// A counterfactual claim cannot be withdrawn. Later events from the same contract only
 /// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
-/// wallet field alone. The event schema, indexed topics, and `registrationHash` do not vary by
-/// account-level standard. `CounterfactualAgentRegistered.standard` is the only
-/// counterfactual event field that carries a standard, and it remains non-indexed. The on-chain
-/// `AgentBound.standard` keeps its own indexed slot. Because the standard is excluded from the hash,
-/// any two standards claiming the same `(boundAddress, tokenId)` alias onto one `registrationHash`.
-/// A contract that is also an ERC-721 collection, claiming token `#0`, `ACCOUNT`, and
-/// `CONTRACT_OWNABLE` at `(X, 0)`, is the worked example. That is accepted and documented, because
-/// they are deliberately one identity with one current claim, and consumers read the latest
-/// `CounterfactualAgentRegistered.standard` in log order to see which claim currently wins.
+/// wallet field alone. The event schema and indexed topics do not vary by account-level standard,
+/// and every counterfactual event carries the standard non-indexed. The on-chain `AgentBound.standard`
+/// keeps its own indexed slot.
+///
+/// **The standard is part of the identity.** It sits in the `registrationHash` preimage as its
+/// `uint8`, so two standards claiming the same `(boundAddress, tokenId)` are two identities and never
+/// alias. A contract that is also an ERC-721 collection, claiming token `#0`, `ACCOUNT`, and
+/// `CONTRACT_OWNABLE` at `(X, 0)`, is the worked example: three coordinates, three distinct hashes,
+/// three separate histories. Last-event-wins therefore resolves within one standard only, and no
+/// claimant's history can be superseded, or attributed to, a different claimant who reached the same
+/// `(boundAddress, tokenId)` through a different authority route.
+///
+/// What the standard in the hash records is that the claimer passed *that standard's* authority probe
+/// at claim time. It is not an assertion that the bound contract conforms to the ERC: the adapter
+/// probes authority, not interface support, and never calls `supportsInterface`. A claim under
+/// `ERC721` means `ownerOf` answered and named the caller, or the collection called during its own
+/// ownerless window. It does not certify that the contract is a well-formed ERC-721.
 interface IERC8004AdapterCounterfactual {
     /// @notice Local ERC-7930 v1 Chain Identifier using CAIP-350 `eip155`: version 1, ChainType 0,
     /// shortest non-empty big-endian `block.chainid`, and zero AddressLength.
@@ -111,12 +121,18 @@ interface IERC8004AdapterCounterfactual {
     /// @notice Computes the canonical counterfactual registration hash, scoped to this chain and this
     /// adapter proxy, so off-chain consumers can derive it without reimplementing the rules. The
     /// identity is
-    /// `keccak256(abi.encode(interoperableAddress(adapter), boundAddress, tokenId, extraData))`,
-    /// where `extraData` is `bytes32(0)` for every implementation of this baseline.
+    /// `keccak256(abi.encode(interoperableAddress(adapter), standard, boundAddress, tokenId, extraData))`,
+    /// with `standard` encoded as the `TokenStandard` enum's `uint8` and `extraData` fixed at
+    /// `bytes32(0)` for every implementation of this baseline. Always `abi.encode`, never
+    /// `abi.encodePacked`.
     /// @dev `extraData` is deliberately not a parameter anywhere on this surface, because it is
     /// reserved rather than used. Read its value from the `extraData` field on any counterfactual
-    /// event.
-    function registrationHash(address boundAddress, uint256 tokenId) external view returns (bytes32);
+    /// event. `standard` is a parameter, because it selects the identity: the same
+    /// `(boundAddress, tokenId)` under two standards yields two different hashes.
+    function registrationHash(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
+        external
+        view
+        returns (bytes32);
 
     /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
     /// entirely in the event log. Indexers MUST treat the latest event per `registrationHash` as
@@ -139,6 +155,7 @@ interface IERC8004AdapterCounterfactual {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         string newURI,
         address emitter
     );
@@ -150,6 +167,7 @@ interface IERC8004AdapterCounterfactual {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         string metadataKey,
         bytes metadataValue,
         address emitter
@@ -163,6 +181,7 @@ interface IERC8004AdapterCounterfactual {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
     );
@@ -174,6 +193,7 @@ interface IERC8004AdapterCounterfactual {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         address newWallet,
         address emitter
     );
@@ -185,6 +205,7 @@ interface IERC8004AdapterCounterfactual {
         address indexed boundAddress,
         uint256 indexed tokenId,
         bytes32 extraData,
+        IERCAgentBindings.TokenStandard standard,
         address emitter
     );
 }

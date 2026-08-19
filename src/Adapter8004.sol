@@ -37,14 +37,17 @@ interface IOwnableContract {
 /// `upgradeToAndCall` data.
 ///
 /// Counterfactual identities are keyed by a `registrationHash` over the ERC-7930 interoperable
-/// address of this proxy, the bound address, the token id, and a `bytes32 extraData` discriminator.
-/// `extraData` is a `constant` fixed at `bytes32(0)`, so it occupies no storage, and every pair that
-/// hashes with zero hashes identically from here on. That preimage does not match the one a live
-/// proxy computes today, so upgrading one is a hard cutover for any indexer consuming counterfactual
-/// events: move it to this ABI and reindex before upgrading. `Binding` rows and full ERC-8004
-/// registrations are not keyed by this hash and are unaffected. See CHANGELOG.md for the cutover
-/// detail and for anything this implementation changed relative to a deployed one.
-/// @custom:version 0.0.16
+/// address of this proxy, the `TokenStandard` as its `uint8`, the bound address, the token id, and a
+/// `bytes32 extraData` discriminator. `extraData` is a `constant` fixed at `bytes32(0)`, so it
+/// occupies no storage, and every triple that hashes with zero hashes identically from here on.
+/// Because the standard is in the preimage, one `(boundAddress, tokenId)` claimed under two
+/// standards is two identities rather than one, so a claimant's history can never land on another
+/// claimant's identity. That preimage does not match the one a live proxy computes today, so
+/// upgrading one is a hard cutover for any indexer consuming counterfactual events: move it to this
+/// ABI and reindex before upgrading. `Binding` rows and full ERC-8004 registrations are not keyed by
+/// this hash and are unaffected. See CHANGELOG.md for the cutover detail and for anything this
+/// implementation changed relative to a deployed one.
+/// @custom:version 0.0.17
 contract Adapter8004 is
     Initializable,
     OwnableUpgradeable,
@@ -443,8 +446,12 @@ contract Adapter8004 is
     // that consumers must key on `registrationHash` rather than on `(boundAddress, tokenId)`.
     // -----------------------------------------------------------------
 
-    function registrationHash(address boundAddress, uint256 tokenId) external view returns (bytes32) {
-        return _registrationHash(boundAddress, tokenId);
+    function registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)
+        external
+        view
+        returns (bytes32)
+    {
+        return _registrationHash(standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -502,7 +509,7 @@ contract Adapter8004 is
         _requireNoReservedCounterfactualKeys(metadata);
 
         // 4. Compute the deterministic registration hash used as the indexer key for this claim.
-        computedHash = _registrationHash(boundAddress, tokenId);
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
 
         // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
         emit CounterfactualAgentRegistered(
@@ -528,10 +535,11 @@ contract Adapter8004 is
 
         // 3. Emit the URI update, which is the only on-chain record this function produces.
         emit CounterfactualAgentURISet(
-            _registrationHash(boundAddress, tokenId),
+            _registrationHash(standard, boundAddress, tokenId),
             boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
+            standard,
             newURI,
             msg.sender
         );
@@ -565,10 +573,11 @@ contract Adapter8004 is
 
         // 4. Emit the metadata write, which is the only on-chain record this function produces.
         emit CounterfactualMetadataSet(
-            _registrationHash(boundAddress, tokenId),
+            _registrationHash(standard, boundAddress, tokenId),
             boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
+            standard,
             metadataKey,
             metadataValue,
             msg.sender
@@ -597,10 +606,11 @@ contract Adapter8004 is
 
         // 4. Emit the batch, which is the only on-chain record this function produces.
         emit CounterfactualMetadataBatchSet(
-            _registrationHash(boundAddress, tokenId),
+            _registrationHash(standard, boundAddress, tokenId),
             boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
+            standard,
             metadata,
             msg.sender
         );
@@ -625,10 +635,11 @@ contract Adapter8004 is
 
         // 3. Emit the wallet assignment, which is the only on-chain record this function produces.
         emit CounterfactualAgentWalletSet(
-            _registrationHash(boundAddress, tokenId),
+            _registrationHash(standard, boundAddress, tokenId),
             boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
+            standard,
             newWallet,
             msg.sender
         );
@@ -651,7 +662,12 @@ contract Adapter8004 is
 
         // 3. Emit the wallet clear, which is the only on-chain record this function produces.
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(boundAddress, tokenId), boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
+            _registrationHash(standard, boundAddress, tokenId),
+            boundAddress,
+            tokenId,
+            COUNTERFACTUAL_EXTRA_DATA,
+            standard,
+            msg.sender
         );
     }
 
@@ -714,19 +730,21 @@ contract Adapter8004 is
     //  Counterfactual primary agent (reverse resolution: address -> registration hash)
     // -----------------------------------------------------------------
 
-    function setPrimaryCounterfactualAgent(address boundAddress, uint256 tokenId)
+    function setPrimaryCounterfactualAgent(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 computedHash)
     {
-        return _setPrimaryCounterfactualAgent(msg.sender, boundAddress, tokenId);
+        return _setPrimaryCounterfactualAgent(msg.sender, standard, boundAddress, tokenId);
     }
 
-    function setPrimaryCounterfactualAgentFor(address account, address boundAddress, uint256 tokenId)
-        external
-        returns (bytes32 computedHash)
-    {
+    function setPrimaryCounterfactualAgentFor(
+        address account,
+        TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) external returns (bytes32 computedHash) {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        return _setPrimaryCounterfactualAgent(account, boundAddress, tokenId);
+        return _setPrimaryCounterfactualAgent(account, standard, boundAddress, tokenId);
     }
 
     function clearPrimaryCounterfactualAgent() external {
@@ -743,17 +761,19 @@ contract Adapter8004 is
         return stored == bytes32(0) ? PRIMARY_COUNTERFACTUAL_AGENT_UNSET : ~stored;
     }
 
-    function _setPrimaryCounterfactualAgent(address account, address boundAddress, uint256 tokenId)
-        private
-        returns (bytes32 computedHash)
-    {
-        computedHash = _registrationHash(boundAddress, tokenId);
+    function _setPrimaryCounterfactualAgent(
+        address account,
+        TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) private returns (bytes32 computedHash) {
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
         if (computedHash == bytes32(type(uint256).max)) {
             revert PrimaryCounterfactualAgentHashReserved(computedHash);
         }
         _primaryCounterfactualAgent[account] = ~computedHash;
         emit PrimaryCounterfactualAgentSet(
-            account, computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, msg.sender
+            account, computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, msg.sender
         );
     }
 
@@ -1217,8 +1237,13 @@ contract Adapter8004 is
         }
     }
 
-    function _registrationHash(address boundAddress, uint256 tokenId) internal view virtual returns (bytes32) {
-        return _registrationHashFor(_interoperableAddress(address(this)), boundAddress, tokenId);
+    function _registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)
+        internal
+        view
+        virtual
+        returns (bytes32)
+    {
+        return _registrationHashFor(_interoperableAddress(address(this)), standard, boundAddress, tokenId);
     }
 
     /// @dev ERC-7930 v1 Chain Identifier using the CAIP-350 `eip155` profile:
@@ -1277,13 +1302,19 @@ contract Adapter8004 is
     }
 
     /// @dev The canonical counterfactual identity is
-    /// `keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId, extraData))`.
-    function _registrationHashFor(bytes memory adapterInteroperableAddress, address boundAddress, uint256 tokenId)
-        internal
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(adapterInteroperableAddress, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA));
+    /// `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))`,
+    /// with `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
+    /// `abi.encodePacked`: the interoperable address is dynamic, and packing it would let a different
+    /// (address, standard) pair produce the same preimage bytes.
+    function _registrationHashFor(
+        bytes memory adapterInteroperableAddress,
+        TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA)
+        );
     }
 
     /// @dev Stateless EIP-712 domain separator for the signed primary-agent surface. Computed inline

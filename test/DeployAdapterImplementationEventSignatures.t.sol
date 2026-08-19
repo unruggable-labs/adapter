@@ -8,6 +8,7 @@ import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCo
 import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrimaryAgent.sol";
 import {IERC8004AdapterCounterfactualPrimaryAgent} from
     "../src/interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
+import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 
 /// @notice Holds the deploy script's printed event signatures against the contract they describe.
 ///
@@ -77,8 +78,8 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, address(adapter));
 
         assertEq(
-            _sampleRegistrationHash(proxyInteroperableAddress, address(1), 0),
-            adapter.registrationHash(address(1), 0),
+            _sampleRegistrationHash(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
             "sample preimage must match the contract's"
         );
     }

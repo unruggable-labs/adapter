@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
+import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @notice Safe-owned UUPS upgrade flow for `Adapter8004`.
@@ -61,19 +62,19 @@ contract DeployAdapterImplementationScript is Script {
     /// and `DeployAdapterImplementationEventSignatures.t.sol` fails if any drifts from the contract.
     string internal constant SIG_PRIMARY_AGENT_SET = "PrimaryAgentSet(address,uint256,address)";
     string internal constant SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET =
-        "PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,address)";
+        "PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,uint8,address)";
     string internal constant SIG_CF_REGISTERED =
         "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)";
     string internal constant SIG_CF_URI_SET =
-        "CounterfactualAgentURISet(bytes32,address,uint256,bytes32,string,address)";
+        "CounterfactualAgentURISet(bytes32,address,uint256,bytes32,uint8,string,address)";
     string internal constant SIG_CF_METADATA_SET =
-        "CounterfactualMetadataSet(bytes32,address,uint256,bytes32,string,bytes,address)";
+        "CounterfactualMetadataSet(bytes32,address,uint256,bytes32,uint8,string,bytes,address)";
     string internal constant SIG_CF_METADATA_BATCH_SET =
-        "CounterfactualMetadataBatchSet(bytes32,address,uint256,bytes32,(string,bytes)[],address)";
+        "CounterfactualMetadataBatchSet(bytes32,address,uint256,bytes32,uint8,(string,bytes)[],address)";
     string internal constant SIG_CF_WALLET_SET =
-        "CounterfactualAgentWalletSet(bytes32,address,uint256,bytes32,address,address)";
+        "CounterfactualAgentWalletSet(bytes32,address,uint256,bytes32,uint8,address,address)";
     string internal constant SIG_CF_WALLET_UNSET =
-        "CounterfactualAgentWalletUnset(bytes32,address,uint256,bytes32,address)";
+        "CounterfactualAgentWalletUnset(bytes32,address,uint256,bytes32,uint8,address)";
     string internal constant SIG_AGENT_BOUND = "AgentBound(uint256,uint8,address,uint256,address)";
 
     function run() external returns (address proxy, address implementation, bytes memory upgradeCalldata) {
@@ -113,8 +114,10 @@ contract DeployAdapterImplementationScript is Script {
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, proxy);
         console2.log("ERC-7930 Interoperable Address for proxy:");
         console2.logBytes(proxyInteroperableAddress);
-        console2.log("Sample registrationHash(proxy, boundAddress=0x1, tokenId=0):");
-        console2.logBytes32(_sampleRegistrationHash(proxyInteroperableAddress, address(1), 0));
+        console2.log("Sample registrationHash(proxy, standard=ERC721, boundAddress=0x1, tokenId=0):");
+        console2.logBytes32(
+            _sampleRegistrationHash(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0)
+        );
 
         console2.log("=== New primary-agent event topic[0] hashes ===");
         console2.logBytes32(keccak256(bytes(SIG_PRIMARY_AGENT_SET)));
@@ -144,12 +147,13 @@ contract DeployAdapterImplementationScript is Script {
 
     /// @dev The sample counterfactual identity printed by `run()`. It mirrors the contract's own
     /// preimage, and the accompanying test holds it against the contract so the two cannot diverge.
-    function _sampleRegistrationHash(bytes memory proxyInteroperableAddress, address boundAddress, uint256 tokenId)
-        internal
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(proxyInteroperableAddress, boundAddress, tokenId, bytes32(0)));
+    function _sampleRegistrationHash(
+        bytes memory proxyInteroperableAddress,
+        IERCAgentBindings.TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encode(proxyInteroperableAddress, standard, boundAddress, tokenId, bytes32(0)));
     }
 
     /// @dev Writes the Safe Transaction Builder JSON for this chain. The chain id is
@@ -188,10 +192,10 @@ contract DeployAdapterImplementationScript is Script {
             vm.toString(block.timestamp * 1000),
             ",\n",
             '  "meta": {\n',
-            '    "name": "Adapter8004 v0.0.16 - split primaries, ERC-7930 hashes with reserved extraData, contract-binding authority - ',
+            '    "name": "Adapter8004 v0.0.17 - split primaries, ERC-7930 hashes with the token standard and reserved extraData, contract-binding authority - ',
             networkDisplayName,
             '",\n',
-            '    "description": "Upgrade the Adapter8004 UUPS proxy directly from its active deployed implementation to v0.0.16. Separates full uint256 and counterfactual bytes32 primary-agent mappings/nonces/events, and changes every counterfactual registration hash to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), boundAddress, tokenId, extraData)), where extraData is a reserved discriminator fixed at bytes32(0) in this release. Three mappings append directly after the live layout at slots 2-4. Renames TokenStandard value 5 from CONTRACT to ACCOUNT and relaxes it to accept any address, with or without runtime code, since its authority is a bare msg.sender comparison that never calls the address; the enum position, all event topic0 values and every registrationHash are unchanged, but the NonZeroTokenIdForContract error is renamed NonZeroTokenIdForAccount and its selector changes. Two consequences of that relaxation a signer should see: the zero address is now rejected explicitly under every standard including ACCOUNT, because a zero boundAddress is the unbound sentinel, and a contract can now bind itself as ACCOUNT from its own constructor, which stays rejected for all seven other standards. ACCOUNT authority remains exactly msg.sender == boundAddress with no delegate.xyz route. Adds two contract-level binding standards, CONTRACT_OWNABLE (6) and CONTRACT_ADMIN (7), whose authority is the bound contract owner() or a DEFAULT_ADMIN_ROLE holder respectively and never the bound contract itself. Removes the MetadataBatchSet event; setMetadataBatch now emits one MetadataSet per entry. Compiled with solc 0.8.30 targeting the prague EVM, so the implementation EXTCODEHASH differs from any earlier build. Implementation deployed at ',
+            '    "description": "Upgrade the Adapter8004 UUPS proxy directly from its active deployed implementation to v0.0.17. Separates full uint256 and counterfactual bytes32 primary-agent mappings/nonces/events, and changes every counterfactual registration hash to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), uint8 standard, boundAddress, tokenId, extraData)), where standard is the TokenStandard enum value and extraData is a reserved discriminator fixed at bytes32(0) in this release. Because the standard is in the preimage, one (boundAddress, tokenId) claimed under two standards is now two identities rather than one, which removes the aliasing the previous scheme documented; TokenStandard numbering is therefore identity-critical and append-only forever. The five counterfactual update events and PrimaryCounterfactualAgentSet each gain a non-indexed uint8 standard field, so their topic0 values change and indexers must resubscribe. The public registrationHash(address,uint256) view is REPLACED by registrationHash(uint8,address,uint256), and setPrimaryCounterfactualAgent / setPrimaryCounterfactualAgentFor each gain a leading uint8 standard parameter, so all three old selectors are gone and stale callers revert rather than silently computing a hash that no longer identifies anything. No storage slot is added: the layout still ends at slot 4 and the Binding struct, bindingOf and AgentBound are untouched. Three mappings append directly after the live layout at slots 2-4. Renames TokenStandard value 5 from CONTRACT to ACCOUNT and relaxes it to accept any address, with or without runtime code, since its authority is a bare msg.sender comparison that never calls the address; the enum position is unchanged, but the NonZeroTokenIdForContract error is renamed NonZeroTokenIdForAccount and its selector changes. Two consequences of that relaxation a signer should see: the zero address is now rejected explicitly under every standard including ACCOUNT, because a zero boundAddress is the unbound sentinel, and a contract can now bind itself as ACCOUNT from its own constructor, which stays rejected for all seven other standards. ACCOUNT authority remains exactly msg.sender == boundAddress with no delegate.xyz route. Adds two contract-level binding standards, CONTRACT_OWNABLE (6) and CONTRACT_ADMIN (7), whose authority is the bound contract owner() or a DEFAULT_ADMIN_ROLE holder respectively and never the bound contract itself. Removes the MetadataBatchSet event; setMetadataBatch now emits one MetadataSet per entry. Compiled with solc 0.8.30 targeting the prague EVM, so the implementation EXTCODEHASH differs from any earlier build. Implementation deployed at ',
             vm.toString(implementation),
             " (bytecode hash ",
             vm.toString(implementationCodehash),

@@ -24,21 +24,134 @@ the live implementation on a block explorer before relying on a version.
 - **Mainnet** (`0xde15…`): the counterfactual implementation
   (`0xa6D23f27…`). delegate.xyz is NOT live (its impl was never deployed here).
 
-Numbered source versions `0.0.6`-`0.0.13` are not live on any chain. In
+Numbered source versions `0.0.6`-`0.0.17` are not live on any chain. In
 particular, the primary-agent layouts in `0.0.9`-`0.0.13` are not production
 upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
 on this summary; see the
 [last-deployed baseline audit](./deployments/upgrade-baseline-from-last-deployed.md).
 
+Re-verified on 2026-08-19 for the `0.0.17` identifier change, reading the
+EIP-1967 slot on each chain and calling through each proxy:
+
+- the three implementation addresses above are still the active ones;
+- all three proxies still compute the **pre-ERC-7930** registration hash
+  `keccak256(abi.encode(block.chainid, address(this), boundAddress, tokenId))`,
+  reproduced exactly off chain for each chain, so every live identifier is on the
+  scheme `0.0.14` already supersedes;
+- `interoperableAddress(address)` reverts on the Mainnet and Base proxies, so no
+  live implementation has the ERC-7930 surface at all;
+- `primaryCounterfactualAgentOf(address)` reverts on all three, so no live
+  implementation exposes the counterfactual-primary surface and **slot 3, the
+  only slot that could hold a counterfactual identifier, is unreachable and has
+  never been written on any deployment.** The two deployed source baselines
+  (`a20035c`, `4647ddd`) declare regular slots 0 and 1 only, which is the same
+  conclusion from the other direction.
+
+Together these mean the `0.0.17` identifier change costs nothing on chain: it
+rides the cutover `0.0.14` already forces, and re-keys no stored value.
+
+## [0.0.17] - Unreleased
+
+**This is the version the artifact carries.** `0.0.14` through `0.0.17` are one
+implementation, not four releases. None has been deployed. They are separate
+sections because they group unrelated work, not because they ship separately:
+the sections record what changed, and `@custom:version` in
+[`src/Adapter8004.sol`](./src/Adapter8004.sol) records what the single resulting
+implementation is called. Read all four together when reviewing an upgrade.
+
+Adds no storage slot and keeps the `0.0.14` layout, so it upgrades from the same
+deployed baselines with empty `upgradeToAndCall` data.
+
+### Changed
+
+- **The counterfactual identity gains the token standard.** The
+  `registrationHash` preimage becomes five components:
+
+  ```
+  keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))
+  ```
+
+  `standard` is the `TokenStandard` enum as its `uint8`, sitting between the
+  adapter's ERC-7930 Interoperable Address and `boundAddress`. `extraData` is the
+  existing reserved discriminator, still `bytes32(0)` everywhere. Always
+  `abi.encode`, never packed.
+
+  **Why.** Without the standard, token 5 on one contract collapsed to a single
+  coordinate whether it was claimed as `ERC721`, `ACCOUNT` or `CONTRACT_OWNABLE`.
+  The interface documented that aliasing as an accepted property, on the reasoning
+  that the three claims were deliberately one identity resolved by last-event-wins.
+  With attestations about to accumulate against these identifiers, aliasing stops
+  being a documented quirk and becomes a way for one claimant's reputation to land
+  on another claimant's identity. Including the standard dissolves it: two
+  standards claiming one `(boundAddress, tokenId)` are now two identities with two
+  separate histories, and last-event-wins resolves within one standard only.
+
+  What the standard in the identity records is that the claimer passed *that
+  standard's* authority probe at claim time. It is not an assertion that the bound
+  contract conforms to the ERC; the adapter probes authority and never calls
+  `supportsInterface`.
+
+  **Cost on chain: none.** Every live proxy still runs the pre-ERC-7930 preimage
+  `keccak256(abi.encode(block.chainid, address(this), boundAddress, tokenId))`,
+  verified directly against Ethereum, Base and Sepolia on 2026-08-19. The
+  ERC-7930 rewrite at `0.0.14` already forces a hard re-index, and no proxy ever
+  ran the standard-less ERC-7930 preimage, so this rides that cutover rather than
+  adding one.
+
+- **`TokenStandard` numbering is now identity-critical.** The enum's `uint8` is in
+  the preimage, so renumbering a member re-keys every counterfactual identity
+  claimed under it, along with every attestation and reverse pointer naming one.
+  Before this version the numbering was event-critical, which tolerated
+  renumbering with a re-index. It no longer does. **Append only: never renumber,
+  never reorder, never remove a member.** The constraint is recorded on the enum
+  in [`IERCAgentBindings.sol`](./src/interfaces/IERCAgentBindings.sol).
+
+- **`registrationHash(address,uint256)` is removed and replaced by
+  `registrationHash(TokenStandard,address,uint256)`.** The old selector is gone
+  rather than kept as an overload, deliberately: a stale caller reverts cleanly
+  instead of silently computing a hash that no longer identifies anything.
+
+- **`setPrimaryCounterfactualAgent` and `setPrimaryCounterfactualAgentFor` each
+  gain a `TokenStandard` parameter**, immediately before `boundAddress`. Both old
+  selectors are gone, for the same reason. `clearPrimaryCounterfactualAgent[For]`
+  and `primaryCounterfactualAgentOf` are unchanged.
+
+- **The five counterfactual update events and `PrimaryCounterfactualAgentSet` gain
+  a non-indexed `standard`**, directly after `extraData`:
+  `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
+  `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
+  `CounterfactualAgentWalletUnset`. This makes a log line verifiable on its own: a
+  reader recomputes the `registrationHash` the event names from the event's own
+  fields, with no lookup of the claim that created the identity. Their `topic0`
+  values move, so indexers resubscribe. `CounterfactualAgentRegistered` already
+  carried the standard in that position and its signature is unchanged.
+
+### Unchanged, deliberately
+
+- **The `Binding` struct is untouched**, and `extraData` was considered as a
+  fourth field and rejected as too disruptive to existing bindings.
+- **Storage is untouched.** The layout still ends at slot 4. No slot is added,
+  reserved or repurposed, and the upgrade still takes empty `upgradeToAndCall`
+  data.
+- **`bindingOf` keeps its signature and return encoding**, and `AgentBound` keeps
+  its shape and `topic0`.
+- **`register` gains no parameter.** It already takes the standard.
+
+### Size
+
+`forge build --sizes` on this implementation:
+
+| Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
+| --- | ---: | ---: | ---: |
+| `Adapter8004` | 18,660 | 18,945 | 5,916 |
+
+Up roughly 260 bytes from `0.0.16`, against the 24,576-byte cap.
+
 ## [0.0.16] - Unreleased
 
-**This is the version the artifact carries, and `0.0.14`, `0.0.15` and `0.0.16`
-are one implementation, not three releases.** None of the three has been
-deployed. They are separate sections because they group unrelated work, not
-because they ship separately: the sections below record what changed, and
-`@custom:version` in [`src/Adapter8004.sol`](./src/Adapter8004.sol) records what
-the single resulting implementation is called. Read all three together when
-reviewing an upgrade.
+**`0.0.14`, `0.0.15` and `0.0.16` are one implementation, not three
+releases.** None of the three has been deployed. They are separate sections
+because they group unrelated work, not because they ship separately.
 
 Adds no storage slot and keeps the `0.0.14` layout, so it upgrades from the same
 deployed baselines with empty `upgradeToAndCall` data.

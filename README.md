@@ -473,19 +473,20 @@ Functions:
 - `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries)`
 - `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet)` (no signature because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId)`
-- `registrationHash(boundAddress, tokenId)` (view)
+- `registrationHash(standard, boundAddress, tokenId)` (view)
 - `interoperableAddress(account)` (view)
 - `chainIdentifier()` (view)
 
 Indexer rules:
 
-- each event carries `bytes32 extraData` as its first non-indexed field; this baseline emits `bytes32(0)`. There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
+- each event carries `bytes32 extraData` as its first non-indexed field, followed by the `uint8 standard`; this baseline emits `bytes32(0)` for `extraData`. Carrying the standard on every event is what makes a single log line verifiable against the hash it names, with no lookup. There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
 - the three indexed topics are fixed across every event: `(registrationHash, boundAddress, tokenId)`
 - the `registrationHash` is
-  `keccak256(abi.encode(interoperableAddress(adapterProxy), boundAddress, tokenId))`,
-  using standard `(bytes,address,uint256)` ABI encoding (not packed); the adapter proxy carries the
-  full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, and the token standard
-  remains excluded
+  `keccak256(abi.encode(interoperableAddress(adapterProxy), standard, boundAddress, tokenId, extraData))`,
+  using standard `(bytes,uint8,address,uint256,bytes32)` ABI encoding (not packed); the adapter proxy
+  carries the full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, `standard` is
+  the `TokenStandard` enum's `uint8`, and `extraData` is the reserved discriminator, `bytes32(0)`
+  here
 - `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
   chain plus AddressLength `20` and the raw EVM address
 - `chainIdentifier()` returns the same local chain envelope with AddressLength `0`; it remains a
@@ -499,18 +500,20 @@ Indexer rules:
 - ownerless collection events carry `emitter == boundAddress`; this records the authorizing caller,
   but is not a permanent proof that the token was pre-mint because the collection may later be a
   normal owner or delegate
-- the token standard is excluded from `registrationHash`, so **any two standards** claiming the same
-  `(boundAddress, tokenId)` alias onto one `registrationHash`. The worked example is a contract at
-  `(X, 0)` that claims as ERC-721 token `#0`, `ACCOUNT`, and `CONTRACT_OWNABLE`. All three alias.
-  This is accepted, not a bug:
-  adding the standard to the hash would change every existing hash. They are deliberately one
-  identity with one current claim, not two identities to be told apart. Read the latest
-  `CounterfactualAgentRegistered.standard` in log order to see which claim currently wins
-- `CounterfactualAgentRegistered.standard` is a non-indexed body field, so it cannot be filtered by
-  topic; it is the only counterfactual event that carries the standard at all. The on-chain
-  `AgentBound.standard` is indexed. Both layouts are unchanged. `ACCOUNT` (`5`) and
-  `CONTRACT_OWNABLE` (`6`) are only values in the existing `uint8` field, so no topic, schema,
-  hash, or `version` changed
+- the token standard is **part of** `registrationHash`, so two standards claiming the same
+  `(boundAddress, tokenId)` are two identities and never alias. The worked example is a contract at
+  `(X, 0)` that claims as ERC-721 token `#0`, `ACCOUNT`, and `CONTRACT_OWNABLE`: three coordinates,
+  three distinct hashes, three separate histories. Last-event-wins therefore resolves within one
+  standard only, and no claimant's history can be superseded by, or attributed to, a claimant who
+  reached the same pair through a different authority route
+- what the standard in the hash records is that the claimer passed *that standard's* authority probe
+  at claim time. It is **not** an assertion that the bound contract conforms to the ERC; the adapter
+  probes authority and never calls `supportsInterface`
+- because the enum's `uint8` is in the preimage, `TokenStandard` numbering is identity-critical.
+  Append only: never renumber, never reorder, never remove a member
+- the standard is a non-indexed body field on every counterfactual event, so it cannot be filtered by
+  topic — filter by `registrationHash` instead, which already distinguishes standards. The on-chain
+  `AgentBound.standard` is indexed and unchanged
 
 Reserved keys on the counterfactual write surface: `agent-binding` and `cf-registration`.
 
@@ -530,7 +533,7 @@ Full ERC-8004:
 
 Counterfactual:
 
-- `setPrimaryCounterfactualAgent(boundAddress, tokenId)` / `setPrimaryCounterfactualAgentFor(account, boundAddress, tokenId)`
+- `setPrimaryCounterfactualAgent(standard, boundAddress, tokenId)` / `setPrimaryCounterfactualAgentFor(account, standard, boundAddress, tokenId)`
 - `clearPrimaryCounterfactualAgent()` / `clearPrimaryCounterfactualAgentFor(account)`
 - `primaryCounterfactualAgentOf(account) -> bytes32`
 - setters derive the hash; callers cannot store an arbitrary value
@@ -602,7 +605,7 @@ Counterfactual (emit-only) functions:
 - `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata)`
 - `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet)`
 - `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `registrationHash(address boundAddress, uint256 tokenId)`
+- `registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
 - `setPrimaryAgent(uint256 agentId)`
@@ -613,8 +616,8 @@ Counterfactual (emit-only) functions:
 - `setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes signature)`
 - `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
 - `primaryAgentNonces(address account)`
-- `setPrimaryCounterfactualAgent(address boundAddress, uint256 tokenId)`
-- `setPrimaryCounterfactualAgentFor(address account, address boundAddress, uint256 tokenId)`
+- `setPrimaryCounterfactualAgent(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `setPrimaryCounterfactualAgentFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `clearPrimaryCounterfactualAgent()`
 - `clearPrimaryCounterfactualAgentFor(address account)`
 - `primaryCounterfactualAgentOf(address account)`

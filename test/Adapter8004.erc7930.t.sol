@@ -18,12 +18,13 @@ contract Adapter8004HashHarness is Adapter8004 {
         return _interoperableAddressFor(chainId, account);
     }
 
-    function registrationHashFor(bytes memory adapterInteroperableAddress, address boundAddress, uint256 tokenId)
-        external
-        pure
-        returns (bytes32)
-    {
-        return _registrationHashFor(adapterInteroperableAddress, boundAddress, tokenId);
+    function registrationHashFor(
+        bytes memory adapterInteroperableAddress,
+        IERCAgentBindings.TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) external pure returns (bytes32) {
+        return _registrationHashFor(adapterInteroperableAddress, standard, boundAddress, tokenId);
     }
 
     /// @dev TEST-ONLY parameterized preimage. Production deliberately exposes no way to vary
@@ -32,12 +33,13 @@ contract Adapter8004HashHarness is Adapter8004 {
     /// formula rather than calling production code, so every test using it MUST first anchor it:
     /// with `extraData == bytes32(0)` it has to equal what production computes. See
     /// `_assertParameterizedPreimageMatchesProduction`.
-    function registrationHashWithExtra(address boundAddress, uint256 tokenId, bytes32 extraData)
-        external
-        view
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(_interoperableAddress(address(this)), boundAddress, tokenId, extraData));
+    function registrationHashWithExtra(
+        IERCAgentBindings.TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId,
+        bytes32 extraData
+    ) external view returns (bytes32) {
+        return keccak256(abi.encode(_interoperableAddress(address(this)), standard, boundAddress, tokenId, extraData));
     }
 }
 
@@ -61,66 +63,143 @@ contract Adapter8004ERC7930Test is Test {
         harness = new Adapter8004HashHarness();
     }
 
-    /// @dev Vectors for the `extraData` preimage with `extraData == bytes32(0)`. Each value was
+    /// @dev Vectors for the five-component preimage with `extraData == bytes32(0)`. Each value was
     /// computed outside the contract as
-    /// `keccak256(abi.encode(adapterAddress, token, 42, bytes32(0)))` and cross-checked against the
-    /// implementation, so this pins the encoding rather than restating it.
+    /// `keccak256(abi.encode(adapterAddress, uint8(standard), token, 42, bytes32(0)))` and
+    /// cross-checked against the implementation, so this pins the encoding rather than restating it.
+    /// The first group varies the chain envelope at a fixed standard; the second varies the standard
+    /// at a fixed envelope, which is what pins the standard's position and width in the preimage.
     function testPublishedCrossNamespaceVectors() external view {
         _assertVector(
             hex"000100000101141111111111111111111111111111111111111111",
-            0xfd3ae85086b1e0d0a39318f3f7458b07a86becf50434a9b8b70b9426528388bf
+            IERCAgentBindings.TokenStandard.ERC721,
+            0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b
         );
         _assertVector(
             hex"00010000022105141111111111111111111111111111111111111111",
-            0xaddf435e3042b0f79ee2a2c26e5ec3a7757b2fec663ca0f45547b09489d0e07e
+            IERCAgentBindings.TokenStandard.ERC721,
+            0x59d0dda43bf31104928591e57cb9ea008cdc5010d128f5e9a1f22976d67f66c2
         );
         _assertVector(
             hex"0001000003aa36a7141111111111111111111111111111111111111111",
-            0x5546dad5cfa9e0c3df6dff6ebca6d72e8bc3d707f2827c81e708a615cd24a2cb
+            IERCAgentBindings.TokenStandard.ERC721,
+            0xda9417c2cab17e8973b2f8dc1661d856455d4877473006a492b1e4bc4b7960ff
         );
         _assertVector(
             hex"000100022045296998a6f8e2a784db5d9f95e18fc23f70441a1039446801089879b08c7ef0141111111111111111111111111111111111111111",
-            0x725203cd24b34d707d2e8e9ae2dd74c7ea01e0cead262b4fe5fb483345c4d0d1
+            IERCAgentBindings.TokenStandard.ERC721,
+            0x9022fffd555f635b84981ac2056283d8325a432a0a01f3cac8ebf7cd4ba2cefc
         );
     }
 
-    /// @dev The superseded pre-`extraData` scheme, frozen as a literal so the cutover is asserted
-    /// against a copy of the old formula rather than against whatever the contract computes now.
+    /// @dev One chain envelope, one `(boundAddress, tokenId)`, four standards, four pinned and
+    /// distinct identities. These are the vectors that would move if the enum were ever renumbered,
+    /// which is why the enum's numbering is identity-critical and append-only.
+    function testPublishedPerStandardVectors() external view {
+        bytes memory mainnetAdapter = hex"000100000101141111111111111111111111111111111111111111";
+        _assertVector(
+            mainnetAdapter,
+            IERCAgentBindings.TokenStandard.ERC721,
+            0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b
+        );
+        _assertVector(
+            mainnetAdapter,
+            IERCAgentBindings.TokenStandard.ERC1155,
+            0xa0822064813ff079eaead2d292b1cadd618d2350840f9813c5ee86605c6b654a
+        );
+        _assertVector(
+            mainnetAdapter,
+            IERCAgentBindings.TokenStandard.ACCOUNT,
+            0xac6fc4a157cade654f49676a086bdcf2e514f0a21d5086cb22b6f9f1af59b029
+        );
+        _assertVector(
+            mainnetAdapter,
+            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE,
+            0x06d91290d593090a0dc24da2056eb88f3c6a7e7f76f1a37a04061632933d9cb1
+        );
+    }
+
+    /// @dev Both superseded schemes, frozen as literals so each cutover is asserted against a copy of
+    /// the old formula rather than against whatever the contract computes now. Scheme A is the
+    /// pre-ERC-7930 preimage still running on every live proxy. Scheme B is the ERC-7930 preimage
+    /// without the standard, which no proxy ever ran: it existed only in `0.0.14`-`0.0.16` source, so
+    /// adding the standard rides the cutover A already forces at no additional on-chain cost.
     function testSupersededVectorsNoLongerMatch() external view {
         bytes memory mainnetAdapter = hex"000100000101141111111111111111111111111111111111111111";
-        assertEq(
-            keccak256(abi.encode(mainnetAdapter, VECTOR_TOKEN, uint256(42))),
-            0x7f28a61447dba6ca306a9b3c0af2184fb625679ab3da0c8469cf04734670875e,
-            "frozen superseded vector"
+
+        bytes32 schemeA = keccak256(
+            abi.encode(uint256(1), address(0x1111111111111111111111111111111111111111), VECTOR_TOKEN, uint256(42))
         );
-        assertTrue(
-            harness.registrationHashFor(mainnetAdapter, VECTOR_TOKEN, 42)
-                != 0x7f28a61447dba6ca306a9b3c0af2184fb625679ab3da0c8469cf04734670875e,
-            "extraData scheme must not collide with the superseded scheme"
-        );
+        assertEq(schemeA, 0x44d822742b23b1e38c7ba4e0a007f2eb44aaa600d7808dd683ad24084085756d, "frozen scheme A vector");
+
+        bytes32 schemeB = keccak256(abi.encode(mainnetAdapter, VECTOR_TOKEN, uint256(42), bytes32(0)));
+        assertEq(schemeB, 0xfd3ae85086b1e0d0a39318f3f7458b07a86becf50434a9b8b70b9426528388bf, "frozen scheme B vector");
+
+        for (uint8 s; s <= uint8(type(IERCAgentBindings.TokenStandard).max); ++s) {
+            bytes32 current =
+                harness.registrationHashFor(mainnetAdapter, IERCAgentBindings.TokenStandard(s), VECTOR_TOKEN, 42);
+            assertTrue(current != schemeA, "must not collide with the live pre-ERC-7930 scheme");
+            assertTrue(current != schemeB, "must not collide with the standard-less ERC-7930 scheme");
+        }
     }
 
     /// @dev `COUNTERFACTUAL_EXTRA_DATA` is private and no getter varies it, so the reserved value is
     /// asserted through behaviour: production must agree with the explicit-zero preimage, for any
     /// token. This is also the anchor that makes the test-only parameterized helper trustworthy.
     function testReservedExtraDataIsZeroForEveryToken() external view {
-        _assertParameterizedPreimageMatchesProduction(VECTOR_TOKEN, 42);
-        _assertParameterizedPreimageMatchesProduction(address(0xBEEF), type(uint256).max);
-        _assertParameterizedPreimageMatchesProduction(address(0), 0);
+        _assertParameterizedPreimageMatchesProduction(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42);
+        _assertParameterizedPreimageMatchesProduction(
+            IERCAgentBindings.TokenStandard.CONTRACT_ADMIN, address(0xBEEF), type(uint256).max
+        );
+        _assertParameterizedPreimageMatchesProduction(IERCAgentBindings.TokenStandard.ACCOUNT, address(0), 0);
     }
 
     function testDistinctExtraDataProducesDistinctIdentities() external view {
-        _assertParameterizedPreimageMatchesProduction(VECTOR_TOKEN, 42);
+        _assertParameterizedPreimageMatchesProduction(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42);
 
+        IERCAgentBindings.TokenStandard s = IERCAgentBindings.TokenStandard.ERC721;
         bytes32 a = keccak256("class-a");
         bytes32 b = keccak256("class-b");
         assertTrue(
-            harness.registrationHashWithExtra(VECTOR_TOKEN, 42, a)
-                != harness.registrationHashWithExtra(VECTOR_TOKEN, 42, b)
+            harness.registrationHashWithExtra(s, VECTOR_TOKEN, 42, a)
+                != harness.registrationHashWithExtra(s, VECTOR_TOKEN, 42, b)
         );
         assertTrue(
-            harness.registrationHashWithExtra(VECTOR_TOKEN, 42, a)
-                != harness.registrationHashWithExtra(VECTOR_TOKEN, 42, bytes32(0))
+            harness.registrationHashWithExtra(s, VECTOR_TOKEN, 42, a)
+                != harness.registrationHashWithExtra(s, VECTOR_TOKEN, 42, bytes32(0))
+        );
+    }
+
+    /// @dev The aliasing this version dissolves. Before the standard entered the preimage, one
+    /// `(boundAddress, tokenId)` claimed under two standards collapsed onto a single identity, so a
+    /// claimant who passed one authority probe shared a coordinate, and would share any reputation
+    /// accumulated against it, with a claimant who passed a different one. Every standard must now
+    /// produce a distinct identity for the same pair. The worked example is the contract that is also
+    /// an ERC-721 collection claiming `(X, 0)` as `ERC721`, `ACCOUNT` and `CONTRACT_OWNABLE`.
+    function testEveryStandardIsADistinctIdentityForOnePair() external view {
+        uint8 max = uint8(type(IERCAgentBindings.TokenStandard).max);
+        bytes32[] memory seen = new bytes32[](uint256(max) + 1);
+
+        for (uint8 i; i <= max; ++i) {
+            seen[i] = harness.registrationHash(IERCAgentBindings.TokenStandard(i), VECTOR_TOKEN, 0);
+            for (uint8 j; j < i; ++j) {
+                assertTrue(seen[i] != seen[j], "two standards must never alias onto one identity");
+            }
+        }
+    }
+
+    function testFuzzStandardIsLoadBearingInThePreimage(address boundAddress, uint256 tokenId, uint8 a, uint8 b)
+        external
+        view
+    {
+        uint8 max = uint8(type(IERCAgentBindings.TokenStandard).max);
+        a = uint8(bound(a, 0, max));
+        b = uint8(bound(b, 0, max));
+        vm.assume(a != b);
+
+        assertTrue(
+            harness.registrationHash(IERCAgentBindings.TokenStandard(a), boundAddress, tokenId)
+                != harness.registrationHash(IERCAgentBindings.TokenStandard(b), boundAddress, tokenId)
         );
     }
 
@@ -129,30 +208,35 @@ contract Adapter8004ERC7930Test is Test {
     /// the property is pinned through the test-only parameterized preimage, anchored to production
     /// at `extraData == bytes32(0)`.
     function testTwoClassesOfOneTokenIdAreDistinctResolvableIdentities() external view {
-        _assertParameterizedPreimageMatchesProduction(VECTOR_TOKEN, 1);
+        IERCAgentBindings.TokenStandard s = IERCAgentBindings.TokenStandard.ERC721;
+        _assertParameterizedPreimageMatchesProduction(s, VECTOR_TOKEN, 1);
 
         bytes32 classA = keccak256("class-a");
         bytes32 classB = keccak256("class-b");
-        bytes32 idA = harness.registrationHashWithExtra(VECTOR_TOKEN, 1, classA);
-        bytes32 idB = harness.registrationHashWithExtra(VECTOR_TOKEN, 1, classB);
+        bytes32 idA = harness.registrationHashWithExtra(s, VECTOR_TOKEN, 1, classA);
+        bytes32 idB = harness.registrationHashWithExtra(s, VECTOR_TOKEN, 1, classB);
 
         assertTrue(idA != idB, "same token pair, different class, must be different identities");
         // Both remain independently recomputable, and neither shadows the other.
-        assertEq(idA, harness.registrationHashWithExtra(VECTOR_TOKEN, 1, classA));
-        assertEq(idB, harness.registrationHashWithExtra(VECTOR_TOKEN, 1, classB));
+        assertEq(idA, harness.registrationHashWithExtra(s, VECTOR_TOKEN, 1, classA));
+        assertEq(idB, harness.registrationHashWithExtra(s, VECTOR_TOKEN, 1, classB));
         // And the reserved zero identity for the same pair is a third, distinct identity.
-        assertTrue(harness.registrationHash(VECTOR_TOKEN, 1) != idA);
-        assertTrue(harness.registrationHash(VECTOR_TOKEN, 1) != idB);
+        assertTrue(harness.registrationHash(s, VECTOR_TOKEN, 1) != idA);
+        assertTrue(harness.registrationHash(s, VECTOR_TOKEN, 1) != idB);
     }
 
     /// @dev Ties the test-only parameterized preimage to the production hash. If production ever
     /// stops committing to a trailing `bytes32(0)`, whether by a different constant, a different
     /// position, or a dropped field, this fails. Without it the two class tests above would stay
     /// green against a formula production no longer uses.
-    function _assertParameterizedPreimageMatchesProduction(address boundAddress, uint256 tokenId) internal view {
+    function _assertParameterizedPreimageMatchesProduction(
+        IERCAgentBindings.TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) internal view {
         assertEq(
-            harness.registrationHash(boundAddress, tokenId),
-            harness.registrationHashWithExtra(boundAddress, tokenId, bytes32(0)),
+            harness.registrationHash(standard, boundAddress, tokenId),
+            harness.registrationHashWithExtra(standard, boundAddress, tokenId, bytes32(0)),
             "production must commit to a trailing bytes32(0)"
         );
     }
@@ -222,22 +306,31 @@ contract Adapter8004ERC7930Test is Test {
     function testCanonicalFormulaAndNegativeEncodings() external view {
         address token = address(0xCAFE);
         uint256 tokenId = 99;
+        uint8 standard = uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE);
         bytes memory identifier = adapter.chainIdentifier();
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
         bytes memory tokenAddress = adapter.interoperableAddress(token);
-        bytes32 actual = adapter.registrationHash(token, tokenId);
-        assertEq(actual, keccak256(abi.encode(adapterAddress, token, tokenId, bytes32(0))));
+        bytes32 actual = adapter.registrationHash(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, token, tokenId);
+        assertEq(actual, keccak256(abi.encode(adapterAddress, standard, token, tokenId, bytes32(0))));
         // extraData must be a real trailing preimage field: dropping it, leading it, or changing
         // its value must each produce a different identity.
-        assertTrue(actual != keccak256(abi.encode(adapterAddress, token, tokenId)));
-        assertTrue(actual != keccak256(abi.encode(bytes32(0), adapterAddress, token, tokenId)));
-        assertTrue(actual != keccak256(abi.encode(adapterAddress, token, tokenId, keccak256("class-b"))));
-        assertTrue(actual != keccak256(abi.encode(block.chainid, address(adapter), token, tokenId, bytes32(0))));
-        assertTrue(actual != keccak256(abi.encode(identifier, address(adapter), token, tokenId, bytes32(0))));
-        assertTrue(actual != keccak256(abi.encode(adapterAddress, tokenAddress, tokenId, bytes32(0))));
-        assertTrue(actual != keccak256(abi.encode(address(adapter), token, tokenId, bytes32(0))));
-        assertTrue(actual != keccak256(abi.encodePacked(adapterAddress, token, tokenId, bytes32(0))));
-        assertTrue(actual != keccak256(abi.encode(keccak256(adapterAddress), token, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, standard, token, tokenId)));
+        assertTrue(actual != keccak256(abi.encode(bytes32(0), adapterAddress, standard, token, tokenId)));
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, standard, token, tokenId, keccak256("class-b"))));
+        // The standard must be a real preimage field in its own position: dropping it, moving it
+        // after the coordinates, or changing its value must each produce a different identity.
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, token, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, token, tokenId, standard, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, uint8(standard + 1), token, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, uint8(standard - 1), token, tokenId, bytes32(0))));
+        assertTrue(
+            actual != keccak256(abi.encode(block.chainid, address(adapter), standard, token, tokenId, bytes32(0)))
+        );
+        assertTrue(actual != keccak256(abi.encode(identifier, address(adapter), standard, token, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(adapterAddress, standard, tokenAddress, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(address(adapter), standard, token, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encodePacked(adapterAddress, standard, token, tokenId, bytes32(0))));
+        assertTrue(actual != keccak256(abi.encode(keccak256(adapterAddress), standard, token, tokenId, bytes32(0))));
     }
 
     /// @dev The `extraData` an event advertises must be the same value folded into the
@@ -273,13 +366,19 @@ contract Adapter8004ERC7930Test is Test {
         }
         assertEq(uint256(secondWord), uint256(uint8(IERCAgentBindings.TokenStandard.ERC721)), "word 1 is standard");
 
-        // The hash in the event must be the hash of that exact emitted extraData.
+        // The hash in the event must be the hash of that exact emitted extraData and standard.
         assertEq(
             emittedHash,
             keccak256(
-                abi.encode(adapter.interoperableAddress(address(adapter)), address(token), uint256(1), emittedExtra)
+                abi.encode(
+                    adapter.interoperableAddress(address(adapter)),
+                    uint8(uint256(secondWord)),
+                    address(token),
+                    uint256(1),
+                    emittedExtra
+                )
             ),
-            "hash folds emitted value"
+            "hash folds emitted values"
         );
         // And it must be the reserved zero value, not some other constant.
         assertEq(emittedExtra, bytes32(0), "reserved value is zero");
@@ -289,10 +388,29 @@ contract Adapter8004ERC7930Test is Test {
             emittedHash
                 != keccak256(
                     abi.encode(
-                        adapter.interoperableAddress(address(adapter)), address(token), uint256(1), keccak256("class-b")
+                        adapter.interoperableAddress(address(adapter)),
+                        uint8(uint256(secondWord)),
+                        address(token),
+                        uint256(1),
+                        keccak256("class-b")
                     )
                 ),
-            "field is load-bearing"
+            "extraData is load-bearing"
+        );
+        // Same for the standard the event advertises: a different one would have been a different
+        // identity, so a log line carries everything a reader needs to recompute the hash it names.
+        assertTrue(
+            emittedHash
+                != keccak256(
+                    abi.encode(
+                        adapter.interoperableAddress(address(adapter)),
+                        uint8(uint256(secondWord)) + 1,
+                        address(token),
+                        uint256(1),
+                        emittedExtra
+                    )
+                ),
+            "standard is load-bearing"
         );
     }
 
@@ -301,16 +419,24 @@ contract Adapter8004ERC7930Test is Test {
         bytes memory otherTypeAdapter = hex"000100010101141111111111111111111111111111111111111111";
         bytes memory otherReferenceAdapter = hex"000100000102141111111111111111111111111111111111111111";
         bytes memory otherAdapter = hex"000100000101143333333333333333333333333333333333333333";
-        bytes32 base = harness.registrationHashFor(adapterAddress, VECTOR_TOKEN, 42);
-        assertTrue(base != harness.registrationHashFor(otherTypeAdapter, VECTOR_TOKEN, 42));
-        assertTrue(base != harness.registrationHashFor(otherReferenceAdapter, VECTOR_TOKEN, 42));
-        assertTrue(base != harness.registrationHashFor(otherAdapter, VECTOR_TOKEN, 42));
-        assertTrue(base != harness.registrationHashFor(adapterAddress, address(0x4444), 42));
-        assertTrue(base != harness.registrationHashFor(adapterAddress, VECTOR_TOKEN, 43));
+        IERCAgentBindings.TokenStandard s = IERCAgentBindings.TokenStandard.ERC721;
+        bytes32 base = harness.registrationHashFor(adapterAddress, s, VECTOR_TOKEN, 42);
+        assertTrue(base != harness.registrationHashFor(otherTypeAdapter, s, VECTOR_TOKEN, 42));
+        assertTrue(base != harness.registrationHashFor(otherReferenceAdapter, s, VECTOR_TOKEN, 42));
+        assertTrue(base != harness.registrationHashFor(otherAdapter, s, VECTOR_TOKEN, 42));
+        assertTrue(base != harness.registrationHashFor(adapterAddress, s, address(0x4444), 42));
+        assertTrue(base != harness.registrationHashFor(adapterAddress, s, VECTOR_TOKEN, 43));
+        assertTrue(
+            base
+                != harness.registrationHashFor(adapterAddress, IERCAgentBindings.TokenStandard.ERC1155, VECTOR_TOKEN, 42)
+        );
     }
 
-    function _assertVector(bytes memory adapterAddress, bytes32 expected) internal view {
-        assertEq(harness.registrationHashFor(adapterAddress, VECTOR_TOKEN, 42), expected);
+    function _assertVector(bytes memory adapterAddress, IERCAgentBindings.TokenStandard standard, bytes32 expected)
+        internal
+        view
+    {
+        assertEq(harness.registrationHashFor(adapterAddress, standard, VECTOR_TOKEN, 42), expected);
     }
 
     /// @dev These two tests compare the local ERC-7930 encoder against OpenZeppelin's, which is used
