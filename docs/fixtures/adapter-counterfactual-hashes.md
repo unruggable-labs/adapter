@@ -24,6 +24,14 @@ one standard, which `standard` separates. Key on the `registrationHash`; never c
 probe at claim time. It is not an assertion that the bound contract conforms to the ERC; the adapter
 probes authority, never `supportsInterface`.
 
+**Attestations key on these hashes.** The attestation identifier scheme in
+[`adapter-attestation-ids.md`](./adapter-attestation-ids.md) takes a `cfid` from this document as an
+opaque target. The two schemes are derived by the same contract from overlapping material and cannot
+collide: for one adapter this preimage is a fixed 224 bytes and the identifier preimage is at least
+320, so they can never even be the same length. Because attestations accumulate against these hashes,
+a scheme change orphans every statement made against the old value; that is why the standard went in
+before the attestation surface shipped rather than after.
+
 **The enum numbering is identity-critical.** `standard` enters the preimage as the enum's `uint8`, so
 renumbering a `TokenStandard` member re-keys every identity claimed under it. The numbering is
 append-only forever: never renumber, never reorder, never remove.

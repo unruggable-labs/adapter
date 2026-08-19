@@ -60,7 +60,124 @@ the sections record what changed, and `@custom:version` in
 implementation is called. Read all four together when reviewing an upgrade.
 
 Adds no storage slot and keeps the `0.0.14` layout, so it upgrades from the same
-deployed baselines with empty `upgradeToAndCall` data.
+deployed baselines with empty `upgradeToAndCall` data. That holds for the
+attestation surface below as much as for the identifier change: the whole
+subsystem is emit-only, so the layout still ends at slot 4.
+
+### Added
+
+- **An emit-only attestation surface for counterfactual identities.** Three
+  external functions, two events, two errors, five published type constants:
+
+  ```
+  attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes data)
+  confirmAdditionalAccount(bytes32 cfid)
+  revoke(bytes32 attestationId)
+  ```
+
+  An attestation is a public statement about a counterfactual registration hash.
+  Its meaning rests entirely on who made it, and who made it is always the caller.
+  The contract records the statement, derives its identifier, and judges nothing
+  else: not the target's existence, not the payload's shape, not the attester's
+  independence from the subject. All of that is the reader's, and the projection
+  rules, payload encodings, and type registry live in
+  [`docs/specs/attestation-type-registry-v1.md`](./docs/specs/attestation-type-registry-v1.md).
+
+  **Why it exists.** ERC-8004's reputation registry only accepts feedback on
+  registered agents, so an agent's entire pre-registration history is
+  unrecordable, and ERC-8048's additional-account list is one-directional, so no
+  account can confirm or refuse a listing made about it. This closes both: a
+  statement can attach to an identity that has not registered, and
+  `confirmAdditionalAccount` is the reciprocal half of the ERC-8048 `account`
+  key.
+
+- **The identifier**, emitted so integrators never recompute it:
+
+  ```
+  keccak256(abi.encode(
+      adapterInteroperableAddress, attester, cfid, attestationType,
+      block.number, variant, data
+  ))
+  ```
+
+  `block.number` bounds a revocation's blast radius to one block, so a monitor
+  emitting byte-identical pings over time does not collapse its whole history
+  into one identifier that a single revocation erases. `variant` is the caller's
+  opt-in within-block counterpart. There is deliberately **no domain constant**:
+  nothing here is signed, and the interoperable address already binds the
+  preimage to this adapter on this chain, exactly as `registrationHash` binds.
+  The two schemes cannot collide, because for one adapter the counterfactual
+  preimage is a fixed 224 bytes and this one is at least 320.
+
+- **The caller is always the attester.** There is no acting-for path and no
+  submitter field. A controller participates by causing the account itself to
+  make the call, so the account is still `msg.sender`, and nothing can
+  manufacture an account's consent from outside it. The stated cost is that an
+  account which cannot make outbound calls — a minimal vault, a payment splitter
+  with no executor — cannot attest. Ordinary wallets, multisigs, smart wallets
+  with executors, timelocks and EIP-7702-delegated accounts all can.
+
+- **Five type constants**, each the keccak of its exact defining string:
+  `CONFIRM_ACCOUNT`, `STAR`, `RATING`, `REVIEW`, `INTERACTION`. Types are open
+  32-byte values, so anyone may mint one under their own namespace; these five
+  are published so the common ones have a single spelling. The defining strings
+  are identity-critical in the same way the `TokenStandard` numbering is: a type
+  value is what every statement of that type is filed under, so re-spelling one
+  re-files every statement already made. Add types; never re-spell one.
+
+- **Eight new entry points, not nine.** Three functions plus five constant
+  readers. An earlier plan said six constants and nine entry points; that count
+  predates the domain constant being dropped from the identifier scheme.
+
+### Deliberately absent
+
+- **No storage, anywhere.** The identifier is derived and never stored, the
+  constants live in code, and no function writes a slot. This is asserted rather
+  than asserted-in-a-comment: a test captures every `SSTORE` the three functions
+  perform with `vm.record` and requires the count to be zero, and a second test
+  reads slots 5 through 12 back as zero.
+
+- **No reentrancy guard**, unlike the counterfactual emit-only surface, which
+  carries `nonReentrant`. These functions make no external call of any kind, so
+  the guard would spend roughly 2,900 gas per call to protect against nothing.
+  **This is a decision, not an omission to be tidied up later as a consistency
+  fix.** A test forces the guard slot to `ENTERED`, confirms a guarded
+  counterfactual function reverts in that state, and requires all three
+  attestation functions to go through; adding the modifier fails that test.
+
+- **No target validation.** A nonzero `cfid` that matches no claim passes on
+  purpose. Counterfactual registration writes no storage, so no set of "real"
+  hashes exists to check against, and attesting ahead of an identity's first
+  claim is the supported case rather than an edge one.
+
+- **No check on `revoke`, the zero identifier included.** Revoking a statement
+  never made is a recorded no-op for readers, so a sentinel there would guard
+  against nothing, whereas an unset type or target would file a real statement in
+  the wrong place. Those two are the only guards, and each has a test that fails
+  if the check is deleted.
+
+### Gas
+
+Measured on this implementation, execution cost excluding the fixed 21,000 per
+transaction, warm:
+
+| Function | Measured | Earlier estimate |
+| --- | ---: | --- |
+| `attest`, small payload | 13,278 | 4,700–5,400 |
+| `confirmAdditionalAccount` | 12,866 | 4,500–5,100 |
+| `revoke` | 1,845 | 2,200–2,700 |
+
+Payload bytes add roughly 9 gas each, the author's cost by design for `REVIEW`.
+
+`revoke` came in under its estimate; the two attest paths came in at about two
+and a half times theirs. The gap is not the event and not the guards. It is
+`_interoperableAddress`, which builds the ERC-7930 envelope byte by byte on every
+call and costs roughly 8,000 gas on its own — the same cost every counterfactual
+write already pays, since `registrationHash` measures 10,657 through the same
+path. The estimate had assumed about 290 gas for deriving an identifier, which
+modelled the keccak and not the envelope. Reducing it would mean changing a
+helper shared with the counterfactual identity derivation, which is
+identity-critical code, so it is recorded here rather than attempted.
 
 ### Changed
 
@@ -143,9 +260,21 @@ deployed baselines with empty `upgradeToAndCall` data.
 
 | Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
 | --- | ---: | ---: | ---: |
-| `Adapter8004` | 18,660 | 18,945 | 5,916 |
+| `Adapter8004` | 19,707 | 19,992 | 4,869 |
 
-Up roughly 260 bytes from `0.0.16`, against the 24,576-byte cap.
+Against the 24,576-byte cap, built up from `0.0.16`:
+
+| Step | Runtime (B) | Margin (B) |
+| --- | ---: | ---: |
+| `0.0.16` | 18,400 | 6,176 |
+| + the standard in the counterfactual identifier | 18,660 | 5,916 |
+| + the attestation surface | 19,707 | 4,869 |
+
+The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
+at. A test fails the suite if the margin ever falls below 2,000 bytes; if it
+does, the fix is the extraction the upgrade docs describe, not a lower floor.
+Extraction would re-key every attestation identifier, because the identifier
+binds the emitting address, so it is a one-way door.
 
 ## [0.0.16] - Unreleased
 

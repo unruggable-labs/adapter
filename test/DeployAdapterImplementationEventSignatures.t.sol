@@ -9,6 +9,7 @@ import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrim
 import {IERC8004AdapterCounterfactualPrimaryAgent} from
     "../src/interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 
 /// @notice Holds the deploy script's printed event signatures against the contract they describe.
 ///
@@ -63,6 +64,13 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
             SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET,
             IERC8004AdapterCounterfactualPrimaryAgent.PrimaryCounterfactualAgentSet.selector,
             "PrimaryCounterfactualAgentSet"
+        );
+    }
+
+    function testPrintedAttestationSignaturesMatchTheContract() external pure {
+        _assertSig(SIG_ATTESTED, IERC8004AdapterAttestation.Attested.selector, "Attested");
+        _assertSig(
+            SIG_ATTESTATION_REVOKED, IERC8004AdapterAttestation.AttestationRevoked.selector, "AttestationRevoked"
         );
     }
 

@@ -545,6 +545,52 @@ Each full-system signed reverse-pointer path emits its state event first and its
 
 This is a hard cutover from unreleased source behavior, not a production storage migration. Live proxies never deployed the old mixed pointer or shared nonce, so the new mappings occupy slots 2–4 and start empty. Old bare-chain-id hashes and old EIP-712 signatures are invalid. See the [full signed-primary fixture](./docs/fixtures/adapter-primaryagent-withsig.md), [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md), and [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
 
+## Counterfactual Attestations
+
+Counterfactual identities cost nothing to create, but until now nothing could say anything about one. ERC-8004's reputation registry only accepts feedback on registered agents, so an agent's whole pre-registration track record was unrecordable, and ERC-8048's additional-account list is one-directional, so a listed account could neither confirm nor refuse the listing. This surface closes both.
+
+An attestation is a public statement about a `cfid`, recorded in the event log. Its meaning rests entirely on who made it, and **who made it is always the caller**.
+
+- `attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes data)`
+- `confirmAdditionalAccount(bytes32 cfid)` — exactly `attest(CONFIRM_ACCOUNT, cfid, 0, "")`
+- `revoke(bytes32 attestationId)`
+
+Events: `Attested(address indexed attester, bytes32 indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)` and `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`. The three indexed slots on `Attested` are the three canonical query axes: reverse by attester, forward by target, filter by type.
+
+The identifier, emitted so nobody has to recompute it:
+
+```text
+keccak256(abi.encode(adapterInteroperableAddress, attester, cfid, attestationType, block.number, variant, data))
+```
+
+- `block.number` bounds a revocation to one block. Without it, an attester emitting byte-identical statements over time — a monitor issuing repeated pings — would collapse its whole history into one identifier that a single revocation erases.
+- `variant` is the caller's opt-in within-block distinguisher, zero when unused. Cross-block distinction is automatic; within-block distinction is asked for.
+- There is **no domain constant**. Nothing here is signed, and the interoperable address already binds the preimage to this adapter on this chain. The two derivation schemes cannot collide: for one adapter the counterfactual preimage is a fixed 224 bytes and this one is at least 320.
+
+**The caller is the attester, and there is no acting-for path.** A controller participates by causing the account itself to make the call, so the account is still `msg.sender`; nothing can manufacture an account's consent from outside it. The cost is chosen: an account that cannot make outbound calls, such as a minimal vault or a payment splitter with no executor, cannot attest. Ordinary wallets, multisigs, smart wallets with executors, timelocks, and EIP-7702-delegated accounts all can.
+
+**Five published types**, each the keccak of its defining string. Types are open 32-byte values, so anyone may mint one under their own namespace; these five just fix a single spelling for the common ones.
+
+| Constant | Payload | Projection |
+|---|---|---|
+| `CONFIRM_ACCOUNT` | empty | state |
+| `STAR` | one byte, `0` or `1` | state |
+| `RATING` | one byte, `0`–`100`, on ERC-8004's `starred` scale | state |
+| `REVIEW` | UTF-8 text, non-empty | stream |
+| `INTERACTION` | `uint8 score \|\| bytes32 reference \|\| bytes text`, at least 33 bytes | stream |
+
+The defining strings are identity-critical, exactly as the `TokenStandard` numbering is: a type value is what every statement of that type is filed under, so re-spelling one re-files every statement already made. Add types; never re-spell one.
+
+**What the contract enforces is exactly two things**: `attestationType != 0` and `cfid != 0` on the two attest paths. Both are sentinel rules against default-initialized calldata, not validation. A nonzero garbage `cfid` passes on purpose — counterfactual registration writes no storage, so no set of real hashes exists to check against, and attesting ahead of an identity's first claim is the supported case. `revoke` checks nothing at all, the zero identifier included, because revoking a statement never made is a recorded no-op for readers.
+
+Everything else is the reader's: target resolution, payload well-formedness, whether a revocation counts at all (only from the original attester, which an emit-only contract cannot check), and reviewer independence from the subject. The projection rules, payload encodings, and full type registry are normative in [the type-registry specification](./docs/specs/attestation-type-registry-v1.md), with identifier vectors in [the attestation fixture](./docs/fixtures/adapter-attestation-ids.md).
+
+**Emit-only, with two consequences.** No contract can read attestations on chain — nothing needs to today, and a stored system can be added later if that changes. And the surface adds no storage slot, so the layout still ends at slot 4. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
+
+Execution gas, excluding the fixed 21,000 per transaction: `attest` with a small payload 13,278, `confirmAdditionalAccount` 12,866, `revoke` 1,845, plus roughly 9 gas per payload byte. Most of the attest cost is the shared ERC-7930 envelope construction that every counterfactual write already pays.
+
+**Joining to a registration.** For any adapter-registered agent the two histories merge with no transaction and no link assertion: `bindingOf(agentId)` yields the standard, bound address and token id from which the agent's counterfactual-era `registrationHash` derives. A registration joins only the counterfactual history claimed under its own standard, which is one of the reasons the standard is in the identifier.
+
 ## ERC Alignment
 
 This repo targets the agent-binding discovery format defined by [ERC-8217: Agent NFT Identity Bindings](https://eips.ethereum.org/EIPS/eip-8217). ERC-8217 has been merged into Ethereum/ERCs (originally PR [#1648](https://github.com/ethereum/ERCs/pull/1648)) but is still a Draft, not a finalized standard, so the format may change before the ERC is finalized.
@@ -595,6 +641,13 @@ User-facing functions:
 - `getAgentWallet(uint256 agentId)`
 - `ownerOf(uint256 agentId)`
 - `tokenURI(uint256 agentId)`
+
+Attestation (emit-only) functions:
+
+- `attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes data)`
+- `confirmAdditionalAccount(bytes32 cfid)`
+- `revoke(bytes32 attestationId)`
+- `CONFIRM_ACCOUNT()`, `STAR()`, `RATING()`, `REVIEW()`, `INTERACTION()` (views)
 
 Counterfactual (emit-only) functions:
 
@@ -712,6 +765,15 @@ The Foundry suite currently covers:
 - metadata and URI updates
 - wallet-binding pass-through with valid and invalid ERC-8004 signatures
 - the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
+- the attestation surface: the identifier pinned against precomputed vectors rather than round trips,
+  binding to the proxy and not the implementation, the negative-encoding matrix, both guards with a
+  test that fails if either check is deleted, `confirmAdditionalAccount` emitting a byte-identical
+  event to the equivalent `attest` call, zero `SSTORE`s captured with `vm.record`, the deliberate
+  absence of `nonReentrant` pinned by forcing the guard slot to `ENTERED`, the code-size margin floor,
+  and measured gas for all three functions
+- a projection harness that replays the published reader rules over real logs: collapse, withdrawal,
+  reactivation within and across blocks, state resurrection, non-attester revocations ignored, unstar
+  versus revoke, and the per-type payload rules the contract never decodes
 - proxy initialization
 - admin-only registry repointing
 - admin-only implementation upgrades

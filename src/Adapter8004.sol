@@ -12,6 +12,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
+import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8004AdapterCounterfactualPrimaryAgent} from "./interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
 import {IERC8004AdapterPrimaryAgent} from "./interfaces/IERC8004AdapterPrimaryAgent.sol";
@@ -59,7 +60,8 @@ contract Adapter8004 is
     IERC8004AdapterRegistration,
     IERC8004AdapterCounterfactual,
     IERC8004AdapterPrimaryAgent,
-    IERC8004AdapterCounterfactualPrimaryAgent
+    IERC8004AdapterCounterfactualPrimaryAgent,
+    IERC8004AdapterAttestation
 {
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
@@ -96,6 +98,21 @@ contract Adapter8004 is
     ///
     /// @dev Never introduce a non-zero value for a pair that hashed with zero, as it re-keys a live identity.
     bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
+
+    /// @notice The five version-1 attestation types, each the keccak of its exact defining string.
+    /// Types are open 32-byte values and the contract validates only that one is nonzero, so anyone
+    /// may mint a type under their own namespace. These five are published so that the common ones
+    /// have a single spelling; their meanings, payload encodings and projection classes live in
+    /// `docs/specs/attestation-type-registry-v1.md` and are enforced by readers, never here.
+    ///
+    /// @dev The defining strings are identity-critical in the same way the `TokenStandard` numbering
+    /// is: a type value is what every statement of that type is filed under, so editing a string
+    /// re-files every statement already made. Add new types, never re-spell an existing one.
+    bytes32 public constant CONFIRM_ACCOUNT = keccak256("adapter8004.attest.v1.confirm-account");
+    bytes32 public constant STAR = keccak256("adapter8004.attest.v1.star");
+    bytes32 public constant RATING = keccak256("adapter8004.attest.v1.rating");
+    bytes32 public constant REVIEW = keccak256("adapter8004.attest.v1.review");
+    bytes32 public constant INTERACTION = keccak256("adapter8004.attest.v1.interaction");
 
     /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
     /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
@@ -780,6 +797,79 @@ contract Adapter8004 is
     function _clearPrimaryCounterfactualAgent(address account) private {
         delete _primaryCounterfactualAgent[account];
         emit PrimaryCounterfactualAgentCleared(account, msg.sender);
+    }
+
+    // -----------------------------------------------------------------
+    //  ATTESTATIONS
+    // -----------------------------------------------------------------
+    // Emit-only statements about counterfactual identities. Nothing here writes storage, decodes a
+    // payload, resolves a target, or makes a call of any kind, so the whole subsystem is three
+    // wrappers over two internals and the layout still ends at slot 4.
+    //
+    // The caller is always the attester, and there is deliberately no acting-for path and no
+    // submitter field. A controller participates by causing the account itself to make the call, so
+    // the account is still `msg.sender`; nothing can manufacture an account's consent from outside
+    // it. The stated cost is that an account which cannot make outbound calls cannot attest.
+    //
+    // These functions carry no `nonReentrant`, unlike the counterfactual emit-only surface. That is
+    // deliberate and is not an oversight to be tidied up later: the guard exists to bound what can
+    // happen across an external call, and these functions make none. Adding it would spend roughly
+    // 2,900 gas per call to protect against nothing. See `docs/specs/attestation-type-registry-v1.md`
+    // and the CHANGELOG entry, and note that a test asserts the surface stays reentrant-callable.
+    // -----------------------------------------------------------------
+
+    /// @inheritdoc IERC8004AdapterAttestation
+    function attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) external {
+        _attest(attestationType, cfid, variant, data);
+    }
+
+    /// @inheritdoc IERC8004AdapterAttestation
+    function confirmAdditionalAccount(bytes32 cfid) external {
+        // `msg.data[0:0]` is the empty `bytes calldata`. It keeps `_attest` on calldata for the
+        // generic path, where a REVIEW payload would otherwise be copied to memory for no reason.
+        _attest(CONFIRM_ACCOUNT, cfid, bytes32(0), msg.data[0:0]);
+    }
+
+    /// @inheritdoc IERC8004AdapterAttestation
+    function revoke(bytes32 attestationId) external {
+        _revoke(attestationId);
+    }
+
+    /// @dev The single attest path, so both guards live in exactly one place. The two zero checks
+    /// are sentinel rules against default-initialized calldata, not validation: a nonzero garbage
+    /// `cfid` passes on purpose, because attesting to an identity before its first counterfactual
+    /// claim is emitted is a supported use and no set of "real" hashes exists to check against.
+    function _attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) private {
+        // 1. Reject the two uninitialized-input sentinels, so a forgotten field fails loudly rather
+        //    than filing a statement in a nameless namespace or against the zero identity.
+        if (attestationType == bytes32(0)) revert AttestationTypeZero();
+        if (cfid == bytes32(0)) revert AttestationTargetZero();
+
+        // 2. Derive the identifier. `block.number` keeps identical statements in different blocks
+        //    distinct, so revoking one of a monitor's repeated pings erases one ping and not its
+        //    whole history; `variant` is the caller's opt-in within-block counterpart. The
+        //    interoperable address binds the identifier to this adapter on this chain, exactly as
+        //    `registrationHash` binds. There is no domain constant: nothing here is signed, and the
+        //    two preimages cannot collide because their encodings differ in length by construction.
+        bytes32 attestationId = keccak256(
+            abi.encode(
+                _interoperableAddress(address(this)), msg.sender, cfid, attestationType, block.number, variant, data
+            )
+        );
+
+        // 3. Emit, which is the only record this function produces. The identifier is carried so
+        //    integrators never have to recompute it, and is derived rather than stored.
+        emit Attested(msg.sender, attestationType, cfid, attestationId, variant, data);
+    }
+
+    /// @dev The single revoke path. It checks nothing, the zero identifier included, and that is a
+    /// decision rather than an omission. An unset identifier field revokes a statement that was
+    /// never made, which is a recorded no-op under projection rule three and harms nothing, whereas
+    /// an unset type or target field would file a real statement in the wrong place. Whether a
+    /// revocation counts at all is projection rule four, which an emit-only contract cannot check:
+    /// it stores nothing that would let it invert an identifier back to its attester.
+    function _revoke(bytes32 attestationId) private {
+        emit AttestationRevoked(attestationId, msg.sender);
     }
 
     // -----------------------------------------------------------------

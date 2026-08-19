@@ -3,70 +3,14 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
+import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 
-/// @notice Emit-only reference emitter for the attestation surface. It implements the interface,
-/// the sentinel guards, and the identifier formula, and nothing else, so the projection tests
-/// below exercise the reader rules against real logs today. Slice two-b swaps this for the
-/// Adapter8004 proxy behind the same interface and the tests carry over.
-contract MockAttestationEmitter is IERC8004AdapterAttestation {
-    bytes32 public constant CONFIRM_ACCOUNT = keccak256("adapter8004.attest.v1.confirm-account");
-    bytes32 public constant STAR = keccak256("adapter8004.attest.v1.star");
-    bytes32 public constant RATING = keccak256("adapter8004.attest.v1.rating");
-    bytes32 public constant REVIEW = keccak256("adapter8004.attest.v1.review");
-    bytes32 public constant INTERACTION = keccak256("adapter8004.attest.v1.interaction");
-
-    function attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) external {
-        _attest(attestationType, cfid, variant, data);
-    }
-
-    function confirmAdditionalAccount(bytes32 cfid) external {
-        _attest(CONFIRM_ACCOUNT, cfid, bytes32(0), "");
-    }
-
-    function revoke(bytes32 attestationId) external {
-        // Deliberately unchecked, the zero identifier included: revoking a statement that was
-        // never made is a recorded no-op under projection rule three.
-        emit AttestationRevoked(attestationId, msg.sender);
-    }
-
-    function _attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes memory data) private {
-        if (attestationType == bytes32(0)) revert AttestationTypeZero();
-        if (cfid == bytes32(0)) revert AttestationTargetZero();
-        bytes32 attestationId = keccak256(
-            abi.encode(
-                _interoperableAddress(address(this)), msg.sender, cfid, attestationType, block.number, variant, data
-            )
-        );
-        emit Attested(msg.sender, attestationType, cfid, attestationId, variant, data);
-    }
-
-    /// @dev ERC-7930 v1 Interoperable Address for the local chain, the same construction the
-    /// adapter uses: version, ChainType 0, shortest big-endian chain id, AddressLength 20, address.
-    function _interoperableAddress(address account) internal view returns (bytes memory identifier) {
-        uint256 chainId = block.chainid;
-        uint256 referenceLength;
-        uint256 remaining = chainId;
-        while (remaining != 0) {
-            ++referenceLength;
-            remaining >>= 8;
-        }
-        identifier = new bytes(referenceLength + 26);
-        identifier[1] = 0x01;
-        identifier[4] = bytes1(uint8(referenceLength));
-        for (uint256 i; i < referenceLength; ++i) {
-            identifier[5 + referenceLength - 1 - i] = bytes1(uint8(chainId >> (i * 8)));
-        }
-        identifier[5 + referenceLength] = 0x14;
-        bytes20 rawAddress = bytes20(account);
-        for (uint256 i; i < 20; ++i) {
-            identifier[6 + referenceLength + i] = rawAddress[i];
-        }
-    }
-}
-
-/// @notice Projection harness: records the emitted events and replays the published reader rules
-/// over them in log order. Rule four, that a revocation counts only when its caller is the
+/// @notice Projection harness: records the events the real `Adapter8004` proxy emits and replays the
+/// published reader rules over them in log order. Built in slice two-a against a reference emitter
+/// and re-pointed here at the contract itself, unchanged in every rule it asserts. Rule four, that a revocation counts only when its caller is the
 /// original attester, cannot be a contract test at all, because the contract records every
 /// revocation and stores nothing, so this replay is its only executable home. The same holds for
 /// the per-type payload rules, which the contract never decodes.
@@ -84,7 +28,7 @@ contract AttestationProjectionTest is Test {
         uint256 blockNum;
     }
 
-    MockAttestationEmitter internal emitter;
+    Adapter8004 internal adapter;
     Ev[] internal evs;
 
     // Cached once: a view call in an argument list would otherwise consume a pending vm.prank,
@@ -100,11 +44,19 @@ contract AttestationProjectionTest is Test {
     bytes32 internal cfid = keccak256("some counterfactual identity");
 
     function setUp() public {
-        emitter = new MockAttestationEmitter();
-        tConfirm = emitter.CONFIRM_ACCOUNT();
-        tStar = emitter.STAR();
-        tRating = emitter.RATING();
-        tReview = emitter.REVIEW();
+        MockIdentityRegistry registry = new MockIdentityRegistry();
+        Adapter8004 implementation = new Adapter8004();
+        adapter = Adapter8004(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
+                )
+            )
+        );
+        tConfirm = adapter.CONFIRM_ACCOUNT();
+        tStar = adapter.STAR();
+        tRating = adapter.RATING();
+        tReview = adapter.REVIEW();
         vm.recordLogs();
     }
 
@@ -308,20 +260,25 @@ contract AttestationProjectionTest is Test {
     // ----------------------------------------------------------------
 
     function testConstantsPinnedAgainstExactBytes() public view {
-        assertEq(emitter.CONFIRM_ACCOUNT(), 0x0d1301b55a7106242fdc007f7371d46dbf2cef93819719bb571322d165ef0bdb);
-        assertEq(emitter.STAR(), 0xe57ebfd03b6f9111378311d8b209d3c35c5c9c45ce387029dbe32c0ff44b2651);
-        assertEq(emitter.RATING(), 0xe29bafddb9bd210da3ccc8f60685504f8868bbcce6d9c216f35f0f841a6618b5);
-        assertEq(emitter.REVIEW(), 0x0ce439abec3b50d9bb4c1c26b71f5e02b7dac5a8f4546824b09b0066c94e6aed);
-        assertEq(emitter.INTERACTION(), 0x38bd7d6c19f392ef255c7033e6700c65ef16fc48f3ced5e18caf837f3231fedf);
+        assertEq(adapter.CONFIRM_ACCOUNT(), 0x0d1301b55a7106242fdc007f7371d46dbf2cef93819719bb571322d165ef0bdb);
+        assertEq(adapter.STAR(), 0xe57ebfd03b6f9111378311d8b209d3c35c5c9c45ce387029dbe32c0ff44b2651);
+        assertEq(adapter.RATING(), 0xe29bafddb9bd210da3ccc8f60685504f8868bbcce6d9c216f35f0f841a6618b5);
+        assertEq(adapter.REVIEW(), 0x0ce439abec3b50d9bb4c1c26b71f5e02b7dac5a8f4546824b09b0066c94e6aed);
+        assertEq(adapter.INTERACTION(), 0x38bd7d6c19f392ef255c7033e6700c65ef16fc48f3ced5e18caf837f3231fedf);
     }
 
     /// @notice The exact-bytes vectors from docs/fixtures/adapter-attestation-ids.md, reproduced
-    /// in their stated environment: chain id 1, the emitter etched at the fixture proxy address,
-    /// the fixture callers, the fixture block. Each assertion pins one component's place in the
-    /// formula against precomputed bytes, never a round trip.
+    /// in their stated environment: chain id 1, the adapter's own runtime code at the fixture proxy
+    /// address, the fixture callers, the fixture block. Each assertion pins one component's place in
+    /// the formula against precomputed bytes, never a round trip.
+    /// @dev The implementation runtime is etched directly at the fixture address rather than put
+    /// behind a proxy there. `attest` reads no storage, so the delegate hop cannot affect the
+    /// identifier; what matters is that `address(this)` is the fixture's stated proxy address, which
+    /// etching gives exactly. `testIdentifierBindsTheProxyNotTheImplementation` covers the hop
+    /// itself, which is the failure this fixture would otherwise be blind to.
     function testFixtureVectors() public {
         address proxy = 0x1111111111111111111111111111111111111111;
-        vm.etch(proxy, type(MockAttestationEmitter).runtimeCode);
+        vm.etch(proxy, address(new Adapter8004()).code);
         vm.chainId(1);
         vm.roll(19000000);
         IERC8004AdapterAttestation fx = IERC8004AdapterAttestation(proxy);
@@ -360,27 +317,27 @@ contract AttestationProjectionTest is Test {
 
     function testAttestRejectsZeroType() public {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTypeZero.selector);
-        emitter.attest(bytes32(0), cfid, bytes32(0), "");
+        adapter.attest(bytes32(0), cfid, bytes32(0), "");
     }
 
     function testAttestRejectsZeroTarget() public {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTargetZero.selector);
-        emitter.attest(tRating, bytes32(0), bytes32(0), hex"32");
+        adapter.attest(tRating, bytes32(0), bytes32(0), hex"32");
     }
 
     function testConfirmRejectsZeroTarget() public {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTargetZero.selector);
-        emitter.confirmAdditionalAccount(bytes32(0));
+        adapter.confirmAdditionalAccount(bytes32(0));
     }
 
     function testRevokeAcceptsZeroIdAsRecordedNoOp() public {
         vm.prank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 id = lastId();
 
         vm.prank(alice);
-        emitter.revoke(bytes32(0));
+        adapter.revoke(bytes32(0));
         drain();
         assertTrue(isLive(id), "revoking the zero id touches nothing");
     }
@@ -391,12 +348,12 @@ contract AttestationProjectionTest is Test {
 
     function testCollapseDuplicateEmitsAreOneStatement() public {
         vm.startPrank(alice);
-        emitter.attest(tRating, cfid, bytes32(0), hex"32");
-        emitter.attest(tRating, cfid, bytes32(0), hex"32");
+        adapter.attest(tRating, cfid, bytes32(0), hex"32");
+        adapter.attest(tRating, cfid, bytes32(0), hex"32");
         drain();
         assertEq(evs[0].id, evs[1].id, "byte-identical same-block content is one id");
 
-        emitter.revoke(evs[0].id);
+        adapter.revoke(evs[0].id);
         vm.stopPrank();
         drain();
         assertFalse(isLive(evs[0].id), "one revocation withdraws the statement, both copies");
@@ -406,8 +363,8 @@ contract AttestationProjectionTest is Test {
 
     function testVariantSeparatesWithinOneBlock() public {
         vm.startPrank(alice);
-        emitter.attest(tReview, cfid, bytes32(0), "solid");
-        emitter.attest(tReview, cfid, bytes32(uint256(1)), "solid");
+        adapter.attest(tReview, cfid, bytes32(0), "solid");
+        adapter.attest(tReview, cfid, bytes32(uint256(1)), "solid");
         vm.stopPrank();
         drain();
         assertTrue(evs[0].id != evs[1].id, "variant distinguishes identical same-block statements");
@@ -415,22 +372,22 @@ contract AttestationProjectionTest is Test {
 
     function testWithdrawal() public {
         vm.prank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 id = lastId();
         vm.prank(alice);
-        emitter.revoke(id);
+        adapter.revoke(id);
         drain();
         assertFalse(isLive(id));
     }
 
     function testReactivationWithinOneBlock() public {
         vm.startPrank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 id = lastId();
-        emitter.revoke(id);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.revoke(id);
+        adapter.confirmAdditionalAccount(cfid);
         vm.stopPrank();
         drain();
         assertTrue(isLive(id), "attest, revoke, attest in one block reactivates the same id");
@@ -438,22 +395,22 @@ contract AttestationProjectionTest is Test {
 
     function testAttestRevokeAttestRevokeEndsWithdrawn() public {
         vm.startPrank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 id = lastId();
-        emitter.revoke(id);
-        emitter.confirmAdditionalAccount(cfid);
-        emitter.revoke(id);
+        adapter.revoke(id);
+        adapter.confirmAdditionalAccount(cfid);
+        adapter.revoke(id);
         vm.stopPrank();
         drain();
         assertFalse(isLive(id), "log order decides: the final revocation stands");
     }
 
     function testRevokeBeforeAttestIsInertThenAttestLands() public {
-        bytes32 id = idOf(address(emitter), alice, cfid, tConfirm, bytes32(0), "");
+        bytes32 id = idOf(address(adapter), alice, cfid, tConfirm, bytes32(0), "");
         vm.startPrank(alice);
-        emitter.revoke(id);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.revoke(id);
+        adapter.confirmAdditionalAccount(cfid);
         vm.stopPrank();
         drain();
         assertTrue(isLive(id), "a revocation of a statement not yet made refers to nothing");
@@ -461,15 +418,15 @@ contract AttestationProjectionTest is Test {
 
     function testReactivationAcrossBlocksIsANewStatement() public {
         vm.prank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 firstId = lastId();
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.revoke(firstId);
+        adapter.revoke(firstId);
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 secondId = lastId();
 
@@ -482,26 +439,26 @@ contract AttestationProjectionTest is Test {
 
     function testNonAttesterRevocationIsIgnored() public {
         vm.prank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         bytes32 id = lastId();
 
         vm.prank(bob);
-        emitter.revoke(id);
+        adapter.revoke(id);
         drain();
         assertTrue(isLive(id), "a revocation counts only from the original attester");
     }
 
     function testTwoAttestersAreTwoStatements() public {
         vm.prank(alice);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         vm.prank(bob);
-        emitter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(cfid);
         drain();
         assertTrue(evs[0].id != evs[1].id, "the caller is in the identifier");
 
         vm.prank(alice);
-        emitter.revoke(evs[0].id);
+        adapter.revoke(evs[0].id);
         drain();
         assertFalse(isLive(evs[0].id));
         assertTrue(isLive(evs[1].id), "statements revoke independently");
@@ -509,8 +466,8 @@ contract AttestationProjectionTest is Test {
 
     function testConfirmHelperEqualsGenericAttest() public {
         vm.startPrank(alice);
-        emitter.confirmAdditionalAccount(cfid);
-        emitter.attest(tConfirm, cfid, bytes32(0), "");
+        adapter.confirmAdditionalAccount(cfid);
+        adapter.attest(tConfirm, cfid, bytes32(0), "");
         vm.stopPrank();
         drain();
         assertEq(evs[0].id, evs[1].id, "the helper is the generic call with the confirmation type");
@@ -522,12 +479,12 @@ contract AttestationProjectionTest is Test {
 
     function testStateResurrection() public {
         vm.prank(alice);
-        emitter.attest(tRating, cfid, bytes32(0), hex"32"); // 50
+        adapter.attest(tRating, cfid, bytes32(0), hex"32"); // 50
         drain();
         bytes32 fifty = lastId();
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.attest(tRating, cfid, bytes32(0), hex"50"); // 80
+        adapter.attest(tRating, cfid, bytes32(0), hex"50"); // 80
         drain();
         bytes32 eighty = lastId();
 
@@ -537,7 +494,7 @@ contract AttestationProjectionTest is Test {
 
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.revoke(eighty);
+        adapter.revoke(eighty);
         drain();
         (has, data) = currentState(alice, cfid, tRating);
         assertTrue(has);
@@ -545,7 +502,7 @@ contract AttestationProjectionTest is Test {
 
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.revoke(fifty);
+        adapter.revoke(fifty);
         drain();
         (has,) = currentState(alice, cfid, tRating);
         assertFalse(has, "no position needs every live statement revoked");
@@ -553,9 +510,9 @@ contract AttestationProjectionTest is Test {
 
     function testReEmissionMakesAStatementCurrentAgain() public {
         vm.startPrank(alice);
-        emitter.attest(tRating, cfid, bytes32(0), hex"32"); // 50
-        emitter.attest(tRating, cfid, bytes32(0), hex"3c"); // 60
-        emitter.attest(tRating, cfid, bytes32(0), hex"32"); // 50 again, same id as the first
+        adapter.attest(tRating, cfid, bytes32(0), hex"32"); // 50
+        adapter.attest(tRating, cfid, bytes32(0), hex"3c"); // 60
+        adapter.attest(tRating, cfid, bytes32(0), hex"32"); // 50 again, same id as the first
         vm.stopPrank();
         drain();
         (bool has, bytes memory data) = currentState(alice, cfid, tRating);
@@ -566,13 +523,13 @@ contract AttestationProjectionTest is Test {
     function testUnstarVersusRevokeAreDifferentOperations() public {
         // Unstar: star in two blocks, then attest zero. The current position is unstarred.
         vm.prank(alice);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         roll(block.number + 1);
         vm.prank(alice);
-        emitter.attest(tStar, cfid, bytes32(0), hex"00");
+        adapter.attest(tStar, cfid, bytes32(0), hex"00");
         drain();
         (bool has, bytes memory data) = currentState(alice, cfid, tStar);
         assertTrue(has);
@@ -582,16 +539,16 @@ contract AttestationProjectionTest is Test {
         // Revoke: the same two stars from bob, then revoking only the latest. The earlier live
         // star resurfaces, so bob still counts as starring.
         vm.prank(bob);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         drain();
         roll(block.number + 1);
         vm.prank(bob);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         drain();
         bytes32 bobLatest = lastId();
         roll(block.number + 1);
         vm.prank(bob);
-        emitter.revoke(bobLatest);
+        adapter.revoke(bobLatest);
         drain();
         (has, data) = currentState(bob, cfid, tStar);
         assertTrue(has);
@@ -621,20 +578,20 @@ contract AttestationProjectionTest is Test {
 
     function testRatingAggregationExcludesInvalidPayloads() public {
         vm.prank(alice);
-        emitter.attest(tRating, cfid, bytes32(0), hex"50"); // 80
+        adapter.attest(tRating, cfid, bytes32(0), hex"50"); // 80
         vm.prank(bob);
-        emitter.attest(tRating, cfid, bytes32(0), hex"64"); // 100
+        adapter.attest(tRating, cfid, bytes32(0), hex"64"); // 100
         vm.prank(carol);
-        emitter.attest(tRating, cfid, bytes32(0), hex"96"); // 150, invalid at read
+        adapter.attest(tRating, cfid, bytes32(0), hex"96"); // 150, invalid at read
         drain();
         assertEq(ratingAverage(cfid, new address[](0)), 90, "the invalid rating never enters the average");
     }
 
     function testRatingAggregationExcludesDependentAttesters() public {
         vm.prank(alice);
-        emitter.attest(tRating, cfid, bytes32(0), hex"3c"); // 60
+        adapter.attest(tRating, cfid, bytes32(0), hex"3c"); // 60
         vm.prank(bob);
-        emitter.attest(tRating, cfid, bytes32(0), hex"64"); // 100, but bob is the subject's controller
+        adapter.attest(tRating, cfid, bytes32(0), hex"64"); // 100, but bob is the subject's controller
         drain();
         address[] memory dependents = new address[](1);
         dependents[0] = bob;
@@ -644,17 +601,17 @@ contract AttestationProjectionTest is Test {
 
     function testStarCountCountsLatestLivePositions() public {
         vm.prank(alice);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         vm.prank(bob);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         vm.prank(carol);
-        emitter.attest(tStar, cfid, bytes32(0), hex"00");
+        adapter.attest(tStar, cfid, bytes32(0), hex"00");
         drain();
         assertEq(starCount(cfid), 2);
 
         roll(block.number + 1);
         vm.prank(carol);
-        emitter.attest(tStar, cfid, bytes32(0), hex"01");
+        adapter.attest(tStar, cfid, bytes32(0), hex"01");
         drain();
         assertEq(starCount(cfid), 3);
     }
