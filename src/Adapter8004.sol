@@ -99,21 +99,6 @@ contract Adapter8004 is
     /// @dev Never introduce a non-zero value for a pair that hashed with zero, as it re-keys a live identity.
     bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
 
-    /// @notice The five version-1 attestation types, each the keccak of its exact defining string.
-    /// Types are open 32-byte values and the contract validates only that one is nonzero, so anyone
-    /// may mint a type under their own namespace. These five are published so that the common ones
-    /// have a single spelling; their meanings, payload encodings and projection classes live in
-    /// `docs/specs/attestation-type-registry-v1.md` and are enforced by readers, never here.
-    ///
-    /// @dev The defining strings are identity-critical in the same way the `TokenStandard` numbering
-    /// is: a type value is what every statement of that type is filed under, so editing a string
-    /// re-files every statement already made. Add new types, never re-spell an existing one.
-    bytes32 public constant CONFIRM_ACCOUNT = keccak256("adapter8004.attest.v1.confirm-account");
-    bytes32 public constant STAR = keccak256("adapter8004.attest.v1.star");
-    bytes32 public constant RATING = keccak256("adapter8004.attest.v1.rating");
-    bytes32 public constant REVIEW = keccak256("adapter8004.attest.v1.review");
-    bytes32 public constant INTERACTION = keccak256("adapter8004.attest.v1.interaction");
-
     /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
     /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
     /// inline from `block.chainid` and `address(this)` so no storage slot or cached separator is
@@ -816,10 +801,15 @@ contract Adapter8004 is
     // happen across an external call, and these functions make none. Adding it would spend roughly
     // 2,900 gas per call to protect against nothing. See `docs/specs/attestation-type-registry-v1.md`
     // and the CHANGELOG entry, and note that a test asserts the surface stays reentrant-callable.
+    //
+    // The type is an `AttestationType` enum, so the set is closed and adding one is an upgrade. Its
+    // numbering is identity-critical, because the `uint8` sits in the identifier preimage; the rule
+    // is on the enum in `IERC8004AdapterAttestation`. A value outside the enum never reaches this
+    // code: the ABI decoder rejects it first, so a garbage type is refused without a check.
     // -----------------------------------------------------------------
 
     /// @inheritdoc IERC8004AdapterAttestation
-    function attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) external {
+    function attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) external {
         _attest(attestationType, cfid, variant, data);
     }
 
@@ -827,7 +817,7 @@ contract Adapter8004 is
     function confirmAdditionalAccount(bytes32 cfid) external {
         // `msg.data[0:0]` is the empty `bytes calldata`. It keeps `_attest` on calldata for the
         // generic path, where a REVIEW payload would otherwise be copied to memory for no reason.
-        _attest(CONFIRM_ACCOUNT, cfid, bytes32(0), msg.data[0:0]);
+        _attest(AttestationType.CONFIRM_ACCOUNT, cfid, bytes32(0), msg.data[0:0]);
     }
 
     /// @inheritdoc IERC8004AdapterAttestation
@@ -835,14 +825,15 @@ contract Adapter8004 is
         _revoke(attestationId);
     }
 
-    /// @dev The single attest path, so both guards live in exactly one place. The two zero checks
-    /// are sentinel rules against default-initialized calldata, not validation: a nonzero garbage
-    /// `cfid` passes on purpose, because attesting to an identity before its first counterfactual
-    /// claim is emitted is a supported use and no set of "real" hashes exists to check against.
-    function _attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) private {
+    /// @dev The single attest path, so both guards live in exactly one place. Both are sentinel
+    /// rules against default-initialized calldata, not validation: a nonzero garbage `cfid` passes on
+    /// purpose, because attesting to an identity before its first counterfactual claim is emitted is
+    /// a supported use and no set of "real" hashes exists to check against. Type validity needs no
+    /// check at all now that the type is an enum, because the decoder enforces the range.
+    function _attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) private {
         // 1. Reject the two uninitialized-input sentinels, so a forgotten field fails loudly rather
-        //    than filing a statement in a nameless namespace or against the zero identity.
-        if (attestationType == bytes32(0)) revert AttestationTypeZero();
+        //    than recording a statement of no stated type or against the zero identity.
+        if (attestationType == AttestationType.UNSPECIFIED) revert AttestationTypeZero();
         if (cfid == bytes32(0)) revert AttestationTargetZero();
 
         // 2. Derive the identifier. `block.number` keeps identical statements in different blocks

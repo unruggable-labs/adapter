@@ -36,11 +36,14 @@ contract Adapter8004AttestationTest is Test {
     Adapter8004 internal adapter;
     MockERC721 internal token;
 
-    // Cached in setUp, never read inline in a pranked call's argument list: a view call there
-    // consumes the pending prank and the attestation lands from this test contract instead.
-    bytes32 internal tConfirm;
-    bytes32 internal tRating;
-    bytes32 internal tReview;
+    // Plain enum values. Under the previous bytes32 constants these had to be cached in setUp,
+    // because a getter read inline in a pranked call's argument list consumed the prank.
+    IERC8004AdapterAttestation.AttestationType internal constant tConfirm =
+        IERC8004AdapterAttestation.AttestationType.CONFIRM_ACCOUNT;
+    IERC8004AdapterAttestation.AttestationType internal constant tRating =
+        IERC8004AdapterAttestation.AttestationType.RATING;
+    IERC8004AdapterAttestation.AttestationType internal constant tReview =
+        IERC8004AdapterAttestation.AttestationType.REVIEW;
 
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
@@ -58,10 +61,6 @@ contract Adapter8004AttestationTest is Test {
         );
         token = new MockERC721();
         token.mint(alice, 1);
-
-        tConfirm = adapter.CONFIRM_ACCOUNT();
-        tRating = adapter.RATING();
-        tReview = adapter.REVIEW();
     }
 
     // ----------------------------------------------------------------
@@ -196,24 +195,54 @@ contract Adapter8004AttestationTest is Test {
     }
 
     /// @dev The helper's type is the published constant rather than a second spelling of it.
-    function testConfirmUsesThePublishedConfirmAccountType() external {
+    function testConfirmUsesTheConfirmAccountType() external {
         vm.recordLogs();
         vm.prank(alice);
         adapter.confirmAdditionalAccount(cfid);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        assertEq(logs[0].topics[2], adapter.CONFIRM_ACCOUNT());
-        assertEq(adapter.CONFIRM_ACCOUNT(), keccak256(bytes("adapter8004.attest.v1.confirm-account")));
+        assertEq(
+            logs[0].topics[2],
+            bytes32(uint256(uint8(IERC8004AdapterAttestation.AttestationType.CONFIRM_ACCOUNT))),
+            "the indexed type topic is the enum's uint8, right-aligned"
+        );
     }
 
     // ----------------------------------------------------------------
     //  Guards: exactly two, and each fails if deleted
     // ----------------------------------------------------------------
 
-    function testAttestRejectsZeroType() external {
+    function testAttestRejectsUnspecifiedType() external {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTypeZero.selector);
         vm.prank(alice);
-        adapter.attest(bytes32(0), cfid, bytes32(0), "");
+        adapter.attest(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED, cfid, bytes32(0), "");
+    }
+
+    /// @dev What the enum buys over the previous open `bytes32` space: a value past the last member
+    /// is refused by the ABI decoder before any contract code runs, so there is no guard to write and
+    /// no way for a garbage type to reach the log. Encoded by hand, since a typed call cannot express
+    /// an out-of-range enum.
+    function testOutOfRangeTypeIsRejectedByTheDecoder() external {
+        vm.prank(alice);
+        (bool ok,) = address(adapter).call(
+            abi.encodeWithSignature("attest(uint8,bytes32,bytes32,bytes)", uint8(6), cfid, bytes32(0), "")
+        );
+        assertFalse(ok, "out-of-range type refused by the decoder");
+
+        // And the last valid member is genuinely accepted, so the test above is not passing because
+        // the whole call shape is wrong.
+        vm.recordLogs();
+        vm.prank(alice);
+        (ok,) = address(adapter).call(
+            abi.encodeWithSignature(
+                "attest(uint8,bytes32,bytes32,bytes)",
+                uint8(IERC8004AdapterAttestation.AttestationType.INTERACTION),
+                cfid,
+                bytes32(0),
+                new bytes(33)
+            )
+        );
+        assertTrue(ok, "the last member is in range");
     }
 
     function testAttestRejectsZeroTarget() external {
@@ -233,7 +262,7 @@ contract Adapter8004AttestationTest is Test {
     function testTypeCheckPrecedesTargetCheck() external {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTypeZero.selector);
         vm.prank(alice);
-        adapter.attest(bytes32(0), bytes32(0), bytes32(0), "");
+        adapter.attest(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED, bytes32(0), bytes32(0), "");
     }
 
     /// @dev A nonzero garbage target passes on purpose. Attesting before an identity's first
@@ -319,15 +348,15 @@ contract Adapter8004AttestationTest is Test {
     //  Event and interface conformance
     // ----------------------------------------------------------------
 
-    function testEventTopicsAndSelectors() external view {
+    function testEventTopicsAndSelectors() external {
         assertEq(
             IERC8004AdapterAttestation.Attested.selector,
-            keccak256("Attested(address,bytes32,bytes32,bytes32,bytes32,bytes)")
+            keccak256("Attested(address,uint8,bytes32,bytes32,bytes32,bytes)")
         );
         assertEq(
             IERC8004AdapterAttestation.AttestationRevoked.selector, keccak256("AttestationRevoked(bytes32,address)")
         );
-        assertEq(IERC8004AdapterAttestation.attest.selector, bytes4(keccak256("attest(bytes32,bytes32,bytes32,bytes)")));
+        assertEq(IERC8004AdapterAttestation.attest.selector, bytes4(keccak256("attest(uint8,bytes32,bytes32,bytes)")));
         assertEq(
             IERC8004AdapterAttestation.confirmAdditionalAccount.selector,
             bytes4(keccak256("confirmAdditionalAccount(bytes32)"))
@@ -336,32 +365,30 @@ contract Adapter8004AttestationTest is Test {
 
         // The adapter answers the interface cast, so an integrator can hold only the interface.
         IERC8004AdapterAttestation cast = IERC8004AdapterAttestation(address(adapter));
-        assertEq(cast.CONFIRM_ACCOUNT(), adapter.CONFIRM_ACCOUNT());
-        assertEq(cast.STAR(), adapter.STAR());
-        assertEq(cast.RATING(), adapter.RATING());
-        assertEq(cast.REVIEW(), adapter.REVIEW());
-        assertEq(cast.INTERACTION(), adapter.INTERACTION());
+        vm.prank(alice);
+        cast.confirmAdditionalAccount(cfid);
     }
 
-    /// @dev Five constants, not six. The sixth was a domain separator that the identifier scheme
-    /// dropped: nothing here is signed, and the interoperable address already binds the preimage to
-    /// this adapter on this chain, so a domain constant would have been inert bytes.
-    function testTheSurfaceAddsEightEntryPointsAndNoDomainConstant() external view {
-        string[8] memory added = [
-            "attest(bytes32,bytes32,bytes32,bytes)",
-            "confirmAdditionalAccount(bytes32)",
-            "revoke(bytes32)",
-            "CONFIRM_ACCOUNT()",
-            "STAR()",
-            "RATING()",
-            "REVIEW()",
-            "INTERACTION()"
-        ];
-        for (uint256 i; i < added.length; ++i) {
-            (bool ok,) = address(adapter).staticcall(abi.encodeWithSignature(added[i]));
-            // The three writers revert on their zero-argument decode, the readers answer; either way
-            // the selector must exist, which a missing function would not.
-            assertTrue(ok || i < 3, "entry point missing");
+    /// @dev The enum numbering is identity-critical: the `uint8` is in the identifier preimage, so
+    /// renumbering re-keys every attestation ever emitted under that member.
+    function testEnumNumberingIsPinned() external pure {
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED), 0);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.CONFIRM_ACCOUNT), 1);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.STAR), 2);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.RATING), 3);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.REVIEW), 4);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.INTERACTION), 5);
+        assertEq(uint8(type(IERC8004AdapterAttestation.AttestationType).max), 5, "no member added silently");
+    }
+
+    /// @dev Three entry points, not eight. The enum removed the five constant readers, and there was
+    /// never a domain constant: nothing here is signed, and the interoperable address already binds
+    /// the preimage to this adapter on this chain, so one would have been inert bytes.
+    function testTheSurfaceAddsThreeEntryPointsAndNoReaders() external view {
+        string[5] memory gone = ["CONFIRM_ACCOUNT()", "STAR()", "RATING()", "REVIEW()", "INTERACTION()"];
+        for (uint256 i; i < gone.length; ++i) {
+            (bool present,) = address(adapter).staticcall(abi.encodeWithSignature(gone[i]));
+            assertFalse(present, "the type constant readers are gone");
         }
 
         (bool domainOk,) = address(adapter).staticcall(abi.encodeWithSignature("ATTESTATION_DOMAIN()"));
@@ -445,13 +472,21 @@ contract Adapter8004AttestationTest is Test {
     //  Helpers
     // ----------------------------------------------------------------
 
-    function _lastAttested() private view returns (bytes32 id, address attester, bytes32 attestationType) {
+    function _lastAttested()
+        private
+        view
+        returns (bytes32 id, address attester, IERC8004AdapterAttestation.AttestationType attestationType)
+    {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i = logs.length; i > 0; --i) {
             Vm.Log memory log = logs[i - 1];
             if (log.topics[0] != IERC8004AdapterAttestation.Attested.selector) continue;
             (id,,) = abi.decode(log.data, (bytes32, bytes32, bytes));
-            return (id, address(uint160(uint256(log.topics[1]))), log.topics[2]);
+            return (
+                id,
+                address(uint160(uint256(log.topics[1]))),
+                IERC8004AdapterAttestation.AttestationType(uint8(uint256(log.topics[2])))
+            );
         }
         revert("no Attested event recorded");
     }
@@ -460,7 +495,7 @@ contract Adapter8004AttestationTest is Test {
         address src,
         address attester,
         bytes32 target,
-        bytes32 attestationType,
+        IERC8004AdapterAttestation.AttestationType attestationType,
         uint256 blockNumber,
         bytes32 variant,
         bytes memory data

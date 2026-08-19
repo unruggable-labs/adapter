@@ -551,11 +551,11 @@ Counterfactual identities cost nothing to create, but until now nothing could sa
 
 An attestation is a public statement about a `cfid`, recorded in the event log. Its meaning rests entirely on who made it, and **who made it is always the caller**.
 
-- `attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes data)`
-- `confirmAdditionalAccount(bytes32 cfid)` — exactly `attest(CONFIRM_ACCOUNT, cfid, 0, "")`
+- `attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes data)`
+- `confirmAdditionalAccount(bytes32 cfid)` — exactly `attest(AttestationType.CONFIRM_ACCOUNT, cfid, 0, "")`
 - `revoke(bytes32 attestationId)`
 
-Events: `Attested(address indexed attester, bytes32 indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)` and `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`. The three indexed slots on `Attested` are the three canonical query axes: reverse by attester, forward by target, filter by type.
+Events: `Attested(address indexed attester, AttestationType indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)` and `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`. The three indexed slots on `Attested` are the three canonical query axes: reverse by attester, forward by target, filter by type.
 
 The identifier, emitted so nobody has to recompute it:
 
@@ -563,31 +563,38 @@ The identifier, emitted so nobody has to recompute it:
 keccak256(abi.encode(adapterInteroperableAddress, attester, cfid, attestationType, block.number, variant, data))
 ```
 
+`attestationType` enters as the enum's `uint8`, right-aligned in a word, which is what `abi.encode` of a Solidity enum produces.
+
 - `block.number` bounds a revocation to one block. Without it, an attester emitting byte-identical statements over time — a monitor issuing repeated pings — would collapse its whole history into one identifier that a single revocation erases.
 - `variant` is the caller's opt-in within-block distinguisher, zero when unused. Cross-block distinction is automatic; within-block distinction is asked for.
 - There is **no domain constant**. Nothing here is signed, and the interoperable address already binds the preimage to this adapter on this chain. The two derivation schemes cannot collide: for one adapter the counterfactual preimage is a fixed 224 bytes and this one is at least 320.
 
 **The caller is the attester, and there is no acting-for path.** A controller participates by causing the account itself to make the call, so the account is still `msg.sender`; nothing can manufacture an account's consent from outside it. The cost is chosen: an account that cannot make outbound calls, such as a minimal vault or a payment splitter with no executor, cannot attest. Ordinary wallets, multisigs, smart wallets with executors, timelocks, and EIP-7702-delegated accounts all can.
 
-**Five published types**, each the keccak of its defining string. Types are open 32-byte values, so anyone may mint one under their own namespace; these five just fix a single spelling for the common ones.
+**Five types, in a closed `AttestationType` enum.** The set is fixed by the deployed implementation, so admitting a sixth is an upgrade. That is a deliberate choice of a closed namespace over an open one: a type is what an enum is for, `TokenStandard` in the same contract is already an enum, and the contract is upgradeable, so the cost of admitting a type is an upgrade the owner can already make.
 
-| Constant | Payload | Projection |
-|---|---|---|
-| `CONFIRM_ACCOUNT` | empty | state |
-| `STAR` | one byte, `0` or `1` | state |
-| `RATING` | one byte, `0`–`100`, on ERC-8004's `starred` scale | state |
-| `REVIEW` | UTF-8 text, non-empty | stream |
-| `INTERACTION` | `uint8 score \|\| bytes32 reference \|\| bytes text`, at least 33 bytes | stream |
+| Member | `uint8` | Payload | Projection |
+|---|---|---|---|
+| `UNSPECIFIED` | `0` | reserved sentinel, never a real type | — |
+| `CONFIRM_ACCOUNT` | `1` | empty | state |
+| `STAR` | `2` | one byte, `0` or `1` | state |
+| `RATING` | `3` | one byte, `0`–`100`, on ERC-8004's `starred` scale | state |
+| `REVIEW` | `4` | UTF-8 text, non-empty | stream |
+| `INTERACTION` | `5` | `uint8 score \|\| bytes32 reference \|\| bytes text`, at least 33 bytes | stream |
 
-The defining strings are identity-critical, exactly as the `TokenStandard` numbering is: a type value is what every statement of that type is filed under, so re-spelling one re-files every statement already made. Add types; never re-spell one.
+`UNSPECIFIED` holds zero because Solidity enums start there: without it the first real type would be the value a default-initialized variable carries, which is exactly what `AttestationTypeZero` exists to reject.
 
-**What the contract enforces is exactly two things**: `attestationType != 0` and `cfid != 0` on the two attest paths. Both are sentinel rules against default-initialized calldata, not validation. A nonzero garbage `cfid` passes on purpose — counterfactual registration writes no storage, so no set of real hashes exists to check against, and attesting ahead of an identity's first claim is the supported case. `revoke` checks nothing at all, the zero identifier included, because revoking a statement never made is a recorded no-op for readers.
+The numbering is identity-critical, exactly as the `TokenStandard` numbering is: the `uint8` sits in the identifier preimage, so renumbering a member re-keys every attestation ever emitted under it. Append only, never reorder.
+
+One thing the enum buys: the ABI decoder rejects a value above the last member before any contract code runs, so a garbage type is refused for free rather than by a check.
+
+**What the contract enforces is exactly two things**: `attestationType != UNSPECIFIED` and `cfid != 0` on the two attest paths. Both are sentinel rules against default-initialized calldata, not validation. A nonzero garbage `cfid` passes on purpose — counterfactual registration writes no storage, so no set of real hashes exists to check against, and attesting ahead of an identity's first claim is the supported case. `revoke` checks nothing at all, the zero identifier included, because revoking a statement never made is a recorded no-op for readers.
 
 Everything else is the reader's: target resolution, payload well-formedness, whether a revocation counts at all (only from the original attester, which an emit-only contract cannot check), and reviewer independence from the subject. The projection rules, payload encodings, and full type registry are normative in [the type-registry specification](./docs/specs/attestation-type-registry-v1.md), with identifier vectors in [the attestation fixture](./docs/fixtures/adapter-attestation-ids.md).
 
 **Emit-only, with two consequences.** No contract can read attestations on chain — nothing needs to today, and a stored system can be added later if that changes. And the surface adds no storage slot, so the layout still ends at slot 4. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
 
-Execution gas, excluding the fixed 21,000 per transaction: `attest` with a small payload 13,278, `confirmAdditionalAccount` 12,866, `revoke` 1,845, plus roughly 9 gas per payload byte. Most of the attest cost is the shared ERC-7930 envelope construction that every counterfactual write already pays.
+Execution gas, excluding the fixed 21,000 per transaction: `attest` with a small payload 13,387, `confirmAdditionalAccount` 12,904, `revoke` 1,889, plus roughly 9 gas per payload byte. Most of the attest cost is the shared ERC-7930 envelope construction that every counterfactual write already pays.
 
 **Joining to a registration.** For any adapter-registered agent the two histories merge with no transaction and no link assertion: `bindingOf(agentId)` yields the standard, bound address and token id from which the agent's counterfactual-era `registrationHash` derives. A registration joins only the counterfactual history claimed under its own standard, which is one of the reasons the standard is in the identifier.
 
@@ -644,10 +651,9 @@ User-facing functions:
 
 Attestation (emit-only) functions:
 
-- `attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes data)`
+- `attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes data)`
 - `confirmAdditionalAccount(bytes32 cfid)`
 - `revoke(bytes32 attestationId)`
-- `CONFIRM_ACCOUNT()`, `STAR()`, `RATING()`, `REVIEW()`, `INTERACTION()` (views)
 
 Counterfactual (emit-only) functions:
 
@@ -766,6 +772,8 @@ The Foundry suite currently covers:
 - wallet-binding pass-through with valid and invalid ERC-8004 signatures
 - the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
 - the attestation surface: the identifier pinned against precomputed vectors rather than round trips,
+  the `AttestationType` enum numbering pinned member by member, out-of-range types refused by the ABI
+  decoder rather than by a guard,
   binding to the proxy and not the implementation, the negative-encoding matrix, both guards with a
   test that fails if either check is deleted, `confirmAdditionalAccount` emitting a byte-identical
   event to the equivalent `attest` call, zero `SSTORE`s captured with `vm.record`, the deliberate

@@ -117,17 +117,50 @@ subsystem is emit-only, so the layout still ends at slot 4.
   with no executor — cannot attest. Ordinary wallets, multisigs, smart wallets
   with executors, timelocks and EIP-7702-delegated accounts all can.
 
-- **Five type constants**, each the keccak of its exact defining string:
-  `CONFIRM_ACCOUNT`, `STAR`, `RATING`, `REVIEW`, `INTERACTION`. Types are open
-  32-byte values, so anyone may mint one under their own namespace; these five
-  are published so the common ones have a single spelling. The defining strings
-  are identity-critical in the same way the `TokenStandard` numbering is: a type
-  value is what every statement of that type is filed under, so re-spelling one
-  re-files every statement already made. Add types; never re-spell one.
+- **The type is a closed `AttestationType` enum**, declared on
+  `IERC8004AdapterAttestation`: `UNSPECIFIED`, `CONFIRM_ACCOUNT`, `STAR`,
+  `RATING`, `REVIEW`, `INTERACTION`. The set is fixed by the deployed
+  implementation, so admitting a sixth type is an upgrade.
 
-- **Eight new entry points, not nine.** Three functions plus five constant
-  readers. An earlier plan said six constants and nine entry points; that count
-  predates the domain constant being dropped from the identifier scheme.
+  An earlier build of this branch used open hash-named `bytes32` constants that
+  any third party could extend under their own namespace. The enum was chosen
+  because a type is what an enum is for, because `TokenStandard` in this same
+  contract is already an enum, and because the contract is upgradeable, so the
+  cost of admitting a type is an upgrade the owner can already make. The open
+  namespace is the capability given up, knowingly.
+
+  `UNSPECIFIED` occupies zero because Solidity enums start there. Without it the
+  first real type would be the value a default-initialized variable carries,
+  which is exactly what `AttestationTypeZero` exists to reject; with it the guard
+  keeps working unchanged in meaning.
+
+  **The numbering is identity-critical**, in the same way `TokenStandard`'s
+  became: the `uint8` sits in the `attestationId` preimage, so renumbering a
+  member re-keys every attestation ever emitted under it and every revocation
+  naming one. Nothing on chain records the old value. Append only, never reorder,
+  never remove. The rule is recorded on the enum itself.
+
+  One capability gained: the **ABI decoder rejects an out-of-range value before
+  any contract code runs**, so a garbage type is refused for free rather than by
+  a check, and can never reach the log. No guard implements that.
+
+- **Three new entry points, not eight.** The five `bytes32 public constant`
+  declarations and their five generated readers are gone with the enum. An
+  earlier plan said six constants and nine entry points; that count also predated
+  the domain constant being dropped from the identifier scheme.
+
+- **Every attestation identifier moved**, which is why this was not a rename.
+  `abi.encode` of a `bytes32` is the raw 32 bytes; `abi.encode` of an enum is its
+  `uint8` right-aligned in a word. The preimage therefore changed, and all five
+  published vectors in
+  [`docs/fixtures/adapter-attestation-ids.md`](./docs/fixtures/adapter-attestation-ids.md)
+  were recomputed from scratch, off chain, before the code changed. The
+  superseded constants and identifiers are retained there for identification.
+  `Attested`'s ABI signature moved from
+  `Attested(address,bytes32,bytes32,bytes32,bytes32,bytes)` to
+  `Attested(address,uint8,bytes32,bytes32,bytes32,bytes)`, so its `topic0`
+  changed, and `attest`'s selector moved with its signature. Nothing was
+  deployed under the old scheme, so no on-chain record is orphaned.
 
 ### Deliberately absent
 
@@ -163,9 +196,15 @@ transaction, warm:
 
 | Function | Measured | Earlier estimate |
 | --- | ---: | --- |
-| `attest`, small payload | 13,278 | 4,700–5,400 |
-| `confirmAdditionalAccount` | 12,866 | 4,500–5,100 |
-| `revoke` | 1,845 | 2,200–2,700 |
+| `attest`, small payload | 13,387 | 4,700–5,400 |
+| `confirmAdditionalAccount` | 12,904 | 4,500–5,100 |
+| `revoke` | 1,889 | 2,200–2,700 |
+
+The enum did not make these cheaper. It made them very slightly dearer than the
+`bytes32` constants did — `attest` by 109 gas, `confirmAdditionalAccount` by 38,
+`revoke` by 44 — because the decoder's range check is real work and because
+removing five public getters reshuffles the selector dispatch the other functions
+walk through. The enum's saving is in code size, not gas.
 
 Payload bytes add roughly 9 gas each, the author's cost by design for `REVIEW`.
 
@@ -260,7 +299,7 @@ identity-critical code, so it is recorded here rather than attempted.
 
 | Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
 | --- | ---: | ---: | ---: |
-| `Adapter8004` | 19,707 | 19,992 | 4,869 |
+| `Adapter8004` | 19,365 | 19,650 | 5,211 |
 
 Against the 24,576-byte cap, built up from `0.0.16`:
 
@@ -269,9 +308,10 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | `0.0.16` | 18,400 | 6,176 |
 | + the standard in the counterfactual identifier | 18,660 | 5,916 |
 | + the attestation surface | 19,707 | 4,869 |
+| − the five type-constant readers, replaced by the enum | 19,365 | 5,211 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
-at. A test fails the suite if the margin ever falls below 2,000 bytes; if it
+at, and the enum handed 342 of them back by deleting five public getters. A test fails the suite if the margin ever falls below 2,000 bytes; if it
 does, the fix is the extraction the upgrade docs describe, not a lower floor.
 Extraction would re-key every attestation identifier, because the identifier
 binds the emitting address, so it is a one-way door.

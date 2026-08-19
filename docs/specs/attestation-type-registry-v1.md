@@ -1,6 +1,7 @@
 # Adapter8004 Counterfactual Attestation System — Type Registry Specification
 
 **Version 1 · 2026-08-19**
+**Revision:** attestation types are a closed `AttestationType` enum (§7). An earlier draft of this document specified open hash-named `bytes32` types; that scheme was not deployed. The change moved every `attestationId`, because `abi.encode` of an enum is its `uint8` rather than 32 raw bytes.
 **Audience:** integrators building attesters, indexers, and consumers of counterfactual reputation.
 **Scope:** the attestation surface of Adapter8004, its identifier scheme, its interpretation rules, and the v1 registry of attestation types. This document is normative for off-chain behavior — encodings, projection, and verification. The contract enforces only what §3 states.
 
@@ -20,7 +21,7 @@ Anything that fails this test — data that is merely convenient, mutable by nat
 Three external functions, all emit-only. The adapter stores nothing and reads nothing about the target. The caller is always the attester or revoker; there is no path where one party acts for another, so consent can never be manufactured from outside the account, and a controller participates by causing the account itself to make the call.
 
 ```
-attest(bytes32 attestationType, bytes32 cfid, bytes32 variant, bytes data)
+attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes data)
 confirmAdditionalAccount(bytes32 cfid)
 revoke(bytes32 attestationId)
 ```
@@ -34,7 +35,8 @@ revoke(bytes32 attestationId)
 
 Enforced on-chain:
 
-- `attestationType != 0` and `cfid != 0` on `attest` and `confirmAdditionalAccount`, reverting `AttestationTypeZero` and `AttestationTargetZero`. This is a fail-closed sentinel rule against default-initialized calldata, not target validation — a nonzero garbage value passes.
+- `attestationType != UNSPECIFIED` and `cfid != 0` on `attest` and `confirmAdditionalAccount`, reverting `AttestationTypeZero` and `AttestationTargetZero`. This is a fail-closed sentinel rule against default-initialized calldata, not target validation — a nonzero garbage `cfid` passes.
+- Type **range** validity, but not by any code in the contract: `attestationType` is a Solidity enum, so the ABI decoder reverts on a value above the last member before the function body runs. An out-of-range type can never reach the log, and no guard was written to achieve that.
 - `revoke` checks nothing, deliberately, including a zero identifier. Revoking a statement that was never made is a recorded no-op under §5 rule 3, and a sentinel check would guard against nothing: an unset identifier field revokes nothing, harming nothing, where an unset type or target field would mint a statement in the wrong namespace.
 
 Deliberately unenforced:
@@ -53,7 +55,7 @@ attestationId = keccak256(abi.encode(
     _interoperableAddress(address(this)), // ERC-7930: chain + adapter, exactly as registrationHash binds
     attester,                             // the caller
     cfid,
-    attestationType,
+    attestationType,                      // the enum's uint8, right-aligned in a word
     block.number,
     variant,
     data
@@ -90,15 +92,22 @@ Revocation is orthogonal to both classes; rule 5 in §5 shows the interaction.
 
 ## 7. Type registry — v1
 
-Types are open, hash-named `bytes32` values. Anyone may mint a namespaced type; the adapter validates nonzero and nothing else; meaning comes entirely from this registry and its successors. The five v1 types and their exact preimages:
+Types are members of a closed Solidity enum, `AttestationType`. The set is fixed by the deployed implementation: **admitting a sixth type is a contract upgrade**, not something a third party can do for itself. This is a deliberate choice of a closed namespace over an open one. An earlier draft used open hash-named `bytes32` values that anyone could mint under their own namespace; the enum was chosen because a type is what an enum is for, because `TokenStandard` in the same contract is already an enum, and because the contract is upgradeable, so the cost of admitting a type is an upgrade the owner can already perform.
 
-| Constant | Value |
+Two consequences follow, one in each direction. The decoder enforces the range for free, so a garbage type is refused before any contract code runs and there is no guard to get wrong. And no third party can define a type without an upgrade, so the admission principle in §1 is now enforced by the upgrade process rather than by convention.
+
+The numbering is **identity-critical**, exactly as `TokenStandard`'s is: the `uint8` sits in the `attestationId` preimage (§4), so renumbering a member re-keys every attestation ever emitted under it and every revocation that names one. Nothing on chain records the old value. **Append only, never reorder, never remove.**
+
+| Member | `uint8` |
 | --- | --- |
-| `CONFIRM_ACCOUNT` | `keccak256(bytes("adapter8004.attest.v1.confirm-account"))` |
-| `STAR` | `keccak256(bytes("adapter8004.attest.v1.star"))` |
-| `RATING` | `keccak256(bytes("adapter8004.attest.v1.rating"))` |
-| `REVIEW` | `keccak256(bytes("adapter8004.attest.v1.review"))` |
-| `INTERACTION` | `keccak256(bytes("adapter8004.attest.v1.interaction"))` |
+| `UNSPECIFIED` | `0` |
+| `CONFIRM_ACCOUNT` | `1` |
+| `STAR` | `2` |
+| `RATING` | `3` |
+| `REVIEW` | `4` |
+| `INTERACTION` | `5` |
+
+`UNSPECIFIED` occupies zero and is never a real type. Solidity enums start at zero, so without it the first real type would be the value a default-initialized variable carries, which is exactly what `AttestationTypeZero` exists to reject.
 
 | Type | Payload encoding | Class | Submitter rule |
 | --- | --- | --- | --- |
@@ -154,7 +163,7 @@ This system is the counterfactual counterpart of ERC-8004's Reputation Registry:
 | `revoke(attestationId)` | `revokeFeedback(agentId, feedbackIndex)` | id vs index; same intent |
 | `attestationId` | `feedbackIndex` | both identify one statement by one author about one subject |
 
-**ERC-8004 → this system.** The monitoring tags `reachable`, `uptime`, `successRate`, `responseTime`, and `blocktimeFreshness` have no v1 types. `INTERACTION` does not structurally encode endpoint, latency, reachability, or block freshness, so it cannot generally supersede those signals or soundly derive all of them; derivation from the `INTERACTION` stream is appropriate only where its evidence and schema actually suffice for the metric in question. Future namespaced monitoring types remain possible under §1. `appendResponse` maps to the deferred reply mechanism (§9). `getSummary` and `readAllFeedback` map to indexer queries; there are no on-chain reads here.
+**ERC-8004 → this system.** The monitoring tags `reachable`, `uptime`, `successRate`, `responseTime`, and `blocktimeFreshness` have no v1 types. `INTERACTION` does not structurally encode endpoint, latency, reachability, or block freshness, so it cannot generally supersede those signals or soundly derive all of them; derivation from the `INTERACTION` stream is appropriate only where its evidence and schema actually suffice for the metric in question. Future monitoring types remain possible under §1, as enum members added by upgrade. `appendResponse` maps to the deferred reply mechanism (§9). `getSummary` and `readAllFeedback` map to indexer queries; there are no on-chain reads here.
 
 **Structural divergences, stated plainly:**
 
@@ -166,11 +175,11 @@ This system is the counterfactual counterpart of ERC-8004's Reputation Registry:
 
 - **Validation** (ERC-8004's Validation Registry pattern): a two-party **authorized state machine** — named validator, gated request, progressive storage-backed status — not an attestation. An emit-only system has no enforcement to offer it; agents needing validators should register.
 - **Replies / `appendResponse`:** now that `attestationId` exists, a reply is an attestation type whose payload references an id — no contract change is needed, so it waits until feedback threading demonstrates demand.
-- **Monitoring types:** not in v1 (§8). Measured signals may be derived from `INTERACTION` where its schema suffices; dedicated namespaced types remain possible under the admission principle.
+- **Monitoring types:** not in v1 (§8). Measured signals may be derived from `INTERACTION` where its schema suffices; dedicated types remain possible under the admission principle, appended to the enum by upgrade.
 
 ## 10. Events
 
-- `Attested(address indexed attester, bytes32 indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)`
+- `Attested(address indexed attester, AttestationType indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)`, whose ABI signature is `Attested(address,uint8,bytes32,bytes32,bytes32,bytes)`
 - `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`
 
 Topic allocation follows three canonical query axes on attestation: reverse by `attester`, forward by `cfid`, and filter by `attestationType`. The `attestationId` is recomputable from the event fields plus its log context, including block number, and is therefore non-indexed on `Attested`. On `AttestationRevoked` the id is the join key and is indexed. `attester` and `revoker` are the actual `msg.sender` in every event; there is no separate submitter field because there is nothing left to distinguish.

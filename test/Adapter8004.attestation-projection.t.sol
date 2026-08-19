@@ -15,13 +15,13 @@ import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 /// revocation and stores nothing, so this replay is its only executable home. The same holds for
 /// the per-type payload rules, which the contract never decodes.
 contract AttestationProjectionTest is Test {
-    bytes32 private constant ATTESTED_SIG = keccak256("Attested(address,bytes32,bytes32,bytes32,bytes32,bytes)");
+    bytes32 private constant ATTESTED_SIG = keccak256("Attested(address,uint8,bytes32,bytes32,bytes32,bytes)");
     bytes32 private constant REVOKED_SIG = keccak256("AttestationRevoked(bytes32,address)");
 
     struct Ev {
         bool isRevoke;
         address actor;
-        bytes32 attType;
+        IERC8004AdapterAttestation.AttestationType attType;
         bytes32 cfid;
         bytes32 id;
         bytes data;
@@ -31,12 +31,16 @@ contract AttestationProjectionTest is Test {
     Adapter8004 internal adapter;
     Ev[] internal evs;
 
-    // Cached once: a view call in an argument list would otherwise consume a pending vm.prank,
-    // silently attesting from the test contract instead of the pranked account.
-    bytes32 internal tConfirm;
-    bytes32 internal tStar;
-    bytes32 internal tRating;
-    bytes32 internal tReview;
+    // Plain enum values now that the types are an enum. Under the previous bytes32 constants these
+    // had to be cached in setUp, because reading a getter inline in a pranked call's argument list
+    // consumed the prank and attested from the test contract. That hazard is gone with the getters.
+    IERC8004AdapterAttestation.AttestationType internal constant tConfirm =
+        IERC8004AdapterAttestation.AttestationType.CONFIRM_ACCOUNT;
+    IERC8004AdapterAttestation.AttestationType internal constant tStar = IERC8004AdapterAttestation.AttestationType.STAR;
+    IERC8004AdapterAttestation.AttestationType internal constant tRating =
+        IERC8004AdapterAttestation.AttestationType.RATING;
+    IERC8004AdapterAttestation.AttestationType internal constant tReview =
+        IERC8004AdapterAttestation.AttestationType.REVIEW;
 
     address internal alice = address(uint160(0xA11CE));
     address internal bob = address(uint160(0xB0B));
@@ -53,10 +57,6 @@ contract AttestationProjectionTest is Test {
                 )
             )
         );
-        tConfirm = adapter.CONFIRM_ACCOUNT();
-        tStar = adapter.STAR();
-        tRating = adapter.RATING();
-        tReview = adapter.REVIEW();
         vm.recordLogs();
     }
 
@@ -76,7 +76,7 @@ contract AttestationProjectionTest is Test {
                     Ev({
                         isRevoke: false,
                         actor: address(uint160(uint256(logs[i].topics[1]))),
-                        attType: logs[i].topics[2],
+                        attType: IERC8004AdapterAttestation.AttestationType(uint8(uint256(logs[i].topics[2]))),
                         cfid: logs[i].topics[3],
                         id: id,
                         data: data,
@@ -88,7 +88,7 @@ contract AttestationProjectionTest is Test {
                     Ev({
                         isRevoke: true,
                         actor: address(uint160(uint256(logs[i].topics[2]))),
-                        attType: bytes32(0),
+                        attType: IERC8004AdapterAttestation.AttestationType.UNSPECIFIED,
                         cfid: bytes32(0),
                         id: logs[i].topics[1],
                         data: "",
@@ -138,7 +138,7 @@ contract AttestationProjectionTest is Test {
     /// @dev Rule 5, state projection: the latest live attestation per (attester, cfid, type) is
     /// the current position. Latest means latest Attested occurrence in log order, so a
     /// reactivated statement is as current as its most recent emission.
-    function currentState(address attester, bytes32 target, bytes32 attType)
+    function currentState(address attester, bytes32 target, IERC8004AdapterAttestation.AttestationType attType)
         internal
         view
         returns (bool has, bytes memory data)
@@ -200,7 +200,11 @@ contract AttestationProjectionTest is Test {
         avg = n == 0 ? 0 : sum / n;
     }
 
-    function _attestersOf(bytes32 target, bytes32 attType) internal view returns (address[] memory) {
+    function _attestersOf(bytes32 target, IERC8004AdapterAttestation.AttestationType attType)
+        internal
+        view
+        returns (address[] memory)
+    {
         address[] memory tmp = new address[](evs.length);
         uint256 n;
         for (uint256 i; i < evs.length; ++i) {
@@ -226,11 +230,14 @@ contract AttestationProjectionTest is Test {
     }
 
     /// @dev The identifier formula, for tests that need an id before or without its attestation.
-    function idOf(address src, address attester, bytes32 target, bytes32 attType, bytes32 variant, bytes memory data)
-        internal
-        view
-        returns (bytes32)
-    {
+    function idOf(
+        address src,
+        address attester,
+        bytes32 target,
+        IERC8004AdapterAttestation.AttestationType attType,
+        bytes32 variant,
+        bytes memory data
+    ) internal view returns (bytes32) {
         return
             keccak256(abi.encode(_interop(src, block.chainid), attester, target, attType, block.number, variant, data));
     }
@@ -259,12 +266,17 @@ contract AttestationProjectionTest is Test {
     //  Constants and fixture vectors
     // ----------------------------------------------------------------
 
-    function testConstantsPinnedAgainstExactBytes() public view {
-        assertEq(adapter.CONFIRM_ACCOUNT(), 0x0d1301b55a7106242fdc007f7371d46dbf2cef93819719bb571322d165ef0bdb);
-        assertEq(adapter.STAR(), 0xe57ebfd03b6f9111378311d8b209d3c35c5c9c45ce387029dbe32c0ff44b2651);
-        assertEq(adapter.RATING(), 0xe29bafddb9bd210da3ccc8f60685504f8868bbcce6d9c216f35f0f841a6618b5);
-        assertEq(adapter.REVIEW(), 0x0ce439abec3b50d9bb4c1c26b71f5e02b7dac5a8f4546824b09b0066c94e6aed);
-        assertEq(adapter.INTERACTION(), 0x38bd7d6c19f392ef255c7033e6700c65ef16fc48f3ced5e18caf837f3231fedf);
+    /// @dev The enum numbering is identity-critical: the `uint8` is in the identifier preimage, so
+    /// renumbering a member re-keys every attestation ever emitted under it. There are no defining
+    /// strings to pin any more, so the numbers themselves are what gets pinned.
+    function testEnumNumberingIsPinned() public pure {
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED), 0);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.CONFIRM_ACCOUNT), 1);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.STAR), 2);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.RATING), 3);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.REVIEW), 4);
+        assertEq(uint8(IERC8004AdapterAttestation.AttestationType.INTERACTION), 5);
+        assertEq(uint8(type(IERC8004AdapterAttestation.AttestationType).max), 5, "no member added silently");
     }
 
     /// @notice The exact-bytes vectors from docs/fixtures/adapter-attestation-ids.md, reproduced
@@ -287,37 +299,46 @@ contract AttestationProjectionTest is Test {
         vm.prank(alice);
         fx.confirmAdditionalAccount(fxCfid);
         drain();
-        assertEq(lastId(), 0x80d05e729b10ebc5c0852c919bcb47c18342bac827ab09e307827dd576332e67, "vector 1");
+        assertEq(lastId(), 0xaf7980abec6ffd6f5d97df444510ce368dcbfcf7de185badd957b43a4fe8e105, "vector 1");
 
         vm.prank(alice);
         fx.attest(tConfirm, fxCfid, bytes32(uint256(1)), "");
         drain();
-        assertEq(lastId(), 0x97ff8f55126d26f62b78c5ec3b8908e1ab8bb76891d5e955832ab8cca1d0a202, "vector 2");
+        assertEq(lastId(), 0x9965d93cc49e1045bd26bffee741bc0182c227f5753af94bbcf5a3b0986a0455, "vector 2");
 
         vm.prank(alice);
         fx.attest(tRating, fxCfid, bytes32(0), hex"57");
         drain();
-        assertEq(lastId(), 0x127945db7ff1b8f34cfd587ee3605c33c70d686af9ae9081413fd0929a70f6de, "vector 3");
+        assertEq(lastId(), 0x76644bf03fd7b84cdc504cde53b335802d68ae53ea278033c9c42cb0807657df, "vector 3");
 
         vm.prank(bob);
         fx.confirmAdditionalAccount(fxCfid);
         drain();
-        assertEq(lastId(), 0x1d000c7a6200f50086414eaab8e24343cca0a45518e82657ee5d652de28ebc87, "vector 4");
+        assertEq(lastId(), 0x35c0df33a0a54b1edd204dcee6109cf347492fd170950dddca74c0d392a4ee66, "vector 4");
 
         vm.roll(19000001);
         vm.prank(alice);
         fx.confirmAdditionalAccount(fxCfid);
         drain();
-        assertEq(lastId(), 0x3b3f23c978049fa900522abac43b368325b25936825ed83e402a4214e4ab762a, "vector 5");
+        assertEq(lastId(), 0xea933f7f114bd9eaedd2215c27110cc2892b27817c6159770705a33afedec6d5, "vector 5");
     }
 
     // ----------------------------------------------------------------
     //  Guards
     // ----------------------------------------------------------------
 
-    function testAttestRejectsZeroType() public {
+    function testAttestRejectsUnspecifiedType() public {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTypeZero.selector);
-        adapter.attest(bytes32(0), cfid, bytes32(0), "");
+        adapter.attest(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED, cfid, bytes32(0), "");
+    }
+
+    /// @dev What the enum buys: a type outside the range never reaches the guard, because the ABI
+    /// decoder rejects it first. Encoded by hand, since the typed call cannot express it.
+    function testOutOfRangeTypeIsRejectedByTheDecoder() public {
+        (bool ok,) = address(adapter).call(
+            abi.encodeWithSignature("attest(uint8,bytes32,bytes32,bytes)", uint8(6), cfid, bytes32(0), "")
+        );
+        assertFalse(ok, "a value past the last member is refused before any contract code runs");
     }
 
     function testAttestRejectsZeroTarget() public {
