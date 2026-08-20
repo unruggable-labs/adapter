@@ -334,6 +334,33 @@ contract Adapter8004 is
         emit AgentWalletSet(agentId, newWallet, msg.sender);
     }
 
+    /// @notice Assign the agent wallet and point that wallet back at this agent in one call, closing
+    /// a loop that otherwise takes two transactions by two parties. Authorization is exactly
+    /// `setAgentWallet`'s: the caller proves control of the agent, and nothing is asked of the
+    /// wallet, which already consented through the EIP-712 signature the registry verifies.
+    /// @dev Verification is a read-time check that the forward and reverse records agree, so a
+    /// reverse pointer written to an unwilling wallet produces no false positive and that wallet
+    /// overwrites it with `setWalletAgentID`. Emits `AgentWalletSet` then `WalletAgentIDSet`, the
+    /// same pair the separate calls emit, and overwrites any existing designation on `newWallet`.
+    function setAgentWalletAndID(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature)
+        external
+        nonReentrant
+    {
+        // 1. Confirm the caller currently controls the bound token.
+        _requireController(agentId, msg.sender);
+
+        // 2. Forward the wallet assignment to ERC-8004, which enforces the wallet proof. A rejected
+        //    signature reverts here, so the reverse pointer below is never written on its own.
+        identityRegistry.setAgentWallet(agentId, newWallet, deadline, signature);
+
+        // 3. Emit the adapter-level wallet assignment after the forwarded registry call succeeds.
+        emit AgentWalletSet(agentId, newWallet, msg.sender);
+
+        // 4. Point the wallet back at this agent, reusing the setter that carries the reserved-id
+        //    guard and emits `WalletAgentIDSet`.
+        _setWalletAgentID(newWallet, agentId);
+    }
+
     function unsetAgentWallet(uint256 agentId) external nonReentrant {
         // 1. Confirm the caller currently controls the bound token.
         _requireController(agentId, msg.sender);
@@ -589,6 +616,41 @@ contract Adapter8004 is
             newWallet,
             msg.sender
         );
+    }
+
+    /// @notice Name yourself as this identity's agent wallet and point your wallet back at it, in one
+    /// call. The caller proves control of the token, which authorizes the forward write, and the
+    /// caller is the wallet, which supplies consent for the reverse one, so both halves are
+    /// legitimate with no signature needed.
+    /// @dev The wallet is always `msg.sender`, so two records that agree show one actor was
+    /// authorized on both sides. Emits `CounterfactualAgentWalletSet` then
+    /// `WalletCounterfactualIDSet`, the same pair the separate calls emit, and overwrites any
+    /// existing designation on the caller.
+    function counterfactualSetAgentWalletAndID(TokenStandard standard, address boundAddress, uint256 tokenId)
+        external
+        nonReentrant
+    {
+        // 1. Reject an unusable bound address and reject the registry itself so the
+        //    revert taxonomy matches `register`.
+        _requireValidBoundAddress(standard, boundAddress);
+
+        // 2. Apply current-controller or ownerless collection authority.
+        _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
+
+        // 3. Emit the wallet assignment, matching `counterfactualSetAgentWallet` exactly.
+        emit CounterfactualAgentWalletSet(
+            _registrationHash(standard, boundAddress, tokenId),
+            boundAddress,
+            tokenId,
+            COUNTERFACTUAL_EXTRA_DATA,
+            standard,
+            msg.sender,
+            msg.sender
+        );
+
+        // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
+        //    reserved-hash guard and emits `WalletCounterfactualIDSet`.
+        _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
     }
 
     /// @notice Clears the agent wallet on a counterfactual identity. The clear is carried only by the

@@ -162,6 +162,53 @@ subsystem is emit-only, so it adds no slot at all.
   changed, and `attest`'s selector moved with its signature. Nothing was
   deployed under the old scheme, so no on-chain record is orphaned.
 
+### Added
+
+- **Two combined setters that close the wallet loop in one call.**
+
+  ```
+  setAgentWalletAndID(uint256 agentId, address newWallet, uint256 deadline, bytes signature)
+  counterfactualSetAgentWalletAndID(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet)
+  ```
+
+  Setting an agent's wallet and setting that wallet's id are two halves of one
+  loop, and were two transactions by potentially two parties. Each new function
+  does the forward write it already did, then sets the reverse pointer for
+  `newWallet`, reusing the existing internal setters so the guards and events stay
+  in one place. They emit exactly what both halves emit today rather than a
+  combined event, so an indexer needs no new subscription and the existing
+  projection keeps working. Parameter shapes match `setAgentWallet` and
+  `counterfactualSetAgentWallet` exactly.
+
+  **Authorization is unchanged from the forward call.** The caller proves control
+  of the agent or the token, and nothing is required on the wallet side. Gating the
+  reverse write on wallet-side control was considered and rejected: it would mean
+  the caller is the wallet, who could already make both calls, which defeats the
+  point. Verification happens at read time instead, where a reader checks the
+  forward and reverse records agree, so a reverse pointer written to an unwilling
+  wallet produces no false positive and that wallet overwrites it by calling
+  `setWalletAgentID` itself. An existing designation on `newWallet` is overwritten,
+  which is intended and tested.
+
+  **The counterfactual call names the caller as the wallet.** It takes no
+  `newWallet` parameter and uses `msg.sender`, which is what makes both halves
+  legitimate without a signature: the caller proves control of the token, which
+  authorizes the forward write, and the caller is the wallet, which supplies
+  consent for the reverse one. A reader who finds the two records agreeing on this
+  path therefore learns something real, that one actor was authorized on both
+  sides. Naming a wallet other than the caller stays available as
+  `counterfactualSetAgentWallet` plus `setWalletCounterfactualIDFor`, two calls
+  that prove correspondingly less.
+
+  The registered `setAgentWalletAndID` keeps its `newWallet` parameter, because
+  there the registry verifies a deadline-bounded EIP-712 signature scoped to that
+  agent and wallet, so naming a wallet other than the caller is the point.
+
+  Neither function is added to an interface. `setAgentWallet` is declared on
+  `IERC8004IdentityRecord` because it is an ERC-8004 record pass-through, which
+  these compositions are not, and the counterfactual writers have never been
+  declared in an interface at all.
+
 ### Changed
 
 - **The primary-agent surface is renamed to the wallet-id surface.** The mapping
@@ -535,6 +582,7 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | + the word-aligned ERC-7930 encoder | 19,492 | 5,084 |
 | − the in-house encoder, + OpenZeppelin's | 19,449 | 5,127 |
 | − the signed primary-agent surface | 17,688 | 6,888 |
+| + the two combined wallet-id setters | 18,123 | 6,453 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
 at, and the enum handed 342 of them back by deleting five public getters. The

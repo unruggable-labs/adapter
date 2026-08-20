@@ -536,6 +536,13 @@ Full ERC-8004:
 - `setWalletAgentID(uint256 agentId)` / `setWalletAgentIDFor(account, agentId)`
 - `clearWalletAgentID()` / `clearWalletAgentIDFor(account)`
 - `walletAgentIDOf(account) -> uint256`
+- `setAgentWalletAndID(agentId, newWallet, deadline, signature)` sets the agent's wallet and points
+  that wallet back at the agent in one call, with the same authorization `setAgentWallet` requires
+- `counterfactualSetAgentWalletAndID(standard, boundAddress, tokenId)` does the same on the
+  counterfactual path, naming the caller as the wallet. No signature is needed because the caller
+  proves control of the token and is the wallet, so one actor is authorized on both sides and two
+  agreeing records mean something. Naming a different wallet is still possible through
+  `counterfactualSetAgentWallet` plus `setWalletCounterfactualIDFor`, which prove less
 - unset is `WALLET_AGENT_ID_UNSET == type(uint256).max`; agent ID `0` is valid
 
 Counterfactual:
