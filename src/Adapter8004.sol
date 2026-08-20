@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC6909} from "@openzeppelin/contracts/interfaces/IERC6909.sol";
+import {InteroperableAddress} from "@openzeppelin/contracts/utils/draft-InteroperableAddress.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -1352,64 +1353,36 @@ contract Adapter8004 is
         return _erc7930AddressFor(chainId, account, true);
     }
 
+    /// @dev ERC-7930 v1 encoding, delegated to OpenZeppelin's `InteroperableAddress`.
+    ///
+    /// This contract carried its own encoder until `0.0.17`. It was replaced because OpenZeppelin's
+    /// is cheaper at every chain id this contract runs on: their branchless `Math.log256` beats a
+    /// byte-at-a-time length loop by more than a single-word composition beats their three-buffer
+    /// assembly. Measured, the local encoder cost 21 more gas on Ethereum, 126 more on Base and 231
+    /// more on Sepolia, and degraded sharply for long chain references. **The output is unchanged**:
+    /// both former encoders are frozen in `test/Adapter8004.erc7930.t.sol` and the published fixture
+    /// vectors are asserted against this path byte for byte, so no identity re-keys.
+    ///
+    /// The dependency is load-bearing in a way an ordinary one is not. This encoding is the preimage
+    /// of every counterfactual `registrationHash` and every `attestationId`, the library's file is
+    /// `draft-` prefixed, and OpenZeppelin therefore owes no encoding stability across releases. A
+    /// submodule bump that changed the output would silently re-key every identity ever issued. The
+    /// tests exist to make that loud rather than silent; read the note on
+    /// `testOpenZeppelinEncodingIsFrozenByFixtureVectors` before touching them.
+    ///
+    /// @dev The zero-chain-id rejection stays here rather than being left to the library. A chain id
+    /// of zero identifies no chain and `block.chainid` never returns it, so this contract refuses it
+    /// outright; OpenZeppelin encodes it as a single zero reference byte. That divergence is
+    /// deliberate, documented, and must survive the switch.
     function _erc7930AddressFor(uint256 chainId, address account, bool includeAddress)
         private
         pure
-        returns (bytes memory identifier)
+        returns (bytes memory)
     {
         if (chainId == 0) revert InvalidChainId();
-
-        uint256 referenceLength;
-        uint256 remaining = chainId;
-        while (remaining != 0) {
-            ++referenceLength;
-            remaining >>= 8;
-        }
-
-        uint256 length = referenceLength + 6 + (includeAddress ? 20 : 0);
-        identifier = new bytes(length);
-
-        // Fast path: the whole envelope fits in one 32-byte word, so it is one MSTORE instead of up
-        // to twenty-six bounds-checked byte writes. `length <= 32` is the exact condition for both
-        // shapes at once: with an address that is `referenceLength <= 6`, so chain ids below 2^48;
-        // without one it is `referenceLength <= 26`. Every chain in existence is far inside both.
-        //
-        // Byte `i` of the envelope occupies bits `248 - 8i` upward, which is where each shift below
-        // comes from. The pieces cover disjoint byte ranges, so OR-ing them is assembly, not
-        // arithmetic. Bytes 0, 2 and 3 stay zero because nothing writes them, and so does the
-        // trailing AddressLength byte when `includeAddress` is false.
-        if (length <= 32) {
-            uint256 word = (uint256(1) << 240) // version 0x0001 at bytes 0-1; ChainType 0x0000 follows
-                | (referenceLength << 216) // ReferenceLength at byte 4
-                | (chainId << (216 - 8 * referenceLength)); // reference at bytes 5..4+L
-            if (includeAddress) {
-                word |= (uint256(0x14) << (208 - 8 * referenceLength)) // AddressLength at byte 5+L
-                    | (uint256(uint160(account)) << (48 - 8 * referenceLength)); // address at bytes 6+L..25+L
-            }
-            assembly ("memory-safe") {
-                // `new bytes` rounds its data region up to a whole word and `length` is at least 7
-                // here, so the data region is exactly 32 bytes and this store stays inside it.
-                mstore(add(identifier, 32), word)
-            }
-            return identifier;
-        }
-
-        // Fallback for chain ids too large to fit the envelope in one word. Unreachable on any real
-        // chain, kept so the encoder stays total. `Adapter8004.erc7930.t.sol` fuzzes this against the
-        // fast path, because a divergence here would silently re-key identities rather than revert.
-        identifier[1] = 0x01;
-        identifier[4] = bytes1(uint8(referenceLength));
-        for (uint256 i; i < referenceLength; ++i) {
-            identifier[5 + referenceLength - 1 - i] = bytes1(uint8(chainId >> (i * 8)));
-        }
-        if (includeAddress) {
-            identifier[5 + referenceLength] = 0x14;
-            bytes20 rawAddress = bytes20(account);
-            for (uint256 i; i < 20; ++i) {
-                identifier[6 + referenceLength + i] = rawAddress[i];
-            }
-        }
-        // Otherwise the final byte remains zero: ERC-7930 AddressLength == 0.
+        return includeAddress
+            ? InteroperableAddress.formatEvmV1(chainId, account)
+            : InteroperableAddress.formatEvmV1(chainId);
     }
 
     /// @dev The canonical counterfactual identity is

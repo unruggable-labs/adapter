@@ -9,6 +9,78 @@ import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
+/// @notice The word-aligned encoder that `Adapter8004` carried before it adopted OpenZeppelin's
+/// `InteroperableAddress`, kept verbatim as a second frozen reference.
+///
+/// **Do not delete, and do not edit it to match anything.** When production used this code, OZ was
+/// the independent oracle. Production now uses OZ, so the roles inverted and this is the oracle:
+/// together with `ReferenceErc7930` it is what proves OZ's output is still the encoding every
+/// identity this contract has ever issued was built from. Two implementations written here, one
+/// written by OpenZeppelin, all three agreeing, is the whole safety argument.
+library WordAlignedErc7930 {
+    error InvalidChainId();
+
+    function encode(uint256 chainId, address account, bool includeAddress)
+        internal
+        pure
+        returns (bytes memory identifier)
+    {
+        if (chainId == 0) revert InvalidChainId();
+
+        uint256 referenceLength;
+        uint256 remaining = chainId;
+        while (remaining != 0) {
+            ++referenceLength;
+            remaining >>= 8;
+        }
+
+        uint256 length = referenceLength + 6 + (includeAddress ? 20 : 0);
+        identifier = new bytes(length);
+
+        // Fast path: the whole envelope fits in one 32-byte word, so it is one MSTORE instead of up
+        // to twenty-six bounds-checked byte writes. `length <= 32` is the exact condition for both
+        // shapes at once: with an address that is `referenceLength <= 6`, so chain ids below 2^48;
+        // without one it is `referenceLength <= 26`. Every chain in existence is far inside both.
+        //
+        // Byte `i` of the envelope occupies bits `248 - 8i` upward, which is where each shift below
+        // comes from. The pieces cover disjoint byte ranges, so OR-ing them is assembly, not
+        // arithmetic. Bytes 0, 2 and 3 stay zero because nothing writes them, and so does the
+        // trailing AddressLength byte when `includeAddress` is false.
+        if (length <= 32) {
+            uint256 word = (uint256(1) << 240) // version 0x0001 at bytes 0-1; ChainType 0x0000 follows
+                | (referenceLength << 216) // ReferenceLength at byte 4
+                | (chainId << (216 - 8 * referenceLength)); // reference at bytes 5..4+L
+            if (includeAddress) {
+                word |= (uint256(0x14) << (208 - 8 * referenceLength)) // AddressLength at byte 5+L
+                    | (uint256(uint160(account)) << (48 - 8 * referenceLength)); // address at bytes 6+L..25+L
+            }
+            assembly ("memory-safe") {
+                // `new bytes` rounds its data region up to a whole word and `length` is at least 7
+                // here, so the data region is exactly 32 bytes and this store stays inside it.
+                mstore(add(identifier, 32), word)
+            }
+            return identifier;
+        }
+
+        // Fallback for chain ids too large to fit the envelope in one word. Unreachable on any real
+        // chain, kept so the encoder stays total. this file fuzzes it against the
+        // fast path, because a divergence here would silently re-key identities rather than revert.
+        identifier[1] = 0x01;
+        identifier[4] = bytes1(uint8(referenceLength));
+        for (uint256 i; i < referenceLength; ++i) {
+            identifier[5 + referenceLength - 1 - i] = bytes1(uint8(chainId >> (i * 8)));
+        }
+        if (includeAddress) {
+            identifier[5 + referenceLength] = 0x14;
+            bytes20 rawAddress = bytes20(account);
+            for (uint256 i; i < 20; ++i) {
+                identifier[6 + referenceLength + i] = rawAddress[i];
+            }
+        }
+        // Otherwise the final byte remains zero: ERC-7930 AddressLength == 0.
+    }
+}
+
 /// @notice The pre-`0.0.17` byte-at-a-time ERC-7930 encoder, kept verbatim as the reference the
 /// word-aligned rewrite is measured against.
 ///
@@ -71,7 +143,11 @@ contract Adapter8004HashHarness is Adapter8004 {
     }
 
     /// @dev Paints a sentinel into the free memory the encoder must not reach, runs the encoder in
-    /// the SAME frame, and reports whether the sentinel survived. An external call would prove
+    /// the SAME frame, and reports whether the sentinel survived. Points at the frozen
+    /// `WordAlignedErc7930` reference rather than production: production delegates to OpenZeppelin
+    /// now, so the hand-written `mstore` this guards lives only in the reference, and OZ's own
+    /// allocation pattern is different enough that the sentinel would land inside its intermediate
+    /// buffers. An external call would prove
     /// nothing here, because the callee's memory is a separate frame and the returned bytes are
     /// re-decoded into the caller's.
     ///
@@ -100,7 +176,7 @@ contract Adapter8004HashHarness is Adapter8004 {
             mstore(add(free, allocated), sentinel)
             mstore(add(free, add(allocated, 0x20)), sentinel)
         }
-        encoded = includeAddress ? _interoperableAddressFor(chainId, account) : _chainIdentifierFor(chainId);
+        encoded = WordAlignedErc7930.encode(chainId, account, includeAddress);
         assembly ("memory-safe") {
             guardIntact :=
                 and(eq(mload(add(free, allocated)), sentinel), eq(mload(add(free, add(allocated, 0x20))), sentinel))
@@ -430,10 +506,10 @@ contract Adapter8004ERC7930Test is Test {
         );
     }
 
-    /// @dev The single MSTORE must not write past the array's data region. Checked inside the
-    /// encoder's own memory frame, with a sentinel painted into the words the allocation must not
+    /// @dev The frozen reference's single MSTORE must not write past the array's data region.
+    /// Checked inside the encoder's own memory frame, with a sentinel painted into the words the allocation must not
     /// reach; an external call could not see this, because the callee's memory is a separate frame.
-    function testFuzzFastPathDoesNotWritePastTheAllocation(uint256 seed, uint8 lengthPick, address account)
+    function testFuzzReferenceFastPathDoesNotWritePastTheAllocation(uint256 seed, uint8 lengthPick, address account)
         external
         view
     {
@@ -443,6 +519,7 @@ contract Adapter8004ERC7930Test is Test {
         (bytes memory withAddress, bool guardA) = harness.encodeWithMemoryGuard(chainId, account, true);
         assertTrue(guardA, "address shape wrote past its allocation");
         assertEq(withAddress, ReferenceErc7930.encode(chainId, account, true));
+        assertEq(withAddress, harness.interoperableAddressFor(chainId, account), "and still matches production");
 
         (bytes memory bare, bool guardB) = harness.encodeWithMemoryGuard(chainId, address(0), false);
         assertTrue(guardB, "chain-identifier shape wrote past its allocation");

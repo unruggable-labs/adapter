@@ -194,11 +194,19 @@ subsystem is emit-only, so the layout still ends at slot 4.
 Measured on this implementation, execution cost excluding the fixed 21,000 per
 transaction, warm:
 
-| Function | Measured | Earlier estimate |
-| --- | ---: | --- |
-| `attest`, small payload | 6,385 | 4,700–5,400 |
-| `confirmAdditionalAccount` | 5,902 | 4,500–5,100 |
-| `revoke` | 1,889 | 2,200–2,700 |
+Measured in the assembled contract, per live chain, because the ERC-7930 encoder's
+cost depends on the chain reference length:
+
+| Function | Ethereum | Base | Sepolia |
+| --- | ---: | ---: | ---: |
+| `attest`, small payload | 7,581 | 7,581 | 7,581 |
+| `confirmAdditionalAccount` | 6,916 | 6,916 | 6,916 |
+| `registrationHash` | 5,749 | 5,749 | 5,749 |
+| `revoke` | 1,889 | 1,889 | 1,889 |
+
+Flat across chains, which is itself the effect of the OpenZeppelin adoption: its
+branchless length computation does not vary with the reference, where the former
+in-house loop cost about 105 gas per reference byte.
 
 Payload bytes add roughly 9 gas each, the author's cost by design for `REVIEW`.
 
@@ -241,7 +249,58 @@ size, not gas.
   The library stays out of `src/`, so runtime size is unchanged, and it was
   already in the test build, so it costs nothing new.
 
-- **`_erc7930AddressFor` is word-aligned.** The ERC-7930 envelope is now built
+- **The ERC-7930 encoder is now OpenZeppelin's `InteroperableAddress`.**
+  `_erc7930AddressFor` became a thin wrapper delegating to `formatEvmV1`, and the
+  in-house body went away with it. `_interoperableAddress` stays
+  `internal view virtual` and the internal API is unchanged.
+
+  **No identity re-keys.** That is the gate this change had to pass, and it did:
+  every published fixture vector — the counterfactual hashes, the attestation
+  identifiers, and the ERC-7930 spec examples — passes completely unchanged, with
+  no fixture document edited. The encoding is byte-identical; only the code that
+  produces it moved.
+
+  Both former encoders are frozen in `test/Adapter8004.erc7930.t.sol` as
+  `ReferenceErc7930` (byte-at-a-time) and `WordAlignedErc7930`. The roles inverted
+  rather than disappeared: OpenZeppelin used to be the independent oracle for our
+  encoder, and our encoders are now the independent oracles for OpenZeppelin's.
+  Three implementations, all agreeing, is the safety argument. Do not delete them.
+
+  **The dependency is load-bearing in a way an ordinary one is not.** The library's
+  file is `draft-` prefixed, so OpenZeppelin owes no encoding stability across
+  releases, and a submodule bump that changed the output would silently re-key
+  every identity this contract has ever issued — no revert, nothing visibly wrong.
+  `test/Adapter8004.erc7930-frozen.t.sol` exists to make that loud: 26 tests
+  pinning exact bytes for twelve chain ids on both shapes, three-way agreement
+  across all 32 reference lengths, round trips through `parseEvmV1`, and the
+  published identities asserted end to end through `registrationHash`, the
+  attestation identifier and a real counterfactual emission. One test,
+  `testOpenZeppelinEncodingIsFrozen`, exists solely to fail on an upstream
+  encoding change and says in its own comment that editing it is never the fix.
+
+  **Correction to the gas rationale.** This change was taken on a measurement that
+  did not survive being made again in the assembled contract. Benchmarked in
+  isolation, OpenZeppelin was cheaper than the word-aligned encoder by 21 gas on
+  Ethereum, 126 on Base and 231 on Sepolia. Measured through the real contract it
+  is the other way round on two of the three live chains:
+
+  | Chain | word-aligned | OpenZeppelin | Δ |
+  | --- | ---: | ---: | ---: |
+  | Ethereum (L=1) | 5,602 | 5,749 | **+147** |
+  | Base (L=2) | 5,707 | 5,749 | **+42** |
+  | Sepolia (L=3) | 5,812 | 5,749 | −63 |
+
+  Same shape for `attest` and `confirmAdditionalAccount`, within a few gas. The
+  in-isolation figures were measured in a tiny benchmark contract where the
+  optimizer had far more inlining freedom than it has inside a 19KB contract at
+  `optimizer_runs = 200`. So on the two chains that carry production this costs
+  roughly 40 to 150 gas rather than saving it. What the change does buy, and what
+  survives the correction: one fewer hand-written encoder to keep correct, and the
+  removal of the fallback path, which cost 11,291 gas at a seven-byte reference
+  against OpenZeppelin's flat 1,295, with a 9,459-gas cliff at the handoff.
+
+- **`_erc7930AddressFor` was word-aligned** before the above superseded it. The
+  ERC-7930 envelope was built
   with a single `MSTORE` for every case that fits in a 32-byte word, instead of up
   to twenty-six bounds-checked byte writes. The byte-at-a-time loop is kept as the
   fallback for chain ids too large to fit, so the encoder stays total.
@@ -273,8 +332,18 @@ size, not gas.
   | `registrationHash` | 9,647 | 2,645 | −7,002 |
   | `revoke` | 1,889 | 1,889 | 0 |
 
-  Exactly one derivation's worth in each case. The alternatives were priced and
-  rejected: caching the chain-dependent prefix in an `immutable` recovers only
+  Exactly one derivation's worth in each case.
+
+  **That framing was misleading and is corrected here.** "Recovers 85–88% of the
+  build" invited the reading that the rewrite put this contract ahead of the
+  ecosystem reference. It did not. Those savings were measured against this
+  contract's own previous encoder, which was roughly six times more expensive than
+  OpenZeppelin's throughout; the rewrite closed that gap to near parity and, as the
+  in-contract numbers above show, left it slightly behind on Ethereum and Base. The
+  honest summary of the word-align is that it took this contract from about six
+  times worse than the reference implementation to roughly level with it.
+
+  The alternatives were priced and rejected: caching the chain-dependent prefix in an `immutable` recovers only
   about 3,300 of that, because the expensive half is the twenty address bytes and
   `address(this)` in a constructor is the implementation rather than the proxy; a
   storage cache is the only mechanism that can capture the proxy address, and it
@@ -361,7 +430,7 @@ size, not gas.
 
 | Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
 | --- | ---: | ---: | ---: |
-| `Adapter8004` | 19,492 | 19,777 | 5,084 |
+| `Adapter8004` | 19,449 | 19,734 | 5,127 |
 
 Against the 24,576-byte cap, built up from `0.0.16`:
 
@@ -372,10 +441,16 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | + the attestation surface | 19,707 | 4,869 |
 | − the five type-constant readers, replaced by the enum | 19,365 | 5,211 |
 | + the word-aligned ERC-7930 encoder | 19,492 | 5,084 |
+| − the in-house encoder, + OpenZeppelin's | 19,449 | 5,127 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
 at, and the enum handed 342 of them back by deleting five public getters. The
-encoder rewrite cost 127. That was predicted to land neutral or smaller, on the
+encoder rewrite cost 127, and handing the encoding to OpenZeppelin gave 43 back —
+the library's `Math`, `SafeCast` and `Bytes` dependencies did not bloat the
+artifact, because only the reached paths survive dead-code elimination and the
+removed in-house body more than paid for them. Margin is 5,127 bytes, comfortably
+clear of the 2,000 floor. The word-align rewrite was predicted to land neutral or
+smaller, on the
 reasoning that replacing the byte loops in place would delete more than the fast
 path adds; it did not, because the fallback keeps those loops and the fast path's
 shift arithmetic is added on top. It came in well under the +267 upper bound the
