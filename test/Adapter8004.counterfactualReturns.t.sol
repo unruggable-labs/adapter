@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Adapter8004} from "../src/Adapter8004.sol";
+import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
+import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
+import {MockERC721} from "./mocks/MockERC721.sol";
+
+/// @notice Every counterfactual function that derives an identity returns it.
+///
+/// Each test pins the returned hash against two independent things: the published derivation
+/// `registrationHash` exposes, and the identity that function's own event carries. Checking it
+/// against only one of those would leave the return value able to agree with itself and nothing
+/// else, which is the failure this file exists to rule out.
+contract Adapter8004CounterfactualReturnsTest is Test {
+    Adapter8004 internal adapter;
+    MockERC721 internal token;
+
+    address internal alice = makeAddr("alice");
+    address internal wallet = makeAddr("wallet");
+    address internal admin = makeAddr("admin");
+
+    IERCAgentBindings.TokenStandard internal constant STD = IERCAgentBindings.TokenStandard.ERC721;
+
+    function setUp() external {
+        MockIdentityRegistry registry = new MockIdentityRegistry();
+        adapter = Adapter8004(
+            address(
+                new ERC1967Proxy(
+                    address(new Adapter8004()), abi.encodeCall(Adapter8004.initialize, (address(registry), admin))
+                )
+            )
+        );
+        token = new MockERC721();
+        token.mint(alice, 1);
+    }
+
+    function testSetAgentURIReturnsTheDerivedHash() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        bytes32 returned = adapter.counterfactualSetAgentURI(STD, address(token), 1, "ipfs://updated");
+        _assertPinned(returned);
+    }
+
+    function testSetMetadataReturnsTheDerivedHash() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        bytes32 returned = adapter.counterfactualSetMetadata(STD, address(token), 1, "role", bytes("builder"));
+        _assertPinned(returned);
+    }
+
+    /// @dev The batch writes several keys against one identity, so one hash covers the whole call.
+    /// Asserted with more than one entry, so a per-entry reading of the return would show up here.
+    function testSetMetadataBatchReturnsTheOneDerivedHash() external {
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](3);
+        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "a", metadataValue: bytes("1")});
+        metadata[1] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "b", metadataValue: bytes("2")});
+        metadata[2] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "c", metadataValue: bytes("3")});
+
+        vm.recordLogs();
+        vm.prank(alice);
+        bytes32 returned = adapter.counterfactualSetMetadataBatch(STD, address(token), 1, metadata);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1, "one event for the whole batch");
+        _assertPinnedAgainst(returned, logs);
+    }
+
+    function testSetAgentWalletReturnsTheDerivedHash() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        bytes32 returned = adapter.counterfactualSetAgentWallet(STD, address(token), 1, wallet);
+        _assertPinned(returned);
+    }
+
+    function testUnsetAgentWalletReturnsTheDerivedHash() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        bytes32 returned = adapter.counterfactualUnsetAgentWallet(STD, address(token), 1);
+        _assertPinned(returned);
+    }
+
+    /// @dev The whole surface now answers with the same value for the same coordinates, which is the
+    /// property that made the five worth changing. `counterfactualRegister` and the two wallet-id
+    /// setters already did; these five now join them.
+    function testEveryCounterfactualFunctionAgreesOnTheIdentity() external {
+        bytes32 published = adapter.registrationHash(STD, address(token), 1);
+        IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
+
+        vm.startPrank(alice);
+        assertEq(adapter.counterfactualRegister(STD, address(token), 1, "ipfs://a"), published, "register");
+        assertEq(adapter.counterfactualSetAgentURI(STD, address(token), 1, "ipfs://b"), published, "setAgentURI");
+        assertEq(adapter.counterfactualSetMetadata(STD, address(token), 1, "k", bytes("v")), published, "setMetadata");
+        assertEq(adapter.counterfactualSetMetadataBatch(STD, address(token), 1, empty), published, "setMetadataBatch");
+        assertEq(adapter.counterfactualSetAgentWallet(STD, address(token), 1, wallet), published, "setAgentWallet");
+        assertEq(adapter.counterfactualUnsetAgentWallet(STD, address(token), 1), published, "unsetAgentWallet");
+        assertEq(adapter.counterfactualSetAgentWalletAndID(STD, address(token), 1), published, "setAgentWalletAndID");
+        assertEq(adapter.setWalletCounterfactualID(STD, address(token), 1), published, "setWalletCounterfactualID");
+        vm.stopPrank();
+    }
+
+    // ----------------------------------------------------------------
+    //  Helpers
+    // ----------------------------------------------------------------
+
+    function _assertPinned(bytes32 returned) private {
+        _assertPinnedAgainst(returned, vm.getRecordedLogs());
+    }
+
+    /// @dev `registrationHash` is the first indexed field on every counterfactual event, so
+    /// `topics[1]` is the identity the log carries.
+    function _assertPinnedAgainst(bytes32 returned, Vm.Log[] memory logs) private view {
+        assertEq(returned, adapter.registrationHash(STD, address(token), 1), "matches the published derivation");
+        assertEq(logs[0].topics[1], returned, "matches the identity its own event carries");
+    }
+}

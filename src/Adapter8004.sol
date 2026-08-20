@@ -493,12 +493,13 @@ contract Adapter8004 is
     /// @notice Update the agent URI for a counterfactual identity. The update lives entirely in the
     /// event log. A current controller may call this, as may a collection calling directly while a
     /// supported single-owner id has no current owner.
+    /// @return computedHash The identity updated, matching `registrationHash(standard, boundAddress, tokenId)`.
     function counterfactualSetAgentURI(
         TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata newURI
-    ) external nonReentrant {
+    ) external nonReentrant returns (bytes32 computedHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -506,15 +507,11 @@ contract Adapter8004 is
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
-        // 3. Emit the URI update, which is the only on-chain record this function produces.
+        // 3. Emit the URI update, which is the only on-chain record this function produces, and
+        //    hand the identity back so the caller need not recompute it.
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
         emit CounterfactualAgentURISet(
-            _registrationHash(standard, boundAddress, tokenId),
-            boundAddress,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            standard,
-            newURI,
-            msg.sender
+            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, newURI, msg.sender
         );
     }
 
@@ -522,13 +519,14 @@ contract Adapter8004 is
     /// the emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A
     /// current controller may call it, as may the token contract itself while a supported
     /// single-owner id has no current owner.
+    /// @return computedHash The identity written to, matching `registrationHash(standard, boundAddress, tokenId)`.
     function counterfactualSetMetadata(
         TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata metadataKey,
         bytes calldata metadataValue
-    ) external nonReentrant {
+    ) external nonReentrant returns (bytes32 computedHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -544,9 +542,11 @@ contract Adapter8004 is
             revert ReservedMetadataKey(metadataKey);
         }
 
-        // 4. Emit the metadata write, which is the only on-chain record this function produces.
+        // 4. Emit the metadata write, which is the only on-chain record this function produces, and
+        //    hand the identity back so the caller need not recompute it.
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
         emit CounterfactualMetadataSet(
-            _registrationHash(standard, boundAddress, tokenId),
+            computedHash,
             boundAddress,
             tokenId,
             COUNTERFACTUAL_EXTRA_DATA,
@@ -561,12 +561,14 @@ contract Adapter8004 is
     /// entries are carried only by that event, so nothing is written to the ERC-8004 registry or to
     /// adapter storage. A current controller may call it, as may the token contract itself while a
     /// supported single-owner id has no current owner.
+    /// @return computedHash The single identity every entry lands on, matching
+    /// `registrationHash(standard, boundAddress, tokenId)`.
     function counterfactualSetMetadataBatch(
         TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
-    ) external nonReentrant {
+    ) external nonReentrant returns (bytes32 computedHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -577,15 +579,12 @@ contract Adapter8004 is
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
         _requireNoReservedCounterfactualKeys(metadata);
 
-        // 4. Emit the batch, which is the only on-chain record this function produces.
+        // 4. Emit the batch, which is the only on-chain record this function produces, and hand the
+        //    identity back so the caller need not recompute it. Every entry lands on this one
+        //    identity, so one hash covers the whole batch.
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
         emit CounterfactualMetadataBatchSet(
-            _registrationHash(standard, boundAddress, tokenId),
-            boundAddress,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            standard,
-            metadata,
-            msg.sender
+            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, metadata, msg.sender
         );
     }
 
@@ -593,12 +592,13 @@ contract Adapter8004 is
     /// signature, because no ERC-8004 wallet binding is created and the event is only an off-chain
     /// claim. A current controller may call it, as may the token contract itself while a supported
     /// single-owner id has no current owner.
+    /// @return computedHash The identity updated, matching `registrationHash(standard, boundAddress, tokenId)`.
     function counterfactualSetAgentWallet(
         TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         address newWallet
-    ) external nonReentrant {
+    ) external nonReentrant returns (bytes32 computedHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -606,15 +606,11 @@ contract Adapter8004 is
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
-        // 3. Emit the wallet assignment, which is the only on-chain record this function produces.
+        // 3. Emit the wallet assignment, which is the only on-chain record this function produces,
+        //    and hand the identity back so the caller need not recompute it.
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
         emit CounterfactualAgentWalletSet(
-            _registrationHash(standard, boundAddress, tokenId),
-            boundAddress,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            standard,
-            newWallet,
-            msg.sender
+            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, newWallet, msg.sender
         );
     }
 
@@ -660,9 +656,11 @@ contract Adapter8004 is
     /// emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A current
     /// controller may call it, as may the token contract itself while a supported single-owner id has
     /// no current owner.
+    /// @return computedHash The identity cleared, matching `registrationHash(standard, boundAddress, tokenId)`.
     function counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
+        returns (bytes32 computedHash)
     {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
@@ -671,14 +669,11 @@ contract Adapter8004 is
         // 2. Apply current-controller or ownerless collection authority.
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
-        // 3. Emit the wallet clear, which is the only on-chain record this function produces.
+        // 3. Emit the wallet clear, which is the only on-chain record this function produces, and
+        //    hand the identity back so the caller need not recompute it.
+        computedHash = _registrationHash(standard, boundAddress, tokenId);
         emit CounterfactualAgentWalletUnset(
-            _registrationHash(standard, boundAddress, tokenId),
-            boundAddress,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            standard,
-            msg.sender
+            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, msg.sender
         );
     }
 

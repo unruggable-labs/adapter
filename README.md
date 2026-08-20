@@ -468,11 +468,11 @@ Plain ERC-1155 and ERC-6909 do not gain this ownerless path because neither stan
 Functions:
 
 - `counterfactualRegister(standard, boundAddress, tokenId, agentURI, metadata)` and the empty-metadata overload `counterfactualRegister(standard, boundAddress, tokenId, agentURI)`
-- `counterfactualSetAgentURI(standard, boundAddress, tokenId, newURI)`
-- `counterfactualSetMetadata(standard, boundAddress, tokenId, key, value)`
-- `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries)`
-- `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet)` (no signature because no ERC-8004 wallet binding is created)
-- `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId)`
+- `counterfactualSetAgentURI(standard, boundAddress, tokenId, newURI) -> bytes32`
+- `counterfactualSetMetadata(standard, boundAddress, tokenId, key, value) -> bytes32`
+- `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries) -> bytes32`
+- `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet) -> bytes32` (no signature because no ERC-8004 wallet binding is created)
+- `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId) -> bytes32`
 - `registrationHash(standard, boundAddress, tokenId)` (view)
 - `interoperableAddress(account)` (view)
 - `chainIdentifier()` (view)
@@ -522,6 +522,8 @@ Indexer rules:
 - the standard is a non-indexed body field on every counterfactual event, so it cannot be filtered by
   topic — filter by `registrationHash` instead, which already distinguishes standards. The on-chain
   `AgentBound.standard` is indexed and unchanged
+
+Every counterfactual function that derives an identity returns it as `bytes32`, so a caller never recomputes the hash or reads it back out of the log. The value is the same one `registrationHash` returns and the same one the emitted event carries.
 
 Reserved keys on the counterfactual write surface: `agent-binding` and `cf-registration`.
 
@@ -671,11 +673,11 @@ Counterfactual (emit-only) functions:
 
 - `counterfactualRegister(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
 - `counterfactualRegister(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI)`
-- `counterfactualSetAgentURI(TokenStandard standard, address boundAddress, uint256 tokenId, string newURI)`
-- `counterfactualSetMetadata(TokenStandard standard, address boundAddress, uint256 tokenId, string metadataKey, bytes metadataValue)`
-- `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata)`
-- `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet)`
-- `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `counterfactualSetAgentURI(TokenStandard standard, address boundAddress, uint256 tokenId, string newURI) -> bytes32`
+- `counterfactualSetMetadata(TokenStandard standard, address boundAddress, uint256 tokenId, string metadataKey, bytes metadataValue) -> bytes32`
+- `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata) -> bytes32`
+- `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet) -> bytes32`
+- `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId) -> bytes32`
 - `registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`

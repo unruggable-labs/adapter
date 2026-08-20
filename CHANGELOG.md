@@ -204,6 +204,22 @@ subsystem is emit-only, so it adds no slot at all.
   there the registry verifies a deadline-bounded EIP-712 signature scoped to that
   agent and wallet, so naming a wallet other than the caller is the point.
 
+  **Every counterfactual function that derives an identity now returns it.** The
+  five updaters, `counterfactualSetAgentURI`, `counterfactualSetMetadata`,
+  `counterfactualSetMetadataBatch`, `counterfactualSetAgentWallet` and
+  `counterfactualUnsetAgentWallet`, each already derived the hash for the event
+  they emit and dropped it; each now returns it as `computedHash`, the same name
+  `counterfactualRegister` and the wallet-id setters use. No new derivation was
+  added anywhere: the value was already being computed, so this costs nothing but
+  the return data. Return types are not part of the selector, so existing callers
+  dispatch identically and anything ignoring the return keeps ignoring it. The
+  batch returns one hash because every entry lands on the one identity its
+  coordinates name, which is what the code does rather than what the name implies.
+
+  This closes the inconsistency where `counterfactualSetAgentWallet` and
+  `counterfactualSetAgentWalletAndID` sat next to each other doing the same
+  forward write and differed in return type.
+
   `counterfactualSetAgentWalletAndID` returns the `bytes32` identity it derived,
   matching its sibling `setWalletCounterfactualID`. It takes coordinates rather
   than a hash because `_requireTokenAuthority` checks authority against the token
