@@ -220,6 +220,27 @@ size, not gas.
 
 ### Changed
 
+- **The ERC-7930 encoder is now differentially tested against OpenZeppelin and
+  against the spec.** `ReferenceErc7930` proves the word-aligned rewrite is
+  faithful to the code it replaced, but it cannot prove that code ever read
+  ERC-7930 correctly: a misreading present in both would agree with itself and
+  every identity this contract issues would be wrong the same way.
+
+  Added, all test-only: a differential fuzz against OpenZeppelin 5.6.1's
+  `draft-InteroperableAddress` on both shapes with the reference length picked
+  explicitly rather than sampled; the real chain ids and both fast-path handoffs
+  held against it; a round trip through its `parseEvmV1`, which is what a third
+  party integrating with these identifiers will actually run; and the three EVM
+  reference examples from the ERC-7930 text pinned as exact bytes, asserted
+  against both encoders so a mis-transcribed literal fails rather than agreeing.
+
+  Everything agrees. The one candidate divergence, the trailing `AddressLength`
+  byte on the address-free form, is settled by OpenZeppelin's own source, which
+  appends `uint8(0)` exactly as this contract does, and by spec example 6.
+
+  The library stays out of `src/`, so runtime size is unchanged, and it was
+  already in the test build, so it costs nothing new.
+
 - **`_erc7930AddressFor` is word-aligned.** The ERC-7930 envelope is now built
   with a single `MSTORE` for every case that fits in a 32-byte word, instead of up
   to twenty-six bounds-checked byte writes. The byte-at-a-time loop is kept as the

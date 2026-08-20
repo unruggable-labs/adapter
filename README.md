@@ -771,6 +771,13 @@ The Foundry suite currently covers:
 - metadata and URI updates
 - wallet-binding pass-through with valid and invalid ERC-8004 signatures
 - the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
+- the ERC-7930 encoder held against three independent oracles: `ReferenceErc7930`, the pre-rewrite
+  byte-at-a-time encoder kept verbatim, which proves the word-aligned rewrite changed nothing;
+  OpenZeppelin's `draft-InteroperableAddress`, an independent reading of the same spec, differentially
+  fuzzed on both shapes across all 32 reference lengths and round-tripped through its parser; and the
+  three EVM reference examples from the ERC-7930 text itself, pinned as exact bytes. The first proves
+  faithfulness, the second and third prove the reading of the spec was right, and they answer
+  different questions
 - the attestation surface: the identifier pinned against precomputed vectors rather than round trips,
   the `AttestationType` enum numbering pinned member by member, out-of-range types refused by the ABI
   decoder rather than by a guard,

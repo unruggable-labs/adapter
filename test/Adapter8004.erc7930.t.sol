@@ -647,33 +647,134 @@ contract Adapter8004ERC7930Test is Test {
         assertEq(harness.registrationHashFor(adapterAddress, standard, VECTOR_TOKEN, 42), expected);
     }
 
-    /// @dev These two tests compare the local ERC-7930 encoder against OpenZeppelin's, which is used
-    /// nowhere in production and deliberately so. The encoding is the counterfactual identity
-    /// preimage, so taking it from a library would mean a routine dependency bump could re-key every
-    /// counterfactual identity that has ever been emitted. Keeping our own copy makes that
-    /// impossible, and these tests are what stops the copy drifting in silence: they hold it against
-    /// the ecosystem reference. If they ever fail, the question is not which implementation to
-    /// change. It is whether ERC-7930 itself moved, and every existing identity depends on the
-    /// answer. Do not delete these as unused, and do not resolve a failure by switching production
-    /// to the library.
-    function testEncodingMatchesOpenZeppelinReference() external view {
-        uint256[4] memory chainIds = [uint256(1), 8453, 11155111, 424242];
-        address account = 0x1111111111111111111111111111111111111111;
+    // ----------------------------------------------------------------
+    //  Differential against OpenZeppelin, and against the ERC-7930 spec
+    // ----------------------------------------------------------------
+    //  `ReferenceErc7930` above proves the word-aligned rewrite is faithful to the code it replaced.
+    //  It cannot prove that code ever read ERC-7930 correctly: if the first implementation misread
+    //  the spec, both agree and both are wrong, and every identity this contract issues is wrong the
+    //  same way. Self-consistency is not correctness. These tests answer the other question, against
+    //  an independent implementation by different authors from the same spec.
+    //
+    //  OpenZeppelin's library is used nowhere in production and deliberately so: the encoding is the
+    //  identity preimage, so taking it from a dependency would mean a routine bump could re-key every
+    //  identity ever emitted. It stays a test-only oracle. If these ever fail the question is not
+    //  which implementation to change — it is whether ERC-7930 moved, and every existing identity
+    //  depends on the answer. Do not delete them as unused, and do not resolve a failure by switching
+    //  production to the library.
 
-        for (uint256 i = 0; i < chainIds.length; i++) {
+    /// @dev The three EVM reference examples from the ERC-7930 text, pinned as exact bytes. These are
+    /// the strongest check available, because they come from the spec authors rather than from any
+    /// implementation. OpenZeppelin's own test suite carries the same examples, but as checksummed
+    /// human-readable names decoded by a JavaScript library rather than as literals, so the bytes are
+    /// written out here. Each is asserted against our encoder AND against OpenZeppelin's, so a
+    /// mistake in transcribing the literal fails rather than silently agreeing with us.
+    function testErc7930SpecReferenceExamples() external view {
+        address vitalik = 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045;
+
+        // Example 1: Ethereum mainnet address. `0xd8dA…6045@eip155:1`
+        bytes memory example1 = hex"00010000010114d8da6bf26964af9d7eed9e03e53415d37aa96045";
+        assertEq(harness.interoperableAddressFor(1, vitalik), example1, "spec example 1");
+        assertEq(InteroperableAddress.formatEvmV1(1, vitalik), example1, "spec example 1, OZ agrees");
+
+        // Example 5: Arbitrum One address. `0xd8dA…6045@eip155:42161`, reference 0xA4B1.
+        bytes memory example5 = hex"0001000002a4b114d8da6bf26964af9d7eed9e03e53415d37aa96045";
+        assertEq(harness.interoperableAddressFor(42161, vitalik), example5, "spec example 5");
+        assertEq(InteroperableAddress.formatEvmV1(42161, vitalik), example5, "spec example 5, OZ agrees");
+
+        // Example 6: Ethereum mainnet, no address. `@eip155:1`. This is the shape whose trailing
+        // AddressLength byte was the obvious candidate for a divergence; the spec, OpenZeppelin and
+        // this contract all carry the explicit zero.
+        bytes memory example6 = hex"00010000010100";
+        assertEq(harness.chainIdentifierFor(1), example6, "spec example 6");
+        assertEq(InteroperableAddress.formatEvmV1(1), example6, "spec example 6, OZ agrees");
+    }
+
+    /// @dev Reference length picked explicitly rather than left to the fuzzer, for the same reason as
+    /// the `ReferenceErc7930` fuzz above: a raw `uint256` is almost always 32 bytes long, so an
+    /// unconstrained fuzz would spend nearly every run on one length and leave the short references
+    /// every real chain actually uses barely sampled.
+    function testFuzzOpenZeppelinDifferentialWithAddress(uint256 seed, uint8 lengthPick, address account)
+        external
+        view
+    {
+        uint256 l = bound(lengthPick, 1, 32);
+        uint256 chainId = _chainIdOfLength(seed, l);
+
+        bytes memory ours = harness.interoperableAddressFor(chainId, account);
+        assertEq(ours.length, l + 26, "premise: the fuzz built the reference length it intended");
+        assertEq(ours, InteroperableAddress.formatEvmV1(chainId, account), "must match OpenZeppelin");
+    }
+
+    function testFuzzOpenZeppelinDifferentialChainIdentifierOnly(uint256 seed, uint8 lengthPick) external view {
+        uint256 l = bound(lengthPick, 1, 32);
+        uint256 chainId = _chainIdOfLength(seed, l);
+
+        bytes memory ours = harness.chainIdentifierFor(chainId);
+        assertEq(ours.length, l + 6, "premise: the fuzz built the reference length it intended");
+        assertEq(ours, InteroperableAddress.formatEvmV1(chainId), "must match OpenZeppelin");
+    }
+
+    /// @dev The chain ids that matter and the two handoffs, held against OpenZeppelin on both shapes.
+    /// `L == 6/7` is where the address shape crosses from the single-word fast path to the fallback;
+    /// `L == 26/27` is where the bare shape does. A divergence that only appeared on one side of a
+    /// branch is exactly what a uniform fuzz would be least likely to surface.
+    function testOpenZeppelinDifferentialAtRealChainIdsAndHandoffs() external view {
+        uint256[9] memory ids = [
+            uint256(1), // Ethereum
+            8453, // Base
+            11155111, // Sepolia
+            42161, // Arbitrum One
+            0xFFFFFFFFFFFF, // L == 6, last of the address-shape fast path
+            0x01000000000000, // L == 7, first of the address-shape fallback
+            (uint256(1) << 208) - 1, // L == 26, last of the bare-shape fast path
+            uint256(1) << 208, // L == 27, first of the bare-shape fallback
+            type(uint256).max // L == 32, both shapes on the fallback
+        ];
+        address account = 0x1234567890AbcdEF1234567890aBcdef12345678;
+
+        for (uint256 i; i < ids.length; ++i) {
             assertEq(
-                harness.interoperableAddressFor(chainIds[i], account),
-                InteroperableAddress.formatEvmV1(chainIds[i], account)
+                harness.interoperableAddressFor(ids[i], account),
+                InteroperableAddress.formatEvmV1(ids[i], account),
+                "address shape"
             );
-            assertEq(harness.chainIdentifierFor(chainIds[i]), InteroperableAddress.formatEvmV1(chainIds[i]));
+            assertEq(harness.chainIdentifierFor(ids[i]), InteroperableAddress.formatEvmV1(ids[i]), "bare shape");
         }
     }
 
-    function testFuzzEncodingMatchesOpenZeppelinReference(uint256 chainId, address account) external view {
-        vm.assume(chainId != 0);
-        bytes memory ozEncoded = InteroperableAddress.formatEvmV1(chainId, account);
-        assertEq(harness.interoperableAddressFor(chainId, account), ozEncoded);
-        assertEq(harness.chainIdentifierFor(chainId), InteroperableAddress.formatEvmV1(chainId));
+    /// @dev The check that matters most in practice: an integrator holding one of our identifiers
+    /// will run a parser over it, and OpenZeppelin's is the one they are most likely to reach for.
+    /// Encoding agreement is necessary but not sufficient — this asserts the value survives the round
+    /// trip and comes back as the chain id and address that went in.
+    function testFuzzRoundTripThroughOpenZeppelinParser(uint256 seed, uint8 lengthPick, address account)
+        external
+        view
+    {
+        uint256 l = bound(lengthPick, 1, 32);
+        uint256 chainId = _chainIdOfLength(seed, l);
+
+        (uint256 parsedChainId, address parsedAccount) =
+            InteroperableAddress.parseEvmV1(harness.interoperableAddressFor(chainId, account));
+        assertEq(parsedChainId, chainId, "chain id survives the round trip");
+        assertEq(parsedAccount, account, "address survives the round trip");
+
+        // The bare shape parses too, as an EVM chain with no address, which is what a consumer
+        // distinguishing a chain identifier from a full address will rely on.
+        (bool ok, uint256 bareChainId, address bareAccount) =
+            InteroperableAddress.tryParseEvmV1(harness.chainIdentifierFor(chainId));
+        assertTrue(ok, "chain identifier is a valid ERC-7930 value");
+        assertEq(bareChainId, chainId, "chain id survives the round trip");
+        assertEq(bareAccount, address(0), "and carries no address");
+    }
+
+    /// @dev The identifiers this contract actually issues are built over the adapter's own envelope,
+    /// so the round trip is asserted on that too rather than only on synthetic inputs.
+    function testLiveAdapterEnvelopeRoundTripsThroughOpenZeppelin() external view {
+        (uint256 chainId, address parsed) =
+            InteroperableAddress.parseEvmV1(adapter.interoperableAddress(address(adapter)));
+        assertEq(chainId, block.chainid);
+        assertEq(parsed, address(adapter));
     }
 
     /// @dev The one place the two implementations deliberately disagree, recorded so it is not later
