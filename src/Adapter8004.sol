@@ -30,32 +30,14 @@ interface IOwnableContract {
 }
 
 /// @notice Upgrade target for the active Adapter8004 proxies.
-/// @dev Storage layout, which is what an upgrade reviewer should check first. Regular slot 0 is
-/// `identityRegistry` and slot 1 is `_bindings`; both are carried from the deployed baseline, which
-/// uses those two slots and nothing else. Slots 2 through 4 hold the three primary-agent mappings.
-/// The layout is append-only: add new state after slot 4, and never reorder, insert or repurpose an
-/// existing slot. No slots are reserved and there is no storage gap, so nothing is set aside to
-/// consume. Upgrading a live proxy needs no migration and no reinitializer, and must use empty
-/// `upgradeToAndCall` data.
-///
-/// Counterfactual identities are keyed by a `registrationHash` over the ERC-7930 interoperable
-/// address of this proxy, the `TokenStandard` as its `uint8`, the bound address, the token id, and a
-/// `bytes32 extraData` discriminator. `extraData` is a `constant` fixed at `bytes32(0)`, so it
-/// occupies no storage, and every triple that hashes with zero hashes identically from here on.
-/// Because the standard is in the preimage, one `(boundAddress, tokenId)` claimed under two
-/// standards is two identities rather than one, so a claimant's history can never land on another
-/// claimant's identity. That preimage does not match the one a live proxy computes today, so
-/// upgrading one is a hard cutover for any indexer consuming counterfactual events: move it to this
-/// ABI and reindex before upgrading. `Binding` rows and full ERC-8004 registrations are not keyed by
-/// this hash and are unaffected. See CHANGELOG.md for the cutover detail and for anything this
-/// implementation changed relative to a deployed one.
-///
-/// The ERC-7930 envelope inside that hash is produced by OpenZeppelin's `InteroperableAddress`, not
-/// by this contract. That is worth knowing before touching the dependency: the library's file is
-/// `draft-` prefixed, so its encoding carries no stability guarantee across releases, and it is the
-/// preimage of every counterfactual `registrationHash` and every `attestationId` this contract
-/// issues. A submodule bump that changed the encoding would re-key every identity silently. See
-/// `test/Adapter8004.erc7930-frozen.t.sol`, which exists to turn that into a loud test failure.
+/// @dev Regular storage ends at slot 4 and is append-only, so a live proxy upgrades with empty
+/// `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
+/// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId,
+/// extraData))`, a different preimage from the one live proxies compute today, so upgrading one is a
+/// hard cutover for any indexer reading counterfactual events, detailed in CHANGELOG.md. That
+/// envelope comes from OpenZeppelin's `draft-` prefixed `InteroperableAddress`, which carries no
+/// encoding stability guarantee, so read `testOpenZeppelinEncodingIsFrozen` before bumping the
+/// submodule.
 /// @custom:version 0.0.17
 contract Adapter8004 is
     Initializable,
@@ -74,13 +56,10 @@ contract Adapter8004 is
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
-    /// @notice Reserved metadata key. Nothing writes it today, including this contract.
-    ///
-    /// It is held open for a possible future flow that records which counterfactual claim an
-    /// on-chain registration was promoted from. That flow does not exist and may never be built.
-    /// The key is reserved regardless, so that if it ever is, no caller has already written a false
-    /// provenance claim under it. Every write path that accepts caller metadata rejects this key:
-    /// all counterfactual writes, and the canonical `register`, `setMetadata` and `setMetadataBatch`.
+    /// @notice Reserved metadata key, unwritten by this contract and rejected on every write path
+    /// that accepts caller metadata. It is held for a possible future flow recording which
+    /// counterfactual claim an on-chain registration was promoted from. Reserving it now means that
+    /// if that flow is ever built, no caller has already written a false provenance claim under it.
     string public constant CF_REGISTRATION_KEY = "cf-registration";
     bytes32 private constant CF_REGISTRATION_KEY_HASH = keccak256(bytes(CF_REGISTRATION_KEY));
 
@@ -94,17 +73,11 @@ contract Adapter8004 is
     /// only. delegate.xyz v2 also accepts empty/full delegations when this nonzero rights value is checked.
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
 
-    /// @notice Identity discriminator folded into every counterfactual `registrationHash` and
-    /// emitted on every counterfactual event. It is reserved rather than used, and is zero in this
-    /// implementation.
-    ///
-    /// It exists so that a later implementation can separate tokens that share a
-    /// `(boundAddress, tokenId)`, such as a contract with classes of ids where Class A id 1 and
-    /// Class B id 1 are different tokens. The proxy is UUPS, so that implementation may compute
-    /// this value however it needs to. Fixing the preimage shape here is what allows it to do so
-    /// without breaking any identity again.
-    ///
-    /// @dev Never introduce a non-zero value for a pair that hashed with zero, as it re-keys a live identity.
+    /// @notice Identity discriminator folded into every counterfactual `registrationHash` and emitted
+    /// on every counterfactual event, fixed at zero in this implementation. It is reserved so a later
+    /// implementation can separate tokens that share a `(boundAddress, tokenId)`, such as a contract
+    /// whose Class A id 1 and Class B id 1 are different tokens.
+    /// @dev Introducing a non-zero value for a pair that hashed with zero re-keys a live identity.
     bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
 
     /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
@@ -226,12 +199,11 @@ contract Adapter8004 is
         identityRegistry = IERC8004IdentityRegistry(identityRegistry_);
     }
 
-    /// @notice Repoint the ERC-8004 registry that every adapter write forwards into. Owner only.
-    /// @dev This is the highest-impact administrative action on the contract. Existing bindings are
-    /// untouched, but they name agent ids that only mean anything in the old registry, so every
-    /// already-bound agent resolves against a registry that may not know it. Point this at a registry
-    /// that does not hold the existing identities and the bound agents become unreachable through the
-    /// adapter. Emits `IdentityRegistryUpdated`.
+    /// @notice Repoint the ERC-8004 registry that every adapter write forwards into, owner only.
+    /// @dev The highest-impact administrative action on this contract. Existing bindings are
+    /// untouched but name agent ids that mean something only in the old registry, so pointing this at
+    /// a registry that does not hold them leaves those agents unreachable through the adapter. Emits
+    /// `IdentityRegistryUpdated`.
     function setIdentityRegistry(address newIdentityRegistry) external onlyOwner nonReentrant {
         // 1. Reject an unusable registry target.
         if (newIdentityRegistry == address(0)) {
@@ -419,15 +391,13 @@ contract Adapter8004 is
         return binding;
     }
 
-    /// @notice Whether `account` may act for `agentId` right now. This is the same check every
-    /// adapter write performs.
-    /// @dev Authority is resolved live from the bound token on every call and is never stored, so the
-    /// answer can change in the same block that a token transfers or a bound contract's `owner()`
-    /// changes. A consumer must not cache it. `_hasBindingControl` carries the per-standard rules.
-    ///
-    /// A blanket delegate.xyz delegation, one naming no rights at all, is accepted even though the
-    /// owner never named `adapter8004.manage`. The registry offers no way to ask for a scoped-only
-    /// match, so this cannot be narrowed on-chain.
+    /// @notice Whether `account` may act for `agentId` right now, the same check every adapter write
+    /// performs.
+    /// @dev Authority resolves live from the bound token on every call, so the answer can change in
+    /// the same block a token transfers or a bound contract's `owner()` changes, and a consumer must
+    /// treat it as uncacheable. `_hasBindingControl` carries the per-standard rules. A blanket
+    /// delegate.xyz delegation, one naming no rights at all, is accepted, because the registry offers
+    /// no way to ask for a scoped-only match.
     function isController(uint256 agentId, address account) external view returns (bool) {
         // 1. Load the binding that defines who controls this agent.
         Binding memory binding = _bindings[agentId];
@@ -449,11 +419,10 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     // COUNTERFACTUAL FUNCTIONS
     // -----------------------------------------------------------------
-    // Emit-only mirrors of the on-chain register surface. They write nothing to adapter storage and
-    // make no ERC-8004 registry calls, so a claim can never be withdrawn, only superseded by a later
-    // event. Authority matches the on-chain surface, plus the temporary
-    // ownerless-collection route documented below. `IERC8004AdapterCounterfactual` states the rule
-    // that consumers must key on `registrationHash` rather than on `(boundAddress, tokenId)`.
+    // Emit-only mirrors of the on-chain register surface, writing no adapter storage and making no
+    // ERC-8004 registry calls, so a later event supersedes a claim rather than withdrawing it.
+    // Authority matches the on-chain surface plus the ownerless-collection route documented below.
+    // `IERC8004AdapterCounterfactual` states that consumers key on `registrationHash`.
     // -----------------------------------------------------------------
 
     function registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)
@@ -474,10 +443,10 @@ contract Adapter8004 is
         return _chainIdentifier();
     }
 
-    /// @notice Announce an identity claim for a bound address. The claim lives entirely in the event
-    /// log. A current controller may call this, as may a collection calling directly while one of its
-    /// ERC-721, ERC-1155F or ERC-6909F ids has no current owner. The same authority may re-emit any
-    /// number of times. Collection-authorized events set `emitter = boundAddress`.
+    /// @notice Announce an identity claim for a bound address, recorded entirely in the event log. A
+    /// current controller may call this, as may a collection calling directly while one of its
+    /// ERC-721, ERC-1155F or ERC-6909F ids has no current owner. Collection-authorized events set
+    /// `emitter = boundAddress`, and the same authority may re-emit any number of times.
     function counterfactualRegister(
         TokenStandard standard,
         address boundAddress,
@@ -795,25 +764,13 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     //  ATTESTATIONS
     // -----------------------------------------------------------------
-    // Emit-only statements about counterfactual identities. Nothing here writes storage, decodes a
-    // payload, resolves a target, or makes a call of any kind, so the whole subsystem is three
-    // wrappers over two internals and the layout still ends at slot 4.
-    //
-    // The caller is always the attester, and there is deliberately no acting-for path and no
-    // submitter field. A controller participates by causing the account itself to make the call, so
-    // the account is still `msg.sender`; nothing can manufacture an account's consent from outside
-    // it. The stated cost is that an account which cannot make outbound calls cannot attest.
-    //
-    // These functions carry no `nonReentrant`, unlike the counterfactual emit-only surface. That is
-    // deliberate and is not an oversight to be tidied up later: the guard exists to bound what can
-    // happen across an external call, and these functions make none. Adding it would spend roughly
-    // 2,900 gas per call to protect against nothing. See `docs/specs/attestation-type-registry-v1.md`
-    // and the CHANGELOG entry, and note that a test asserts the surface stays reentrant-callable.
-    //
-    // The type is an `AttestationType` enum, so the set is closed and adding one is an upgrade. Its
-    // numbering is identity-critical, because the `uint8` sits in the identifier preimage; the rule
-    // is on the enum in `IERC8004AdapterAttestation`. A value outside the enum never reaches this
-    // code: the ABI decoder rejects it first, so a garbage type is refused without a check.
+    // Emit-only statements about counterfactual identities, so the layout still ends at slot 4. The
+    // caller is always the attester, and a controller participates by causing the account itself to
+    // call. These functions make no external call, so they carry no `nonReentrant`, and a test holds
+    // them callable inside a guarded frame. `AttestationType` numbering is identity-critical because
+    // the `uint8` sits in the identifier preimage, with the rule on the enum in
+    // `IERC8004AdapterAttestation` and the semantics in
+    // `docs/specs/attestation-type-registry-v1.md`.
     // -----------------------------------------------------------------
 
     /// @inheritdoc IERC8004AdapterAttestation
@@ -845,11 +802,10 @@ contract Adapter8004 is
         if (cfid == bytes32(0)) revert AttestationTargetZero();
 
         // 2. Derive the identifier. `block.number` keeps identical statements in different blocks
-        //    distinct, so revoking one of a monitor's repeated pings erases one ping and not its
-        //    whole history; `variant` is the caller's opt-in within-block counterpart. The
+        //    distinct, so revoking one of a monitor's repeated pings erases that ping and leaves the
+        //    rest of its history, and `variant` is the caller's opt-in within-block counterpart. The
         //    interoperable address binds the identifier to this adapter on this chain, exactly as
-        //    `registrationHash` binds. There is no domain constant: nothing here is signed, and the
-        //    two preimages cannot collide because their encodings differ in length by construction.
+        //    `registrationHash` binds.
         bytes32 attestationId = keccak256(
             abi.encode(
                 _interoperableAddress(address(this)), msg.sender, cfid, attestationType, block.number, variant, data
@@ -959,15 +915,12 @@ contract Adapter8004 is
         return _hasDefaultAdminRole(account, caller);
     }
 
-    /// @dev Fail-closed AccessControl probe for `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`. Shared by
-    /// the account-control check above and the `CONTRACT_ADMIN` binding standard, so both agree on
-    /// what holding the role means.
-    ///
-    /// The result is decoded as a raw word rather than as a `bool` because a contract may return a
-    /// value outside `0` and `1` for a `bool` return. `abi.decode(ret, (bool))` reverts on such a
-    /// value, which would let a non-conforming contract break the authority check rather than simply
-    /// fail it. Any non-zero word is treated as holding the role. A contract that does not implement
-    /// `hasRole` at all, or answers with the wrong length, grants nobody.
+    /// @dev Fail-closed AccessControl probe for `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, shared
+    /// by the account-control check above and the `CONTRACT_ADMIN` standard so both agree on what
+    /// holding the role means. The result is read as a raw word rather than decoded as a `bool`,
+    /// because `abi.decode(ret, (bool))` reverts on a word outside `0` and `1` and would let a
+    /// non-conforming contract break the check rather than fail it. Any non-zero word grants the
+    /// role. A missing `hasRole`, or an answer of the wrong length, grants nobody.
     function _hasDefaultAdminRole(address target, address account) private view returns (bool) {
         (bool ok, bytes memory ret) =
             target.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), account));
@@ -995,34 +948,13 @@ contract Adapter8004 is
         newImplementation;
     }
 
-    /// @dev Validates the bound address for a given standard. Two rules, with different scopes.
-    ///
-    /// The runtime-code requirement applies to every standard except `ACCOUNT`. The seven that need
-    /// it all call into the bound address: `ownerOf` or `balanceOf` for the token standards,
-    /// `owner()` for `CONTRACT_OWNABLE`, and `hasRole` for `CONTRACT_ADMIN`. Every one of those
-    /// probes already fails closed against a code-less address, because a staticcall to an address
-    /// with no code succeeds and returns nothing, and each probe rejects a response that is not
-    /// exactly 32 bytes. So this check produces a precise error early rather than standing as the
-    /// only thing preventing an EOA from masquerading as a collection. For those seven it also means
-    /// calls from the bound contract's constructor stay unsupported, since runtime code is not
-    /// installed yet. `ACCOUNT` is the exception: a contract binding itself as `ACCOUNT` from its own
-    /// constructor now succeeds, because `msg.sender` is already its final address and no code test
-    /// stands in the way.
-    ///
-    /// `ACCOUNT` is exempt because it never calls the bound address. Its authority is the single
-    /// comparison `account == boundAddress`, which is well defined whether or not the address has
-    /// code, so there is nothing for a code test to protect. Requiring code there would not even
-    /// select for EOAs: under EIP-7702 a delegated EOA carries a 23-byte designator and passes,
-    /// while the same address before or after that delegation does not.
-    ///
-    /// The zero address is rejected under every standard, `ACCOUNT` included. `_bindings` uses a
-    /// zero `boundAddress` as its unbound sentinel, so a zero binding would be indistinguishable
-    /// from no binding and would make `bindingOf` and `UnknownAgent` lie. Nothing could authorize it
-    /// in any case, since `msg.sender` is never the zero address.
-    ///
-    /// The registry rejection applies to every standard. Binding the registry would let
-    /// `_hasBindingControl` resolve to the adapter post-bind, permanently locking the agent away
-    /// from any external controller.
+    /// @dev Validates the bound address. Runtime code is required under every standard except
+    /// `ACCOUNT`, whose authority is the single comparison `account == boundAddress` and so never
+    /// calls the address, which is what lets a contract bind itself as `ACCOUNT` from its own
+    /// constructor. The zero address is rejected under every standard, because `_bindings` uses a
+    /// zero `boundAddress` as its unbound sentinel. The identity registry is rejected because
+    /// binding it would let `_hasBindingControl` resolve to the adapter post-bind and lock the agent
+    /// away from any external controller.
     function _requireValidBoundAddress(TokenStandard standard, address boundAddress) internal view {
         if (boundAddress == address(0)) {
             revert InvalidBoundAddress();
@@ -1065,22 +997,13 @@ contract Adapter8004 is
     }
 
     /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
-    /// (1) the existing current-controller model, which for account-level bindings resolves the authority
-    /// that standard defines, or (2) temporary collection authority when the direct caller is
-    /// the ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
-    /// The latter window reopens after a burn if `ownerOf` again reverts or returns zero; preventing
-    /// that would require historical-existence storage.
-    ///
-    /// Every mode compares the adapter's immediate EVM caller against `boundAddress`, so a router,
-    /// forwarder, or multicall that calls the adapter itself cannot stand in for the bound address.
-    /// An external owner or governance address may still drive this by calling an entry point on the
-    /// bound contract that makes the outbound adapter call. `delegatecall` into this contract is
-    /// unsupported and dangerous: it is a UUPS implementation with its own storage layout.
-    /// For an `ACCOUNT` binding held by a contract that also means the permanent authority is worth
-    /// nothing without a repeatable outbound path: a contract that cannot call out cannot bind at all,
-    /// and one with a single hook binds once and then freezes. That hook may be the constructor, since
-    /// `ACCOUNT` applies no code test. An externally owned account has no such constraint, because
-    /// sending a transaction is itself the outbound path.
+    /// the current-controller model, which for account-level bindings resolves the authority that
+    /// standard defines, or temporary collection authority when the direct caller is the
+    /// ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
+    /// That window reopens after a burn, since closing it would require historical-existence storage.
+    /// Every mode compares the adapter's immediate EVM caller, so a router, forwarder or multicall
+    /// that calls the adapter acts as itself. `delegatecall` into this contract is unsupported and
+    /// dangerous, because it is a UUPS implementation with its own storage layout.
     function _requireTokenAuthority(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
@@ -1096,14 +1019,12 @@ contract Adapter8004 is
         _requireBindingControl(standard, boundAddress, tokenId, account);
     }
 
-    /// @dev The three account-level standards name the address itself rather than a token within it, so
-    /// each has exactly one canonical coordinate: `tokenId == 0`. Enforced in `_requireTokenAuthority`,
-    /// which every write passes through, and again in `_requireBindingControl`. The second is now
-    /// defence in depth rather than a distinct gate, because every path into `_requireBindingControl`
-    /// arrives via `_requireTokenAuthority`, which has already checked. It is kept so a future direct
-    /// caller cannot bypass the rule. Reverts rather than coercing a nonzero id to `0`:
-    /// silent coercion would hand the caller a binding and a `registrationHash` that do not match the
-    /// id they submitted. No-op for every other standard.
+    /// @dev The three account-level standards name the address itself rather than a token within it,
+    /// so each has exactly one canonical coordinate, `tokenId == 0`. Enforced in
+    /// `_requireTokenAuthority`, which every write passes through, and again in
+    /// `_requireBindingControl` so a future direct caller stays covered. A nonzero id reverts rather
+    /// than being coerced, since coercion would hand the caller a binding and a `registrationHash`
+    /// that do not match the id they submitted.
     function _requireCanonicalTokenId(TokenStandard standard, address boundAddress, uint256 tokenId) internal pure {
         if (_isAccountStandard(standard) && tokenId != 0) {
             revert NonZeroTokenIdForAccount(boundAddress, tokenId);
@@ -1142,55 +1063,28 @@ contract Adapter8004 is
         view
         returns (bool)
     {
-        // 1. An account-level binding names `boundAddress` itself rather than a token within it, so
-        //    the bound address is the controller and nobody else is. There is no per-token owner or
-        //    holder to resolve, and the adapter asks the address nothing: `ownerOf` and both
-        //    `balanceOf` shapes are never probed on this branch, and `tokenId` is not consulted (it is
-        //    pinned to 0 at the choke points above). Anything the bound address exposes itself, whether
-        //    an `owner()`, a token balance or a role, carries no authority here, and neither does the
-        //    adapter admin. Nor does a delegate.xyz delegate of the bound address, which is pinned by
-        //    `testAccountGrantsNoDelegationRoute`.
-        //    The transient single-owner collection window in `_requireTokenAuthority` closes as soon
-        //    as the id is minted and can reopen on burn. This authority never closes:
-        //    there is no token whose ownership could change hands, so the bound address is the
-        //    permanent controller of the agents it binds, before and after binding, and its latest
-        //    write to a mutable registry field wins. Deliberately not part of
-        //    `_isSingleOwnerStandard`, so it gets no ownerless-window probe.
-        //    It is also the one standard with an identifiable controller that is offered no
-        //    delegation route. Delegation is offered where the delegator is an ordinary account,
-        //    which is what delegate.xyz is built for. A contract delegating on its own behalf cannot
-        //    revoke without the same executor it used to delegate, so a single governance action
-        //    could grant authority that nobody can later withdraw. Bind `CONTRACT_OWNABLE` instead
-        //    if delegation is wanted, where the delegator is the owner account.
-        //    (An ERC-20 binding its own contract-level identity through `ACCOUNT` is the motivating
-        //    example, but nothing here is specific to tokens.)
+        // 1. An account-level binding names `boundAddress` itself, so the bound address is the sole
+        //    controller and the adapter asks it nothing: `ownerOf` and both `balanceOf` shapes go
+        //    unprobed, and `tokenId` is pinned to 0 at the choke points above. Whatever the address
+        //    exposes, an `owner()`, a balance or a role, carries authority elsewhere rather than
+        //    here, as do the adapter admin and any delegate.xyz delegate, which
+        //    `testAccountGrantsNoDelegationRoute` pins. This authority is permanent, because there is
+        //    no token whose ownership could change hands, so the bound address stays the controller
+        //    of the agents it binds and its latest write to a mutable registry field wins. It sits
+        //    outside `_isSingleOwnerStandard`, so it gets no ownerless-window probe.
         if (standard == TokenStandard.ACCOUNT) {
             return account == boundAddress;
         }
 
-        // 2. `CONTRACT_OWNABLE` is the fourth member of the owner-and-delegate pattern described at
-        //    step 4. It resolves the contract's live `owner()` and accepts either that owner acting
-        //    directly or a delegate of that owner. The bound contract itself has no authority here,
-        //    which is what separates this standard from `ACCOUNT`. Self-authority would be an
-        //    escalation route around the owner, because any contract with a generic call mechanism,
-        //    an upgradeable implementation or an inducible callback could seize its own identity
-        //    without the owner acting. A contract that wants to control its own identity should bind
-        //    as `ACCOUNT`, which is step 1.
-        //    The owner probe is a fail-closed STATICCALL, so a revert, a wrong-length response, dirty
-        //    upper bits or a zero owner resolves to no owner and grants nobody. That is why
-        //    `renounceOwnership()` permanently freezes a `CONTRACT_OWNABLE` identity: with no owner
-        //    there is nobody left to authorize, and renouncing ownership means giving up control.
-        //    Resolving live means a former owner's delegation stops conferring authority in the same
-        //    transaction that ownership moves.
-        //    The delegation check is contract-scoped rather than token-scoped. A contract binding
-        //    pins `tokenId` to 0, where it exists only as an input to the counterfactual hash and
-        //    never as a reference to a token. A token-scoped check would therefore test a delegation
-        //    against something that does not exist, and for a bound contract that is also an NFT
-        //    collection it would let a delegation covering token id 0 confer authority over the whole
-        //    contract. `checkDelegateForContract` still cascades up to wallet-level delegations,
-        //    which is the case this wants.
-        //    This standard remains outside the single-owner token set, so it gets no
-        //    ownerless-collection window.
+        // 2. `CONTRACT_OWNABLE` resolves the contract's live `owner()` and accepts that owner acting
+        //    directly or a delegate of that owner, while the bound contract itself carries authority
+        //    only under `ACCOUNT`. The owner probe is a fail-closed STATICCALL, so a revert, a
+        //    wrong-length response, dirty upper bits or a zero owner grants nobody, which is why
+        //    `renounceOwnership()` permanently freezes such an identity. Resolving live means a
+        //    former owner's delegation stops conferring authority in the same transaction ownership
+        //    moves. The delegation check is contract-scoped, because a contract binding pins
+        //    `tokenId` to 0 and a token-scoped check would let a delegation covering token id 0
+        //    confer authority over the whole contract.
         if (standard == TokenStandard.CONTRACT_OWNABLE) {
             address contractOwner = _currentContractOwner(boundAddress);
             if (contractOwner == address(0)) {
@@ -1203,18 +1097,12 @@ contract Adapter8004 is
         }
 
         // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Authority
-        //    belongs to holders of `DEFAULT_ADMIN_ROLE` and to nobody else, including the bound
-        //    contract itself, for the same reason given at step 2. The role is read on every call, so
-        //    revoking it removes authority immediately.
-        //    This closes an asymmetry the contract already had. `_controlsAccount`, which gates the
-        //    primary-agent surface, has always accepted a `DEFAULT_ADMIN_ROLE` holder, so an admin
-        //    could set that contract's primary agent while being unable to manage an identity bound
-        //    to it.
-        //    It is deliberately not a member of the owner-and-delegate pattern at step 2 and step 4.
-        //    Delegation there means resolving one owner and then asking the registry about that
-        //    owner. A role is a membership predicate that many addresses can satisfy and none can
-        //    enumerate, so there is no well-defined delegator to name. Direct authority only, by
-        //    design rather than by omission.
+        //    belongs to holders of `DEFAULT_ADMIN_ROLE`, read on every call, so revoking the role
+        //    removes authority immediately. It matches `_controlsAccount`, which has always accepted
+        //    an admin, closing an asymmetry where an admin could set a contract's primary agent but
+        //    not manage an identity bound to it. Direct authority only: a role is a membership
+        //    predicate that many addresses satisfy and none can enumerate, so there is no
+        //    well-defined delegator for delegate.xyz to name.
         if (standard == TokenStandard.CONTRACT_ADMIN) {
             return _hasDefaultAdminRole(boundAddress, account);
         }
@@ -1257,9 +1145,8 @@ contract Adapter8004 is
     /// @dev Fail-closed EIP-173 owner probe for the opt-in `CONTRACT_OWNABLE` standard. The typed
     /// interface pins `owner()` as `view`, and the low-level `staticcall` makes that read-only at the
     /// EVM level. Only exactly one clean ABI address word is accepted. Returns the zero address when
-    /// the contract reports no usable owner, which every caller must read as nobody rather than as an
-    /// owner of zero. In particular the delegation check must never run with a zero delegator, since
-    /// that would ask the registry about an account nobody controls.
+    /// the contract reports no usable owner, which every caller reads as nobody, so the delegation
+    /// check always runs with a real delegator.
     function _currentContractOwner(address boundAddress) private view returns (address) {
         (bool success, bytes memory result) = boundAddress.staticcall(abi.encodeCall(IOwnableContract.owner, ()));
         if (!success || result.length != 32) {
@@ -1360,32 +1247,14 @@ contract Adapter8004 is
         return _erc7930AddressFor(chainId, account, true);
     }
 
-    /// @dev ERC-7930 v1 encoding, delegated to OpenZeppelin's `InteroperableAddress`.
-    ///
-    /// This contract carried its own encoder until `0.0.17`. **The output is unchanged**: both
-    /// former encoders are frozen in `test/Adapter8004.erc7930.t.sol` and the published fixture
-    /// vectors are asserted against this path byte for byte, so no identity re-keys.
-    ///
-    /// On gas the swap is close to neutral and slightly negative where it matters. Measured in the
-    /// assembled contract, `registrationHash` costs 147 gas more on Ethereum and 42 more on Base than
-    /// the encoder this replaced, and 63 less on Sepolia; `attest` and `confirmAdditionalAccount`
-    /// move the same way. An earlier benchmark showed the reverse, but it was run in a small contract
-    /// where the optimizer inlined the library far more freely than it does here. What the change
-    /// does buy is one fewer hand-written encoder to keep correct, and the removal of a fallback path
-    /// that cost roughly 11,000 gas at a seven-byte chain reference.
-    ///
-    /// The dependency is load-bearing in a way an ordinary one is not. This encoding is the preimage
-    /// of every counterfactual `registrationHash` and every `attestationId`, the library's file is
-    /// `draft-` prefixed, and OpenZeppelin therefore owes no encoding stability across releases. A
-    /// submodule bump that changed the output would silently re-key every identity ever issued. The
-    /// tests exist to make that loud rather than silent; read the note on
-    /// `testOpenZeppelinEncodingIsFrozen` in `test/Adapter8004.erc7930-frozen.t.sol` before touching
-    /// them, and note that anyone forking this contract inherits the same obligation.
-    ///
-    /// @dev The zero-chain-id rejection stays here rather than being left to the library. A chain id
-    /// of zero identifies no chain and `block.chainid` never returns it, so this contract refuses it
-    /// outright; OpenZeppelin encodes it as a single zero reference byte. That divergence is
-    /// deliberate, documented, and must survive the switch.
+    /// @dev ERC-7930 v1 encoding, delegated to OpenZeppelin's `InteroperableAddress`. The output is
+    /// byte-identical to the encoders this contract carried before `0.0.17`, which are frozen as
+    /// oracles in `test/Adapter8004.erc7930.t.sol`, and every published fixture vector is asserted
+    /// against this path. The library's file is `draft-` prefixed and carries no encoding stability
+    /// guarantee, so a submodule bump that changed it would re-key every identity; read the note on
+    /// `testOpenZeppelinEncodingIsFrozen` first. The zero-chain-id rejection stays here because
+    /// `block.chainid` never returns zero, so this contract refuses to mint an identity nothing could
+    /// own.
     function _erc7930AddressFor(uint256 chainId, address account, bool includeAddress)
         private
         pure
