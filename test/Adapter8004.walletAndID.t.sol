@@ -219,6 +219,32 @@ contract Adapter8004WalletAndIDTest is Test {
         assertEq(emitter, alice, "forward: emitted by the caller");
     }
 
+    /// @dev The returned hash is pinned to two independent things, not just to itself: the published
+    /// derivation `registrationHash` exposes, and the identity the emitted event actually carries. A
+    /// return value that agreed with neither would be useless, and one that agreed only with itself
+    /// would be untestable.
+    function testCounterfactualCombinedReturnsTheDerivedHash() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        bytes32 returned =
+            adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(
+            returned,
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 1),
+            "matches the published derivation"
+        );
+        assertEq(logs[0].topics[1], returned, "matches the CounterfactualAgentWalletSet identity");
+        assertEq(logs[1].topics[2], returned, "matches the WalletCounterfactualIDSet identity");
+        assertEq(adapter.walletCounterfactualIDOf(alice), returned, "and the reverse pointer it wrote");
+
+        // The sibling it now matches returns the same value for the same coordinates.
+        vm.prank(bob);
+        bytes32 sibling = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        assertEq(sibling, returned, "same value as setWalletCounterfactualID");
+    }
+
     function testCounterfactualCombinedRequiresTokenAuthority() external {
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, type(uint256).max));
         vm.prank(bob);

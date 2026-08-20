@@ -204,6 +204,16 @@ subsystem is emit-only, so it adds no slot at all.
   there the registry verifies a deadline-bounded EIP-712 signature scoped to that
   agent and wallet, so naming a wallet other than the caller is the point.
 
+  `counterfactualSetAgentWalletAndID` returns the `bytes32` identity it derived,
+  matching its sibling `setWalletCounterfactualID`. It takes coordinates rather
+  than a hash because `_requireTokenAuthority` checks authority against the token
+  and keccak is one way, so a contract handed only a hash could not tell whether
+  the caller controls what it names; returning the hash gives a caller that has
+  just created an identity the handle without recomputing it or reading it back
+  out of the log. `setAgentWalletAndID` returns nothing, which is already
+  consistent: neither `setAgentWallet` nor `setWalletAgentID` returns anything, and
+  the agent id was an input there.
+
   Neither function is added to an interface. `setAgentWallet` is declared on
   `IERC8004IdentityRecord` because it is an ERC-8004 record pass-through, which
   these compositions are not, and the counterfactual writers have never been

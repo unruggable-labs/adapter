@@ -623,12 +623,14 @@ contract Adapter8004 is
     /// caller is the wallet, which supplies consent for the reverse one, so both halves are
     /// legitimate with no signature needed.
     /// @dev The wallet is always `msg.sender`, so two records that agree show one actor was
-    /// authorized on both sides. Emits `CounterfactualAgentWalletSet` then
-    /// `WalletCounterfactualIDSet`, the same pair the separate calls emit, and overwrites any
-    /// existing designation on the caller.
+    /// authorized on both sides, the emitted pair matches what the separate calls emit, and any
+    /// existing designation on the caller is overwritten.
+    /// @return computedHash The identity named, matching
+    /// `registrationHash(standard, boundAddress, tokenId)` and the hash both emitted events carry.
     function counterfactualSetAgentWalletAndID(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
+        returns (bytes32 computedHash)
     {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
@@ -649,8 +651,9 @@ contract Adapter8004 is
         );
 
         // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
-        //    reserved-hash guard and emits `WalletCounterfactualIDSet`.
-        _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
+        //    reserved-hash guard and emits `WalletCounterfactualIDSet`, and hand back the identity it
+        //    derived so the caller does not recompute it.
+        computedHash = _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
     }
 
     /// @notice Clears the agent wallet on a counterfactual identity. The clear is carried only by the
