@@ -11,6 +11,10 @@ solc_version = "0.8.30"
 evm_version = "prague"
 optimizer = true
 optimizer_runs = 200
+# `forge inspect <C> storageLayout` reads the build artifact rather than recompiling, and a warm
+# cache serves artifacts built without this output, which surfaces as "Could not get storage layout".
+# Upgrade validation depends on that command, so every build emits the layout.
+extra_output = ["storageLayout"]
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",

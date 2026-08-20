@@ -38,15 +38,15 @@ central meaning is ambiguous.
 
 ## Problem and invariant
 
-Today `_primaryAgent[address]` can contain either `bytes32(agentId)` or a counterfactual
-`registrationHash`. `primaryAgentOf` cannot tell consumers which system produced the value, and a
+Today `_walletAgentID[address]` can contain either `bytes32(agentId)` or a counterfactual
+`registrationHash`. `walletAgentIDOf` cannot tell consumers which system produced the value, and a
 counterfactual combined registration overwrites a full primary (or vice versa). The signed paths
 also serialize both kinds of writes through `nonces[address]`.
 
 After this change, the following invariants must hold:
 
-- `primaryAgentOf(account)` reads only the full ERC-8004 mapping and returns a `uint256 agentId`.
-- `primaryCounterfactualAgentOf(account)` reads only the counterfactual mapping and returns a
+- `walletAgentIDOf(account)` reads only the full ERC-8004 mapping and returns a `uint256 agentId`.
+- `walletCounterfactualIDOf(account)` reads only the counterfactual mapping and returns a
   `bytes32 registrationHash`.
 - No public or internal setter accepts a discriminator or routes one value into either mapping.
 - A write or clear in one system cannot change the other system's value; counterfactual writes
@@ -181,17 +181,17 @@ Solana CAIP-350 address profile or execution API.
 
 ### Full ERC-8004 system
 
-Keep `IERC8004AdapterPrimaryAgent`, but redefine it as full ERC-8004 only. Use `uint256` throughout
+Keep `IERC8004AdapterWalletAgentID`, but redefine it as full ERC-8004 only. Use `uint256` throughout
 so its ABI and NatSpec describe a registry token ID rather than a generic 32-byte identifier.
 
 ```solidity
-uint256 public constant PRIMARY_AGENT_UNSET = type(uint256).max;
+uint256 public constant WALLET_AGENT_ID_UNSET = type(uint256).max;
 
-function setPrimaryAgent(uint256 agentId) external;
-function setPrimaryAgentFor(address account, uint256 agentId) external;
-function clearPrimaryAgent() external;
-function clearPrimaryAgentFor(address account) external;
-function primaryAgentOf(address account) external view returns (uint256 agentId);
+function setWalletAgentID(uint256 agentId) external;
+function setWalletAgentIDFor(address account, uint256 agentId) external;
+function clearWalletAgentID() external;
+function clearWalletAgentIDFor(address account) external;
+function walletAgentIDOf(address account) external view returns (uint256 agentId);
 
 function setPrimaryAgentWithSig(
     address account,
@@ -214,32 +214,32 @@ namespace; consumers establish truth through the existing two-way wallet check. 
 may call `identityRegistry.ownerOf` in consumer validation flows, but it should not add that external
 call to pointer writes in this change.
 
-Changing `setPrimaryAgent(bytes32)` to `setPrimaryAgent(uint256)` gives the setter a new selector.
+Changing `setWalletAgentID(bytes32)` to `setWalletAgentID(uint256)` gives the setter a new selector.
 The getter and clear selectors do not encode return types and therefore retain their selectors, but
 their documented meaning becomes full-only and their implementation reads the new full mapping.
 No compatibility alias should expose the legacy mixed slot.
 
 ### Counterfactual system
 
-Add `IERC8004AdapterCounterfactualPrimaryAgent`. Name the noun consistently as "primary
+Add `IERC8004AdapterWalletCounterfactualID`. Name the noun consistently as "primary
 counterfactual agent":
 
 ```solidity
-bytes32 public constant PRIMARY_COUNTERFACTUAL_AGENT_UNSET =
+bytes32 public constant WALLET_COUNTERFACTUAL_ID_UNSET =
     bytes32(type(uint256).max);
 
-function setPrimaryCounterfactualAgent(
+function setWalletCounterfactualID(
     address tokenContract,
     uint256 tokenId
 ) external returns (bytes32 registrationHash);
-function setPrimaryCounterfactualAgentFor(
+function setWalletCounterfactualIDFor(
     address account,
     address tokenContract,
     uint256 tokenId
 ) external returns (bytes32 registrationHash);
-function clearPrimaryCounterfactualAgent() external;
-function clearPrimaryCounterfactualAgentFor(address account) external;
-function primaryCounterfactualAgentOf(
+function clearWalletCounterfactualID() external;
+function clearWalletCounterfactualIDFor(address account) external;
+function walletCounterfactualIDOf(
     address account
 ) external view returns (bytes32 registrationHash);
 
@@ -256,22 +256,22 @@ reciprocal claim separately. Reject a derived all-ones hash because it aliases t
 
 No unsigned `counterfactualRegisterAndSetPrimary` helper is required in this release. A collection
 registers with the unsigned counterfactual family while the id is ownerless, then uses the direct
-or paid `setPrimaryCounterfactualAgent[For]` surface. Gasless counterfactual-primary signatures are
+or paid `setWalletCounterfactualID[For]` surface. Gasless counterfactual-primary signatures are
 intentionally not supported.
 
 ## Events and indexer contract
 
 Retain the full event names, but change `agentId` to `uint256`. This changes the event topic for
-`PrimaryAgentSet` and `PrimaryAgentSetWithSig`, so indexers must subscribe to the new topics at the
+`WalletAgentIDSet` and `PrimaryAgentSetWithSig`, so indexers must subscribe to the new topics at the
 upgrade block.
 
 ```solidity
-event PrimaryAgentSet(
+event WalletAgentIDSet(
     address indexed account,
     uint256 indexed agentId,
     address indexed setBy
 );
-event PrimaryAgentCleared(
+event WalletAgentIDCleared(
     address indexed account,
     address indexed clearedBy
 );
@@ -291,14 +291,14 @@ event PrimaryAgentClearedWithSig(
 Create a separate counterfactual event family rather than adding a system tag:
 
 ```solidity
-event PrimaryCounterfactualAgentSet(
+event WalletCounterfactualIDSet(
     address indexed account,
     bytes32 indexed registrationHash,
     address tokenContract,
     uint256 tokenId,
     address indexed setBy
 );
-event PrimaryCounterfactualAgentCleared(
+event WalletCounterfactualIDCleared(
     address indexed account,
     address indexed clearedBy
 );
@@ -308,7 +308,7 @@ For direct/paid writes, `setBy`/`clearedBy` is the direct caller. Full-system si
 retain their full-system `WithSig` provenance events; counterfactual primaries have no signed
 events.
 
-`registerAndSetPrimary` keeps the order `AgentBound` then `PrimaryAgentSet`.
+`registerAndSetPrimary` keeps the order `AgentBound` then `WalletAgentIDSet`.
 
 Clears remain idempotent and emit even when already unset. A counterfactual clear cannot include
 token coordinates because the mapping intentionally stores only the hash; the preceding set event
@@ -374,8 +374,8 @@ Preserve the existing regular slots exactly and append new storage:
 |---:|---|---|
 | 0 | `identityRegistry` | unchanged |
 | 1 | `_bindings` | unchanged |
-| 2 | `_primaryAgent` | complement-encoded full `uint256 agentId` |
-| 3 | `_primaryCounterfactualAgent` | complement-encoded CF `bytes32 registrationHash` |
+| 2 | `_walletAgentID` | complement-encoded full `uint256 agentId` |
+| 3 | `_walletCounterfactualID` | complement-encoded CF `bytes32 registrationHash` |
 | 4 | `_primaryAgentNonces` | full signed-operation nonce |
 
 The active deployed implementations end at slot 1. Unreleased 0.0.9-0.0.13 storage declarations
@@ -384,10 +384,10 @@ mappings without inventing legacy production state.
 
 Both active mappings store the bitwise complement. A zero storage word means unset and reads as the
 system's all-ones sentinel; a real zero ID/hash round-trips; setting all ones reverts with a
-system-specific error (`PrimaryAgentIdReserved` for full and
-`PrimaryCounterfactualAgentHashReserved` for CF). Private helpers should be statically named
-`_setPrimaryAgent`/`_clearPrimaryAgent` and
-`_setPrimaryCounterfactualAgent`/`_clearPrimaryCounterfactualAgent`.
+system-specific error (`WalletAgentIDReserved` for full and
+`WalletCounterfactualIDReserved` for CF). Private helpers should be statically named
+`_setWalletAgentID`/`_clearWalletAgentID` and
+`_setWalletCounterfactualID`/`_clearWalletCounterfactualID`.
 
 No reinitializer is needed: all new mappings begin empty naturally, and migration cannot be
 performed correctly from on-chain storage alone.
@@ -405,7 +405,7 @@ deployment, make this an explicit gate rather than an assumption:
 1. Read each proxy's EIP-1967 implementation slot and record the implementation/version.
 2. Confirm the live ABI/bytecode does not expose the primary-agent surface.
 3. Scan each proxy from deployment through the intended cutover block for legacy
-   `PrimaryAgentSet`, `PrimaryAgentCleared`, and signed audit topics.
+   `WalletAgentIDSet`, `WalletAgentIDCleared`, and signed audit topics.
 4. Record zero matching production events in the upgrade report.
 
 If any target chain fails that gate, stop the rollout. Do not silently ship a different migration
@@ -442,9 +442,9 @@ The release is an indexer cutover, not a history rewrite:
    `abi.encode(bytes,address,uint256)` preimage containing the adapter's full Interoperable Address
    and the naked token-contract address. Route every counterfactual read/emitter through it; add no
    configurable or caller-supplied hash domain.
-2. Replace the mixed NatSpec in `IERC8004AdapterPrimaryAgent` with full-only semantics, change IDs to
+2. Replace the mixed NatSpec in `IERC8004AdapterWalletAgentID` with full-only semantics, change IDs to
    `uint256`, add `primaryAgentNonces`, and update the signed structs/events.
-3. Add `IERC8004AdapterCounterfactualPrimaryAgent` with the counterfactual API, events, sentinel,
+3. Add `IERC8004AdapterWalletCounterfactualID` with the counterfactual API, events, sentinel,
    and two-way-verification caveat.
 4. Make `Adapter8004` implement both interfaces, append the three mappings at slots 2 through 4,
    and add the two complement-encoded helper pairs.
@@ -454,7 +454,7 @@ The release is an indexer cutover, not a history rewrite:
    counterfactual-primary typehashes, signed setters/clearers, nonce getter, and `WithSig` events.
    Keep full-system deadline/signature verification utilities and remove the ambiguous shared
    `nonces` getter.
-7. Route `registerAndSetPrimary` only to `_setPrimaryAgent`.
+7. Route `registerAndSetPrimary` only to `_setWalletAgentID`.
 8. Remove signature-based counterfactual registration and counterfactual-primary APIs, EIP-712
    payloads/typehashes, helpers, fixtures, events, nonce storage, and tests. Preserve only the
    full-system signed reverse-pointer set/clear APIs.

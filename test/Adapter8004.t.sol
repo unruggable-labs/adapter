@@ -8,7 +8,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrimaryAgent.sol";
+import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -105,7 +105,7 @@ contract Adapter8004Test is Test {
 
     /// @dev Registering and then claiming the result as your own primary agent is two transactions.
     /// The pair is worth one test because of the id it lands on: a fresh registry mints agent id 0, and
-    /// `PRIMARY_AGENT_UNSET` is all ones, so a real agent at id 0 has to stay distinguishable from
+    /// `WALLET_AGENT_ID_UNSET` is all ones, so a real agent at id 0 has to stay distinguishable from
     /// having no primary at all.
     function testFirstMintedAgentIdIsZeroAndCanBecomeAPrimaryAgent() external {
         vm.prank(alice);
@@ -115,15 +115,15 @@ contract Adapter8004Test is Test {
             adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/1");
 
         assertEq(agentId, 0);
-        assertEq(adapter.primaryAgentOf(alice), adapter.PRIMARY_AGENT_UNSET(), "no primary until one is claimed");
+        assertEq(adapter.walletAgentIDOf(alice), adapter.WALLET_AGENT_ID_UNSET(), "no primary until one is claimed");
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit IERC8004AdapterPrimaryAgent.PrimaryAgentSet(alice, 0, alice);
-        adapter.setPrimaryAgent(agentId);
+        emit IERC8004AdapterWalletAgentID.WalletAgentIDSet(alice, 0, alice);
+        adapter.setWalletAgentID(agentId);
 
-        assertEq(adapter.primaryAgentOf(alice), agentId);
-        assertTrue(adapter.primaryAgentOf(alice) != adapter.PRIMARY_AGENT_UNSET());
+        assertEq(adapter.walletAgentIDOf(alice), agentId);
+        assertTrue(adapter.walletAgentIDOf(alice) != adapter.WALLET_AGENT_ID_UNSET());
     }
 
     function test721ControllerCanUpdateRegistryFields() external {

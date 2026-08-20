@@ -72,7 +72,7 @@ Supported binding standards:
 - `CONTRACT_OWNABLE`, an explicit-opt-in contract binding controlled by the contract's current `owner()`
 - `CONTRACT_ADMIN`, the same idea for an AccessControl contract, controlled by holders of its `DEFAULT_ADMIN_ROLE`
 
-What the unreleased source adds over the active deployments (on-chain status varies by chain — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and the primary-agent surface is not yet deployed anywhere):
+What the unreleased source adds over the active deployments (on-chain status varies by chain — see [CHANGELOG.md](./CHANGELOG.md): the counterfactual register family is live on all three proxies, delegate.xyz support is live on Sepolia only, and the wallet-id surface is not yet deployed anywhere):
 
 - delegate.xyz v2 hot/cold control for single-owner bindings: a delegated hot wallet can drive an ERC-721-, ERC-1155F-, or ERC-6909F-bound agent while the token stays in cold storage.
 - A counterfactual register family: emit-only mirrors of the register surface that produce no registry write and no SSTORE, for off-chain identities that can later be promoted on-chain.
@@ -141,7 +141,7 @@ Values `0`-`4` name a token *within* a contract, so their binding coordinate is 
 - `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register` and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `boundAddress` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
-- Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's primary agent while being unable to manage an identity bound to it.
+- Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setWalletAgentIDFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's wallet agent id while being unable to manage an identity bound to it.
 - **`ACCOUNT` accepts any address, with or without runtime code.** It is the only standard that applies no code test, and it can afford not to because it is the only one that never calls the address it names: authority is the single comparison `msg.sender == boundAddress`. Every other standard still requires code, because `ownerOf`, `balanceOf`, `owner()` or `hasRole` must be callable, and a code-less address reverts `InvalidBoundAddress`. The zero address and the identity registry are rejected under every standard, `ACCOUNT` included.
 - **EIP-7702 changes what `ACCOUNT` authority means, and this is worth reading before using it.** A delegation designator puts code behind an externally owned account, so `msg.sender == boundAddress` is not proof of key possession. Authority is precisely *whoever can cause a call to originate from that address*: the key holder, plus anyone able to drive the delegate to make an outbound call if a delegation is installed. **An address bound as `ACCOUNT` can install a delegation afterwards, permanently widening who can act for that identity, and a binding is immutable so this cannot be undone.** Revoking the delegation narrows the set again. This is the same accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership: an action taken outside the adapter, by the party the standard trusts, that permanently changes who can authorize. Counterfactual claims are less exposed, because they are emit-only and last-event-wins, so a key holder who revokes can re-emit and win again.
 
@@ -240,7 +240,7 @@ Implementation upgrades are governed by the Safe multisig through UUPS. The [`de
 The unreleased implementation upgrades directly from the active
 Mainnet/Base May 15 build or the active Sepolia delegate.xyz build—not from
 unreleased numbered source versions. Both live layouts populate only regular
-slots 0 and 1. The two new primary-agent mappings append directly at slots
+slots 0 and 1. The two new wallet-id mappings append directly at slots
 2 and 3. Existing proxies must use empty
 `upgradeToAndCall` data; `initialize(...)` is only for a new proxy. No storage
 migration or reinitializer is required. Sepolia's delegate.xyz getters and
@@ -306,14 +306,14 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
     );
     _mint(buyer, tokenId);
 
-    // Optional: when this caller is authorized for `buyer` under the primary-agent account-control
+    // Optional: when this caller is authorized for `buyer` under the wallet-id account-control
     // model, associate the freshly registered full identity with the buyer.
-    adapter.setPrimaryAgentFor(buyer, agentId);
+    adapter.setWalletAgentIDFor(buyer, agentId);
 }
 ```
 
-If the collection cannot authorize `setPrimaryAgentFor(buyer, agentId)`, the buyer can set the
-pointer separately with `setPrimaryAgent(agentId)` (or use the signed full-primary path).
+If the collection cannot authorize `setWalletAgentIDFor(buyer, agentId)`, the buyer can set the
+pointer separately with `setWalletAgentID(agentId)`, or on the buyer's behalf with `setWalletAgentIDFor(buyer, agentId)`.
 
 ### 2b. There Is No Way To Bind An Existing Agent
 
@@ -527,26 +527,26 @@ Reserved keys on the counterfactual write surface: `agent-binding` and `cf-regis
 
 > BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
 
-### Independent primary-agent systems
+### Independent wallet-id systems
 
-The adapter has two structurally separate reverse claims. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 registrationHash`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
+A wallet picks one agent id and one counterfactual identity to speak for it. Both are needed because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. These two mappings are how the wallet chooses. The adapter keeps them structurally separate. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 registrationHash`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
 
 Full ERC-8004:
 
-- `setPrimaryAgent(uint256 agentId)` / `setPrimaryAgentFor(account, agentId)`
-- `clearPrimaryAgent()` / `clearPrimaryAgentFor(account)`
-- `primaryAgentOf(account) -> uint256`
-- unset is `PRIMARY_AGENT_UNSET == type(uint256).max`; agent ID `0` is valid
+- `setWalletAgentID(uint256 agentId)` / `setWalletAgentIDFor(account, agentId)`
+- `clearWalletAgentID()` / `clearWalletAgentIDFor(account)`
+- `walletAgentIDOf(account) -> uint256`
+- unset is `WALLET_AGENT_ID_UNSET == type(uint256).max`; agent ID `0` is valid
 
 Counterfactual:
 
-- `setPrimaryCounterfactualAgent(standard, boundAddress, tokenId)` / `setPrimaryCounterfactualAgentFor(account, standard, boundAddress, tokenId)`
-- `clearPrimaryCounterfactualAgent()` / `clearPrimaryCounterfactualAgentFor(account)`
-- `primaryCounterfactualAgentOf(account) -> bytes32`
+- `setWalletCounterfactualID(standard, boundAddress, tokenId)` / `setWalletCounterfactualIDFor(account, standard, boundAddress, tokenId)`
+- `clearWalletCounterfactualID()` / `clearWalletCounterfactualIDFor(account)`
+- `walletCounterfactualIDOf(account) -> bytes32`
 - setters derive the hash; callers cannot store an arbitrary value
-- unset is `PRIMARY_COUNTERFACTUAL_AGENT_UNSET == bytes32(type(uint256).max)`
+- unset is `WALLET_COUNTERFACTUAL_ID_UNSET == bytes32(type(uint256).max)`
 
-`...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. Both are set directly by a controller, so both cost the caller gas. An earlier build carried a signed, relayer-submittable variant of the full-system setters; it was removed at `0.0.17` before any deployment, and `setPrimaryAgentFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
+`...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. Both are set directly by a controller, so both cost the caller gas. An earlier build carried a signed, relayer-submittable variant of the full-system setters; it was removed at `0.0.17` before any deployment, and `setWalletAgentIDFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
 
 This is a hard cutover from unreleased source behavior, not a production storage migration. Live proxies never deployed the old mixed pointer, so the two mappings occupy slots 2 and 3 and start empty. Old bare-chain-id hashes are invalid. See the [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md) and the [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
 
@@ -672,16 +672,16 @@ Counterfactual (emit-only) functions:
 - `registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
-- `setPrimaryAgent(uint256 agentId)`
-- `setPrimaryAgentFor(address account, uint256 agentId)`
-- `clearPrimaryAgent()`
-- `clearPrimaryAgentFor(address account)`
-- `primaryAgentOf(address account)`
-- `setPrimaryCounterfactualAgent(TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `setPrimaryCounterfactualAgentFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `clearPrimaryCounterfactualAgent()`
-- `clearPrimaryCounterfactualAgentFor(address account)`
-- `primaryCounterfactualAgentOf(address account)`
+- `setWalletAgentID(uint256 agentId)`
+- `setWalletAgentIDFor(address account, uint256 agentId)`
+- `clearWalletAgentID()`
+- `clearWalletAgentIDFor(address account)`
+- `walletAgentIDOf(address account)`
+- `setWalletCounterfactualID(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `setWalletCounterfactualIDFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `clearWalletCounterfactualID()`
+- `clearWalletCounterfactualIDFor(address account)`
+- `walletCounterfactualIDOf(address account)`
 
 ERC-required verification function:
 

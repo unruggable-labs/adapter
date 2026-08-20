@@ -39,9 +39,9 @@ contract PrimaryAccessControlAccount {
 }
 
 contract Adapter8004PrimaryAgentTest is Test {
-    event PrimaryAgentSet(address indexed account, uint256 indexed agentId, address indexed setBy);
-    event PrimaryAgentCleared(address indexed account, address indexed clearedBy);
-    event PrimaryCounterfactualAgentSet(
+    event WalletAgentIDSet(address indexed account, uint256 indexed agentId, address indexed setBy);
+    event WalletAgentIDCleared(address indexed account, address indexed clearedBy);
+    event WalletCounterfactualIDSet(
         address indexed account,
         bytes32 indexed registrationHash,
         address boundAddress,
@@ -50,7 +50,7 @@ contract Adapter8004PrimaryAgentTest is Test {
         IERCAgentBindings.TokenStandard standard,
         address indexed setBy
     );
-    event PrimaryCounterfactualAgentCleared(address indexed account, address indexed clearedBy);
+    event WalletCounterfactualIDCleared(address indexed account, address indexed clearedBy);
 
     Adapter8004 internal adapter;
     address internal alice = makeAddr("alice");
@@ -71,55 +71,55 @@ contract Adapter8004PrimaryAgentTest is Test {
     }
 
     function testIndependentUnsetSentinelsAndZeroFullId() external {
-        assertEq(adapter.primaryAgentOf(alice), type(uint256).max);
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), bytes32(type(uint256).max));
+        assertEq(adapter.walletAgentIDOf(alice), type(uint256).max);
+        assertEq(adapter.walletCounterfactualIDOf(alice), bytes32(type(uint256).max));
         vm.prank(alice);
-        adapter.setPrimaryAgent(0);
-        assertEq(adapter.primaryAgentOf(alice), 0);
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), bytes32(type(uint256).max));
+        adapter.setWalletAgentID(0);
+        assertEq(adapter.walletAgentIDOf(alice), 0);
+        assertEq(adapter.walletCounterfactualIDOf(alice), bytes32(type(uint256).max));
     }
 
     function testAccountCanHoldBothPrimariesAndEachWriteIsIndependent() external {
         bytes32 expected = adapter.registrationHash(STD, token, 7);
         vm.prank(alice);
-        adapter.setPrimaryAgent(42);
+        adapter.setWalletAgentID(42);
         vm.prank(alice);
-        bytes32 actual = adapter.setPrimaryCounterfactualAgent(STD, token, 7);
+        bytes32 actual = adapter.setWalletCounterfactualID(STD, token, 7);
         assertEq(actual, expected);
-        assertEq(adapter.primaryAgentOf(alice), 42);
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), expected);
+        assertEq(adapter.walletAgentIDOf(alice), 42);
+        assertEq(adapter.walletCounterfactualIDOf(alice), expected);
 
         vm.prank(alice);
-        adapter.clearPrimaryAgent();
-        assertEq(adapter.primaryAgentOf(alice), type(uint256).max);
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), expected);
+        adapter.clearWalletAgentID();
+        assertEq(adapter.walletAgentIDOf(alice), type(uint256).max);
+        assertEq(adapter.walletCounterfactualIDOf(alice), expected);
 
         vm.prank(alice);
-        adapter.clearPrimaryCounterfactualAgent();
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), bytes32(type(uint256).max));
+        adapter.clearWalletCounterfactualID();
+        assertEq(adapter.walletCounterfactualIDOf(alice), bytes32(type(uint256).max));
     }
 
     function testFullAndCounterfactualSameBitsRemainIndependent() external {
         bytes32 hash = adapter.registrationHash(STD, token, 9);
         vm.prank(alice);
-        adapter.setPrimaryAgent(uint256(hash));
+        adapter.setWalletAgentID(uint256(hash));
         vm.prank(alice);
-        adapter.setPrimaryCounterfactualAgent(STD, token, 9);
-        assertEq(adapter.primaryAgentOf(alice), uint256(hash));
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), hash);
+        adapter.setWalletCounterfactualID(STD, token, 9);
+        assertEq(adapter.walletAgentIDOf(alice), uint256(hash));
+        assertEq(adapter.walletCounterfactualIDOf(alice), hash);
     }
 
     function testEventsCarryTypedValuesAndCoordinates() external {
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit PrimaryAgentSet(alice, 42, alice);
+        emit WalletAgentIDSet(alice, 42, alice);
         vm.prank(alice);
-        adapter.setPrimaryAgent(42);
+        adapter.setWalletAgentID(42);
 
         bytes32 hash = adapter.registrationHash(STD, token, 7);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit PrimaryCounterfactualAgentSet(alice, hash, token, 7, bytes32(0), STD, alice);
+        emit WalletCounterfactualIDSet(alice, hash, token, 7, bytes32(0), STD, alice);
         vm.prank(alice);
-        adapter.setPrimaryCounterfactualAgent(STD, token, 7);
+        adapter.setWalletCounterfactualID(STD, token, 7);
     }
 
     /// @dev The setters name an identity, and the standard is part of that identity. Pointing at the
@@ -128,23 +128,23 @@ contract Adapter8004PrimaryAgentTest is Test {
     /// claimants' identities it had named.
     function testCounterfactualPrimaryIsPerStandard() external {
         vm.prank(alice);
-        bytes32 asToken = adapter.setPrimaryCounterfactualAgent(STD, token, 0);
+        bytes32 asToken = adapter.setWalletCounterfactualID(STD, token, 0);
         vm.prank(alice);
-        bytes32 asAccount = adapter.setPrimaryCounterfactualAgent(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0);
+        bytes32 asAccount = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0);
 
         assertTrue(asToken != asAccount, "one pair under two standards must be two pointers");
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), asAccount, "latest write wins");
+        assertEq(adapter.walletCounterfactualIDOf(alice), asAccount, "latest write wins");
         assertEq(asAccount, adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0));
     }
 
     function testReservedFullSentinelRevertsWithoutChangingCounterfactual() external {
         vm.prank(alice);
-        adapter.setPrimaryCounterfactualAgent(STD, token, 7);
-        bytes32 beforeValue = adapter.primaryCounterfactualAgentOf(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.PrimaryAgentIdReserved.selector, type(uint256).max));
+        adapter.setWalletCounterfactualID(STD, token, 7);
+        bytes32 beforeValue = adapter.walletCounterfactualIDOf(alice);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.WalletAgentIDReserved.selector, type(uint256).max));
         vm.prank(alice);
-        adapter.setPrimaryAgent(type(uint256).max);
-        assertEq(adapter.primaryCounterfactualAgentOf(alice), beforeValue);
+        adapter.setWalletAgentID(type(uint256).max);
+        assertEq(adapter.walletCounterfactualIDOf(alice), beforeValue);
     }
 
     function testCounterfactualHashZeroIsRepresentable() external {
@@ -158,47 +158,47 @@ contract Adapter8004PrimaryAgentTest is Test {
             )
         );
         vm.prank(alice);
-        assertEq(zeroAdapter.setPrimaryCounterfactualAgent(STD, token, 1), bytes32(0));
-        assertEq(zeroAdapter.primaryCounterfactualAgentOf(alice), bytes32(0));
+        assertEq(zeroAdapter.setWalletCounterfactualID(STD, token, 1), bytes32(0));
+        assertEq(zeroAdapter.walletCounterfactualIDOf(alice), bytes32(0));
     }
 
     function testOwnerAndDefaultAdminControlBothForSurfaces() external {
         PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
         vm.startPrank(alice);
-        adapter.setPrimaryAgentFor(address(owned), 5);
-        adapter.setPrimaryCounterfactualAgentFor(address(owned), STD, token, 1);
+        adapter.setWalletAgentIDFor(address(owned), 5);
+        adapter.setWalletCounterfactualIDFor(address(owned), STD, token, 1);
         vm.stopPrank();
-        assertEq(adapter.primaryAgentOf(address(owned)), 5);
-        assertEq(adapter.primaryCounterfactualAgentOf(address(owned)), adapter.registrationHash(STD, token, 1));
+        assertEq(adapter.walletAgentIDOf(address(owned)), 5);
+        assertEq(adapter.walletCounterfactualIDOf(address(owned)), adapter.registrationHash(STD, token, 1));
 
         PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
         access.grant(bob);
         vm.startPrank(bob);
-        adapter.setPrimaryAgentFor(address(access), 6);
-        adapter.setPrimaryCounterfactualAgentFor(address(access), STD, token, 2);
+        adapter.setWalletAgentIDFor(address(access), 6);
+        adapter.setWalletCounterfactualIDFor(address(access), STD, token, 2);
         vm.stopPrank();
-        assertEq(adapter.primaryAgentOf(address(access)), 6);
+        assertEq(adapter.walletAgentIDOf(address(access)), 6);
     }
 
     function testNonControllerRejectedOnBothForSurfaces() external {
         PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAccountController.selector, address(owned), bob));
         vm.prank(bob);
-        adapter.setPrimaryAgentFor(address(owned), 1);
+        adapter.setWalletAgentIDFor(address(owned), 1);
 
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAccountController.selector, address(owned), bob));
         vm.prank(bob);
-        adapter.setPrimaryCounterfactualAgentFor(address(owned), STD, token, 1);
+        adapter.setWalletCounterfactualIDFor(address(owned), STD, token, 1);
     }
 
     function testIdempotentClearsDoNotCrossClobber() external {
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit PrimaryAgentCleared(alice, alice);
+        emit WalletAgentIDCleared(alice, alice);
         vm.prank(alice);
-        adapter.clearPrimaryAgent();
+        adapter.clearWalletAgentID();
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit PrimaryCounterfactualAgentCleared(alice, alice);
+        emit WalletCounterfactualIDCleared(alice, alice);
         vm.prank(alice);
-        adapter.clearPrimaryCounterfactualAgent();
+        adapter.clearWalletCounterfactualID();
     }
 }

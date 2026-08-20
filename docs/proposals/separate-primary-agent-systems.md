@@ -3,19 +3,19 @@
 **Status:** proposal (product intent; implementation plan TBD)  
 **Target release:** `0.0.14` (bundle with primary-system split)  
 **Repo:** `/Users/nxt3d/projects/adapter`  
-**Touches:** primary-agent reverse resolution (`IERC8004AdapterPrimaryAgent`, `Adapter8004` storage/API); counterfactual `registrationHash` domain  
+**Touches:** primary-agent reverse resolution (`IERC8004AdapterWalletAgentID`, `Adapter8004` storage/API); counterfactual `registrationHash` domain  
 **Related:** ownerless CF registration (`0.0.13` work) is independent and can ship first; `0.0.14` is the reverse-resolution split **plus** ERC-7930 chain binding for CF hashes
 **Superseded in part:** `registerAndSetPrimary`, referenced below, was removed in `0.0.16` before any deployment. This document is kept as the design record for the primary-agent split; see CHANGELOG.md for why the wrapper went away.  
 **Field renamed since:** what this document calls `tokenContract` is now `boundAddress` in the contract and interfaces, because the field also holds a plain account under `ACCOUNT`. Kept as a dated design record rather than rewritten.  
 
 ## Problem
 
-Adapter8004 currently has **one** reverse-resolution mapping: `address => bytes32` primary agent id (`_primaryAgent` / `primaryAgentOf`). That single namespace is overloaded to hold either:
+Adapter8004 currently has **one** reverse-resolution mapping: `address => bytes32` primary agent id (`_walletAgentID` / `walletAgentIDOf`). That single namespace is overloaded to hold either:
 
 1. a real ERC-8004 **`agentId`** (from full registry `register` / `bindExisting` / `registerAndSetPrimary`), or  
 2. a counterfactual **`registrationHash`** (from the unsigned CF register family)
 
-Those are different identity systems. A full 8004 registration mints (or binds) an on-chain registry NFT owned by the adapter. A counterfactual registration is emit-only and keyed by `(interoperableAddress(adapter), tokenContract, tokenId)`. Collapsing both into one `primaryAgentOf(address)` forces consumers to guess which kind of id they received, and prevents an account from having a clear primary in **each** system at once.
+Those are different identity systems. A full 8004 registration mints (or binds) an on-chain registry NFT owned by the adapter. A counterfactual registration is emit-only and keyed by `(interoperableAddress(adapter), tokenContract, tokenId)`. Collapsing both into one `walletAgentIDOf(address)` forces consumers to guess which kind of id they received, and prevents an account from having a clear primary in **each** system at once.
 
 Product intent: treat **full ERC-8004** and **counterfactual ERC-8004** as two completely separate systems — including reverse resolution.
 
@@ -32,13 +32,13 @@ An account may set, clear, and resolve each independently. Setting a CF primary 
 
 ### Locked product rules
 
-1. **Two mappings, two read paths** — e.g. conceptually `primaryAgentOf(account)` for full 8004 and `primaryCounterfactualAgentOf(account)` (names TBD in the plan) for CF. Do not overload a single getter.
+1. **Two mappings, two read paths** — e.g. conceptually `walletAgentIDOf(account)` for full 8004 and `walletCounterfactualIDOf(account)` (names TBD in the plan) for CF. Do not overload a single getter.
 2. **Two write surfaces** — direct/paid set/clear for each system; signed (gasless) set/clear remains full-8004-only, so CF and full-8004 cannot cross-write.
 3. **Convenience helpers stay typed** — `registerAndSetPrimary` wires only the full-8004 mapping;
    counterfactual primary setters wire only the CF mapping.
 4. **No shared “which kind is this bytes32?” bit** inside one slot — separation is structural, not a tagged union in one mapping.
 5. **Existing complement / unset-sentinel design** may be reused per mapping if still sound; each mapping needs its own unset semantics.
-6. **Upgrade must be planned carefully** — current live/source data in `_primaryAgent` may already mix both id kinds. The plan must say how to migrate, dual-read, or break cleanly for `0.0.14`.
+6. **Upgrade must be planned carefully** — current live/source data in `_walletAgentID` may already mix both id kinds. The plan must say how to migrate, dual-read, or break cleanly for `0.0.14`.
 7. **Counterfactual `registrationHash` MUST bind the adapter proxy through its full ERC-7930
    Interoperable Address and MUST keep `tokenContract` as a naked EVM `address`.** Do not encode
    `tokenContract` as an Interoperable Address. Chain binding comes from the adapter Interoperable
@@ -78,8 +78,8 @@ Intent:
 
 Resolve with concrete recommendations:
 
-1. **API naming** — keep `primaryAgentOf` for full 8004 only, or rename both for clarity; deprecate path for old mixed reads.
-2. **Migration** — what happens to existing `_primaryAgent` entries that may already store CF hashes vs agent ids? Heuristic split, wipe, dual-write period, or hard break?
+1. **API naming** — keep `walletAgentIDOf` for full 8004 only, or rename both for clarity; deprecate path for old mixed reads.
+2. **Migration** — what happens to existing `_walletAgentID` entries that may already store CF hashes vs agent ids? Heuristic split, wipe, dual-write period, or hard break?
 3. **Events** — split event families vs tagged events; indexer migration notes.
 4. **Auth model** — do both systems keep the same account-self / owner-admin / EIP-712 rules?
 5. **Storage layout** — new slot for the second mapping; retain only the full-system signed nonce stream.

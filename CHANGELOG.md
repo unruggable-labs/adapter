@@ -40,7 +40,7 @@ EIP-1967 slot on each chain and calling through each proxy:
   scheme `0.0.14` already supersedes;
 - `interoperableAddress(address)` reverts on the Mainnet and Base proxies, so no
   live implementation has the ERC-7930 surface at all;
-- `primaryCounterfactualAgentOf(address)` reverts on all three, so no live
+- `walletCounterfactualIDOf(address)` reverts on all three, so no live
   implementation exposes the counterfactual-primary surface and **slot 3, the
   only slot that could hold a counterfactual identifier, is unreachable and has
   never been written on any deployment.** The two deployed source baselines
@@ -162,6 +162,57 @@ subsystem is emit-only, so it adds no slot at all.
   changed, and `attest`'s selector moved with its signature. Nothing was
   deployed under the old scheme, so no on-chain record is orphaned.
 
+### Changed
+
+- **The primary-agent surface is renamed to the wallet-id surface.** The mapping
+  exists because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet`
+  makes every agent prove the wallet consented, so many agents can validly list
+  the same wallet, and the reverse direction is ambiguous. This mapping is how the
+  wallet picks which one speaks for it. "Primary" is the ENS word for that and
+  only means anything to a reader who already knows ENS, so the names now say what
+  the thing is.
+
+  | Old | New |
+  | --- | --- |
+  | `setPrimaryAgent` | `setWalletAgentID` |
+  | `setPrimaryAgentFor` | `setWalletAgentIDFor` |
+  | `clearPrimaryAgent` | `clearWalletAgentID` |
+  | `clearPrimaryAgentFor` | `clearWalletAgentIDFor` |
+  | `primaryAgentOf` | `walletAgentIDOf` |
+  | `PRIMARY_AGENT_UNSET` | `WALLET_AGENT_ID_UNSET` |
+  | `setPrimaryCounterfactualAgent` | `setWalletCounterfactualID` |
+  | `setPrimaryCounterfactualAgentFor` | `setWalletCounterfactualIDFor` |
+  | `clearPrimaryCounterfactualAgent` | `clearWalletCounterfactualID` |
+  | `clearPrimaryCounterfactualAgentFor` | `clearWalletCounterfactualIDFor` |
+  | `primaryCounterfactualAgentOf` | `walletCounterfactualIDOf` |
+  | `PRIMARY_COUNTERFACTUAL_AGENT_UNSET` | `WALLET_COUNTERFACTUAL_ID_UNSET` |
+
+  Events, errors, private helpers and storage variables follow the same shape:
+  `PrimaryAgentSet` and `PrimaryAgentCleared` become `WalletAgentIDSet` and
+  `WalletAgentIDCleared`, `PrimaryCounterfactualAgentSet` and
+  `PrimaryCounterfactualAgentCleared` become `WalletCounterfactualIDSet` and
+  `WalletCounterfactualIDCleared`, `PrimaryAgentIdReserved` becomes
+  `WalletAgentIDReserved`, and `PrimaryCounterfactualAgentHashReserved` becomes
+  `WalletCounterfactualIDReserved`. The two interface files are renamed to
+  `IERC8004AdapterWalletAgentID.sol` and `IERC8004AdapterWalletCounterfactualID.sol`.
+
+  **Every renamed function's selector and every renamed event's `topic0` changes.
+  This is a full indexer and integrator cutover, on top of the one the registration
+  hash change already forces.** Nothing resolves under an old name: a test probes
+  each old selector and requires it to fail, with the renamed surface exercised in
+  the same test so it cannot pass by everything having disappeared, and a second
+  test requires none of the four old event topics to appear on the renamed paths.
+
+  Function names take the `ID` capitalisation. Parameter names keep `agentId`,
+  matching ERC-8004's own vocabulary, because those cross the boundary into the
+  registry.
+
+  The `For` suffix keeps the one meaning it has everywhere in this contract:
+  acting on behalf of another account, gated by `_controlsAccount`. That is why the
+  wallet is not in the base name. `setAgentIDForWallet` would have put a second
+  sense of `For` into the name, and its delegated variant would have had to be
+  `setAgentIDForWalletFor`.
+
 ### Removed
 
 - **The signed primary-agent surface.** `setPrimaryAgentWithSig`,
@@ -173,11 +224,11 @@ subsystem is emit-only, so it adds no slot at all.
   else used either.
 
   What it offered was relayed, gasless setting of another account's primary agent
-  from that account's own signature. `setPrimaryAgentFor` already covers the
+  from that account's own signature. `setWalletAgentIDFor` already covers the
   acting-for-an-account case, with the controller calling directly and paying gas,
   so what is lost is the relayer path alone. Adding it back later is append-only.
-  `setPrimaryAgent`, `setPrimaryAgentFor`, `clearPrimaryAgent`,
-  `clearPrimaryAgentFor`, `primaryAgentOf` and the whole counterfactual primary
+  `setWalletAgentID`, `setWalletAgentIDFor`, `clearWalletAgentID`,
+  `clearWalletAgentIDFor`, `walletAgentIDOf` and the whole counterfactual primary
   surface are untouched.
 
   **Storage now ends at slot 3.** `_primaryAgentNonces` was slot 4, the last one,
@@ -438,12 +489,12 @@ size, not gas.
   rather than kept as an overload, deliberately: a stale caller reverts cleanly
   instead of silently computing a hash that no longer identifies anything.
 
-- **`setPrimaryCounterfactualAgent` and `setPrimaryCounterfactualAgentFor` each
+- **`setWalletCounterfactualID` and `setWalletCounterfactualIDFor` each
   gain a `TokenStandard` parameter**, immediately before `boundAddress`. Both old
-  selectors are gone, for the same reason. `clearPrimaryCounterfactualAgent[For]`
-  and `primaryCounterfactualAgentOf` are unchanged.
+  selectors are gone, for the same reason. `clearWalletCounterfactualID[For]`
+  and `walletCounterfactualIDOf` are unchanged.
 
-- **The five counterfactual update events and `PrimaryCounterfactualAgentSet` gain
+- **The five counterfactual update events and `WalletCounterfactualIDSet` gain
   a non-indexed `standard`**, directly after `extraData`:
   `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
   `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
@@ -703,7 +754,7 @@ seen neither. The changes with no other home are listed here.
   would want, and neither is fixable inside a function whose whole shape is
   "primary goes to `msg.sender`". It also bought nothing beyond one transaction:
   there is no atomicity to protect, since nothing can take your primary-agent slot
-  between two transactions. `register` and `setPrimaryAgent` remain available
+  between two transactions. `register` and `setWalletAgentID` remain available
   separately and compose into exactly the intended case. This is breaking for any
   caller holding its selector, which is free to do now and would not be after a
   deployment.
@@ -737,7 +788,7 @@ work below; all three ship together in one implementation.
   counterfactual events (`CounterfactualAgentRegistered`,
   `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
   `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
-  `CounterfactualAgentWalletUnset`) and on `PrimaryCounterfactualAgentSet`, so
+  `CounterfactualAgentWalletUnset`) and on `WalletCounterfactualIDSet`, so
   an indexer stores the field before any upgrade begins populating it. Adding a
   field changes each event signature and therefore its `topic0`.
 
@@ -838,7 +889,7 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
     nobody else. The bound contract itself has no authority, as with value `6`. It exists for an
     AccessControl contract that exposes no `owner()`, which could otherwise only bind as value `5`
     and route every identity update through its own code. It also closes an asymmetry:
-    `setPrimaryAgentFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin
+    `setWalletAgentIDFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin
     could set a contract's primary agent while being unable to manage an identity bound to it.
   - The `hasRole(bytes32,address)` probe is a fail-closed `STATICCALL`. A revert, returndata whose
     length is not exactly 32 bytes, or a zero word each grant nobody. Any non-zero word counts as
@@ -869,15 +920,15 @@ The primary-agent designs in unreleased `0.0.9` through `0.0.13` are superseded.
   routed both full registration and every unsigned counterfactual write through it so their
   ownerless-collection rule cannot drift.
 - Registration never writes a primary-agent pointer. An authorized mint flow that wants the buyer's
-  primary uses `register`, mints, then calls `setPrimaryAgentFor(buyer, agentId)`; otherwise the buyer
-  sets it separately with `setPrimaryAgent`.
+  primary uses `register`, mints, then calls `setWalletAgentIDFor(buyer, agentId)`; otherwise the buyer
+  sets it separately with `setWalletAgentID`.
 - Split reverse resolution into two independent systems:
-  - full ERC-8004: `uint256` `setPrimaryAgent`, `primaryAgentOf`, full-only events, and
+  - full ERC-8004: `uint256` `setWalletAgentID`, `walletAgentIDOf`, full-only events, and
     `primaryAgentNonces`;
   - counterfactual: new `set/clear/primaryCounterfactualAgent...` APIs, coordinate-bearing
     `PrimaryCounterfactualAgent...` events.
-- Removed the ambiguous `nonces(address)` API and old `setPrimaryAgent(bytes32)` selector.
-  `PrimaryAgentSet` and `PrimaryAgentSetWithSig` now index a `uint256`, changing their topic0.
+- Removed the ambiguous `nonces(address)` API and old `setWalletAgentID(bytes32)` selector.
+  `WalletAgentIDSet` and `PrimaryAgentSetWithSig` now index a `uint256`, changing their topic0.
 - Counterfactual hashes now use
   `keccak256(abi.encode(interoperableAddress(address(adapter)),
   boundAddress, tokenId))`. The adapter proxy is a full ERC-7930 v1 / CAIP-350 `eip155`
@@ -922,7 +973,7 @@ read the latest `CounterfactualAgentRegistered.standard` in log order to see whi
 
 ### Storage and migration
 
-- Appended `_primaryAgent` (slot 2), `_primaryCounterfactualAgent` (slot 3), and
+- Appended `_walletAgentID` (slot 2), `_walletCounterfactualID` (slot 3), and
   `_primaryAgentNonces` (slot 4) directly after the live fields. Slot 4 was
   removed again at `0.0.17`, so the shipped layout ends at slot 3. The unreleased
   0.0.9-0.0.13 layouts consume no
@@ -967,9 +1018,9 @@ to `0.0.11`).
 - **`registerAndSetPrimary(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI) -> uint256 agentId`**
   — a caller-paid, no-signature/no-relayer convenience wrapper: it runs the canonical `register`
   body (empty metadata) and then records the freshly minted `agentId` as the **caller's own** primary
-  agent, in one transaction. Equivalent to calling `register(...)` then `setPrimaryAgent(bytes32(agentId))`
+  agent, in one transaction. Equivalent to calling `register(...)` then `setWalletAgentID(bytes32(agentId))`
   yourself: identical token-control authorization, `AgentBound` event, and returned id, plus a
-  standard `PrimaryAgentSet(caller, bytes32(agentId), caller)`. No new storage, authorization, or event
+  standard `WalletAgentIDSet(caller, bytes32(agentId), caller)`. No new storage, authorization, or event
   families.
   (Removed again in `0.0.16` before any deployment; see that section for why.)
 
@@ -990,12 +1041,12 @@ is appended at slot 3 and slots 0/1/2 are byte-identical to `0.0.10`.
 > before any implementation deploy or Safe upgrade. Not shippable on tests alone.
 
 ### Added
-- **Signed (account-self) primary-agent surface** (`IERC8004AdapterPrimaryAgent`):
+- **Signed (account-self) primary-agent surface** (`IERC8004AdapterWalletAgentID`):
   - `setPrimaryAgentWithSig(address account, bytes32 agentId, uint256 deadline, bytes signature)`
     and `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)` — any
     relayer submits a signature by `account` itself (EOA `ecrecover` or the account's ERC-1271
     policy, via `SignatureChecker`). Strictly account-self: there is **no** owner/admin/controller
-    signature route (that authority stays on the paid `setPrimaryAgentFor` / `clearPrimaryAgentFor`).
+    signature route (that authority stays on the paid `setWalletAgentIDFor` / `clearWalletAgentIDFor`).
   - `nonces(address)` — one monotonic nonce per account, **shared** by signed set/clear operations,
     embedded in the signed struct (not a calldata argument) and consumed once per success, so a used
     signature cannot be replayed and any op pre-signed against the same nonce is invalidated.
@@ -1003,12 +1054,12 @@ is appended at slot 3 and slots 0/1/2 are byte-identical to `0.0.10`.
     block timestamp is still valid); errors `SignatureDeadlineTooFar` / `SignatureExpired` and
     `InvalidSignature`.
   - Audit events `PrimaryAgentSetWithSig(account, agentId, relayer, nonce)` and
-    `PrimaryAgentClearedWithSig(account, relayer, nonce)`. The legacy `PrimaryAgentSet` /
-    `PrimaryAgentCleared` events are unchanged and still emitted first with `setBy` / `clearedBy` =
+    `PrimaryAgentClearedWithSig(account, relayer, nonce)`. The legacy `WalletAgentIDSet` /
+    `WalletAgentIDCleared` events are unchanged and still emitted first with `setBy` / `clearedBy` =
     `msg.sender` (the relayer); indexers act on the legacy event and use the signed event only for
     provenance (authorization = EIP-712, relayer, nonce).
   - `agent-binding` semantics unchanged: `agentId == 0` is a valid claim; the all-ones sentinel is
-    reserved and reverts `PrimaryAgentIdReserved`. The paid setters and slot-2 complement encoding
+    reserved and reverts `WalletAgentIDReserved`. The paid setters and slot-2 complement encoding
     are untouched.
   - Consumer fixtures (EIP-712 type strings, viem typed-data, and example calldata) published under
     [`docs/fixtures/`](./docs/fixtures/adapter-primaryagent-withsig.md).
@@ -1019,8 +1070,8 @@ Source version. Not deployed. Supersedes the `0.0.9` primary-agent semantics
 below (neither `0.0.9` nor `0.0.10` is live on any chain).
 
 ### Changed
-- **Primary-agent storage is now complement-encoded** (`IERC8004AdapterPrimaryAgent`).
-  The `_primaryAgent` mapping still lives at slot 2 as `mapping(address => bytes32)`
+- **Primary-agent storage is now complement-encoded** (`IERC8004AdapterWalletAgentID`).
+  The `_walletAgentID` mapping still lives at slot 2 as `mapping(address => bytes32)`
   — the storage layout is byte-identical (slots 0/1/2 unchanged, verified via
   `forge inspect ... storageLayout`) — but it now stores the **bitwise complement**
   of the id (`~agentId`) rather than the raw id.
@@ -1028,17 +1079,17 @@ below (neither `0.0.9` nor `0.0.10` is live on any chain).
     zero, which complements to the all-ones sentinel, so "unwritten" reads as
     "unset" for free while every real id — `0` included — round-trips. The old
     `0.0.9` design treated `agentId == 0` as a clear, so id `0` could not be set.
-  - New sentinel `PRIMARY_AGENT_UNSET = bytes32(type(uint256).max)` (all ones).
-    `primaryAgentOf(account)` returns it when the account has never set an id or
+  - New sentinel `WALLET_AGENT_ID_UNSET = bytes32(type(uint256).max)` (all ones).
+    `walletAgentIDOf(account)` returns it when the account has never set an id or
     has cleared it (previously it returned `bytes32(0)`).
   - Setters no longer treat `0` as a clear. Removal is explicit via new
-    `clearPrimaryAgent()` / `clearPrimaryAgentFor(address)`, which emit a
-    dedicated `PrimaryAgentCleared(account, clearedBy)` event.
-  - `setPrimaryAgent` / `setPrimaryAgentFor` revert `PrimaryAgentIdReserved`
+    `clearWalletAgentID()` / `clearWalletAgentIDFor(address)`, which emit a
+    dedicated `WalletAgentIDCleared(account, clearedBy)` event.
+  - `setWalletAgentID` / `setWalletAgentIDFor` revert `WalletAgentIDReserved`
     when passed the all-ones sentinel id (it would complement to zero and alias
     "unset").
-  - `PrimaryAgentSet` is now emitted only for real-id writes; clears emit
-    `PrimaryAgentCleared`. Authorization for the `*For` calls is unchanged
+  - `WalletAgentIDSet` is now emitted only for real-id writes; clears emit
+    `WalletAgentIDCleared`. Authorization for the `*For` calls is unchanged
     (account itself, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`).
 
 ## [0.0.9] - Unreleased
@@ -1047,7 +1098,7 @@ Source version. Not deployed. Its primary-agent semantics are superseded by
 `0.0.10` above; the description below is retained as historical record.
 
 ### Added
-- **Primary-agent reverse resolution** (`IERC8004AdapterPrimaryAgent`): an
+- **Primary-agent reverse resolution** (`IERC8004AdapterWalletAgentID`): an
   `address => bytes32 agentId` mapping on the adapter that resolves a wallet
   address (or any address recorded in agent metadata) to the agent it claims to
   belong to, on this chain. Combined with the agent's own wallet claim (ERC-8004
@@ -1056,15 +1107,15 @@ Source version. Not deployed. Its primary-agent semantics are superseded by
   - The id is an ERC-8004 registry token id (small, incremental, stored as
     `bytes32(id)`) or a 32-byte counterfactual `registrationHash`. The two id
     spaces do not collide, so a single mapping holds both.
-  - `setPrimaryAgent(bytes32 agentId)` sets the caller's own id;
-    `setPrimaryAgentFor(address account, bytes32 agentId)` sets an account's id
+  - `setWalletAgentID(bytes32 agentId)` sets the caller's own id;
+    `setWalletAgentIDFor(address account, bytes32 agentId)` sets an account's id
     when the caller is the account, its `owner()` / `getOwner()`, or a holder of
-    its `DEFAULT_ADMIN_ROLE`; `primaryAgentOf(address)` reads it. `agentId == 0`
-    clears. Emits `PrimaryAgentSet(account, agentId, setBy)`.
+    its `DEFAULT_ADMIN_ROLE`; `walletAgentIDOf(address)` reads it. `agentId == 0`
+    clears. Emits `WalletAgentIDSet(account, agentId, setBy)`.
   - The control check is a defensive static call that tolerates non-conforming
     return data (wrong length or dirty bits) without reverting, and is
     account-scoped: a contract that misreports its controller can only affect its
-    own mapping entry. New storage `_primaryAgent` is appended after `_bindings`
+    own mapping entry. New storage `_walletAgentID` is appended after `_bindings`
     to preserve the upgrade layout. No registry writes, no effect on bindings.
 
 ## [0.0.8] - Unreleased

@@ -618,7 +618,7 @@ contract Adapter8004ContractBindingTest is Test {
         // Nothing was minted, bound, or claimed along the way: agent id 0 would be the first mint.
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
         adapter.bindingOf(0);
-        assertEq(adapter.primaryAgentOf(address(token)), adapter.PRIMARY_AGENT_UNSET());
+        assertEq(adapter.walletAgentIDOf(address(token)), adapter.WALLET_AGENT_ID_UNSET());
     }
 
     // -----------------------------------------------------------------

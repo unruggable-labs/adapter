@@ -7,13 +7,13 @@ pre-ERC-7930 scheme straight to the `0.0.17` shape in a single step.
 Record the upgrade block, exact `chainIdentifier()` bytes, and sample adapter/token
 `interoperableAddress(address)` bytes per deployment. Before proposing an upgrade, verify the
 implementation slot/version and scan the full proxy history for legacy
-`PrimaryAgentSet`, `PrimaryAgentCleared`, and signed-audit topics. The required production result is
+`WalletAgentIDSet`, `WalletAgentIDCleared`, and signed-audit topics. The required production result is
 zero; stop rollout if any target fails.
 
 At the cutover block:
 
-- start separate full and counterfactual primary projections;
-- subscribe to the new full `uint256` primary topics and the new counterfactual primary family;
+- start separate wallet agent id and wallet counterfactual id projections;
+- subscribe to the `WalletAgentIDSet` / `WalletAgentIDCleared` topics and the `WalletCounterfactualIDSet` / `WalletCounterfactualIDCleared` family. These were named `Primary*` in an earlier build and every one of those topic0 values changed with the rename;
 - validate every counterfactual indexed hash as
   `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId, extraData))`,
   with the dynamic adapter bytes carrying the full chain plus proxy address, `boundAddress` kept as a
@@ -26,11 +26,11 @@ At the cutover block:
 
 Counterfactual event topic0 values change as well as their indexed hash values. Every counterfactual
 event gained a non-indexed `bytes32 extraData` at `0.0.15`, and at `0.0.17` the five update events
-and `PrimaryCounterfactualAgentSet` each gained a non-indexed `uint8 standard` after it, so
+and `WalletCounterfactualIDSet` each gained a non-indexed `uint8 standard` after it, so
 subscriptions must be rewritten rather than reused. `CounterfactualAgentRegistered` already carried
 the standard in that position and its `0.0.17` signature is unchanged from `0.0.15`. Never silently
 re-key historical logs into the new namespace. Optional old-to-new coordinate redirects
 are discovery hints, not proof of a new claim. Do not seed either new pointer from frozen mixed
 storage or legacy events; accounts re-attest. Record implementation addresses/code hashes, Safe
-calldata, cutover/rollback blocks, old/new primary topics, post-upgrade reads, and sample hashes in
+calldata, cutover/rollback blocks, old and new wallet-id topics, post-upgrade reads, and sample hashes in
 the deployment report. Rollback is operational containment only; pause new traffic and fix forward.

@@ -6,9 +6,8 @@ import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERC8004AdapterCounterfactualPrimaryAgent} from
-    "../src/interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
-import {IERC8004AdapterPrimaryAgent} from "../src/interfaces/IERC8004AdapterPrimaryAgent.sol";
+import {IERC8004AdapterWalletCounterfactualID} from "../src/interfaces/IERC8004AdapterWalletCounterfactualID.sol";
+import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRecord} from "../src/interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
@@ -53,14 +52,14 @@ contract Adapter8004InterfacesTest is Test {
     }
 
     function testPrimaryInterfacesCastAndSelectors() external {
-        IERC8004AdapterPrimaryAgent full = IERC8004AdapterPrimaryAgent(address(adapter));
-        IERC8004AdapterCounterfactualPrimaryAgent cf = IERC8004AdapterCounterfactualPrimaryAgent(address(adapter));
-        assertEq(full.primaryAgentOf(alice), type(uint256).max);
-        assertEq(cf.primaryCounterfactualAgentOf(alice), bytes32(type(uint256).max));
-        assertEq(IERC8004AdapterPrimaryAgent.setPrimaryAgent.selector, bytes4(keccak256("setPrimaryAgent(uint256)")));
+        IERC8004AdapterWalletAgentID full = IERC8004AdapterWalletAgentID(address(adapter));
+        IERC8004AdapterWalletCounterfactualID cf = IERC8004AdapterWalletCounterfactualID(address(adapter));
+        assertEq(full.walletAgentIDOf(alice), type(uint256).max);
+        assertEq(cf.walletCounterfactualIDOf(alice), bytes32(type(uint256).max));
+        assertEq(IERC8004AdapterWalletAgentID.setWalletAgentID.selector, bytes4(keccak256("setWalletAgentID(uint256)")));
         assertEq(
-            IERC8004AdapterCounterfactualPrimaryAgent.setPrimaryCounterfactualAgent.selector,
-            bytes4(keccak256("setPrimaryCounterfactualAgent(uint8,address,uint256)"))
+            IERC8004AdapterWalletCounterfactualID.setWalletCounterfactualID.selector,
+            bytes4(keccak256("setWalletCounterfactualID(uint8,address,uint256)"))
         );
         (bool oldNonceGetter,) = address(adapter).staticcall(abi.encodeWithSignature("nonces(address)", alice));
         assertFalse(oldNonceGetter);
@@ -103,11 +102,80 @@ contract Adapter8004InterfacesTest is Test {
         // The surviving surface is untouched, so the assertions above are not passing because the
         // whole primary-agent family went away.
         vm.prank(alice);
-        adapter.setPrimaryAgent(7);
-        assertEq(adapter.primaryAgentOf(alice), 7);
+        adapter.setWalletAgentID(7);
+        assertEq(adapter.walletAgentIDOf(alice), 7);
         vm.prank(alice);
-        adapter.clearPrimaryAgent();
-        assertEq(adapter.primaryAgentOf(alice), type(uint256).max);
+        adapter.clearWalletAgentID();
+        assertEq(adapter.walletAgentIDOf(alice), type(uint256).max);
+    }
+
+    /// @dev The wallet-id surface was renamed at `0.0.17`. Every old selector must be gone, not merely
+    /// shadowed by a new one, so each is probed directly and required not to resolve.
+    function testRenamedWalletIdSelectorsDoNotResolveUnderTheirOldNames() external {
+        string[6] memory oldOneArg = [
+            "setPrimaryAgent(uint256)",
+            "clearPrimaryAgent()",
+            "primaryAgentOf(address)",
+            "PRIMARY_AGENT_UNSET()",
+            "clearPrimaryCounterfactualAgent()",
+            "PRIMARY_COUNTERFACTUAL_AGENT_UNSET()"
+        ];
+        for (uint256 i; i < oldOneArg.length; ++i) {
+            (bool resolved,) = address(adapter).call(abi.encodeWithSignature(oldOneArg[i]));
+            assertFalse(resolved, "an old wallet-id selector still resolves");
+        }
+
+        string[4] memory oldTwoArg = [
+            "setPrimaryAgentFor(address,uint256)",
+            "clearPrimaryAgentFor(address)",
+            "primaryCounterfactualAgentOf(address)",
+            "clearPrimaryCounterfactualAgentFor(address)"
+        ];
+        for (uint256 i; i < oldTwoArg.length; ++i) {
+            (bool resolved,) = address(adapter).call(abi.encodeWithSignature(oldTwoArg[i], alice, uint256(1)));
+            assertFalse(resolved, "an old wallet-id selector still resolves");
+        }
+
+        (bool oldCfSet,) = address(adapter).call(
+            abi.encodeWithSignature("setPrimaryCounterfactualAgent(uint8,address,uint256)", 0, alice, uint256(1))
+        );
+        assertFalse(oldCfSet, "the old counterfactual setter still resolves");
+
+        // Positive control: the renamed surface works, so the assertions above cannot pass because
+        // the whole family disappeared.
+        vm.prank(alice);
+        adapter.setWalletAgentID(5);
+        assertEq(adapter.walletAgentIDOf(alice), 5);
+        vm.prank(alice);
+        adapter.clearWalletAgentID();
+        assertEq(adapter.walletAgentIDOf(alice), adapter.WALLET_AGENT_ID_UNSET());
+    }
+
+    /// @dev The four renamed events must not still carry their old topic0 values.
+    function testRenamedWalletIdEventTopicsAreUnused() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        adapter.setWalletAgentID(2);
+        vm.prank(alice);
+        adapter.clearWalletAgentID();
+        vm.prank(alice);
+        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        vm.prank(alice);
+        adapter.clearWalletCounterfactualID();
+
+        bytes32[4] memory oldTopics = [
+            keccak256("PrimaryAgentSet(address,uint256,address)"),
+            keccak256("PrimaryAgentCleared(address,address)"),
+            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,uint8,address)"),
+            keccak256("PrimaryCounterfactualAgentCleared(address,address)")
+        ];
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 4, "all four renamed paths still emit");
+        for (uint256 i; i < logs.length; ++i) {
+            for (uint256 j; j < oldTopics.length; ++j) {
+                assertTrue(logs[i].topics[0] != oldTopics[j], "an old wallet-id event topic is still emitted");
+            }
+        }
     }
 
     /// @dev The two `WithSig` events go with their functions, so nothing should still emit or expect
@@ -116,9 +184,9 @@ contract Adapter8004InterfacesTest is Test {
     function testRemovedSignedPrimaryAgentEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setPrimaryAgent(3);
+        adapter.setWalletAgentID(3);
         vm.prank(alice);
-        adapter.clearPrimaryAgent();
+        adapter.clearWalletAgentID();
 
         bytes32 setWithSig = keccak256("PrimaryAgentSetWithSig(address,uint256,address,uint256)");
         bytes32 clearedWithSig = keccak256("PrimaryAgentClearedWithSig(address,address,uint256)");
@@ -146,11 +214,12 @@ contract Adapter8004InterfacesTest is Test {
 
     function testPrimaryEventTopicsAreSystemSpecific() external pure {
         assertEq(
-            IERC8004AdapterPrimaryAgent.PrimaryAgentSet.selector, keccak256("PrimaryAgentSet(address,uint256,address)")
+            IERC8004AdapterWalletAgentID.WalletAgentIDSet.selector,
+            keccak256("WalletAgentIDSet(address,uint256,address)")
         );
         assertEq(
-            IERC8004AdapterCounterfactualPrimaryAgent.PrimaryCounterfactualAgentSet.selector,
-            keccak256("PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,bytes32,uint8,address)")
+            IERC8004AdapterWalletCounterfactualID.WalletCounterfactualIDSet.selector,
+            keccak256("WalletCounterfactualIDSet(address,bytes32,address,uint256,bytes32,uint8,address)")
         );
     }
 

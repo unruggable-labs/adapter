@@ -13,8 +13,8 @@ import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERC8004AdapterCounterfactualPrimaryAgent} from "./interfaces/IERC8004AdapterCounterfactualPrimaryAgent.sol";
-import {IERC8004AdapterPrimaryAgent} from "./interfaces/IERC8004AdapterPrimaryAgent.sol";
+import {IERC8004AdapterWalletCounterfactualID} from "./interfaces/IERC8004AdapterWalletCounterfactualID.sol";
+import {IERC8004AdapterWalletAgentID} from "./interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistration.sol";
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "./interfaces/IERC8004IdentityRegistry.sol";
@@ -47,8 +47,8 @@ contract Adapter8004 is
     IERC8004IdentityRecord,
     IERC8004AdapterRegistration,
     IERC8004AdapterCounterfactual,
-    IERC8004AdapterPrimaryAgent,
-    IERC8004AdapterCounterfactualPrimaryAgent,
+    IERC8004AdapterWalletAgentID,
+    IERC8004AdapterWalletCounterfactualID,
     IERC8004AdapterAttestation
 {
     string public constant BINDING_METADATA_KEY = "agent-binding";
@@ -100,15 +100,15 @@ contract Adapter8004 is
     error NonZeroTokenIdForAccount(address boundAddress, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
-    /// @notice Thrown when `setPrimaryAgentFor` / `clearPrimaryAgentFor` is called by an address that
+    /// @notice Thrown when `setWalletAgentIDFor` / `clearWalletAgentIDFor` is called by an address that
     /// is neither the account itself, the account's `owner()` / `getOwner()`, nor a holder of its
     /// `DEFAULT_ADMIN_ROLE`.
     error NotAccountController(address account, address caller);
-    /// @notice Thrown when a primary-agent setter is passed `PRIMARY_AGENT_UNSET` (all ones). That
+    /// @notice Thrown when a wallet agent id setter is passed `WALLET_AGENT_ID_UNSET` (all ones). That
     /// value is reserved as the "unset" sentinel: it complements to zero in storage and would be
-    /// indistinguishable from a never-written entry. Clear via `clearPrimaryAgent[For]` instead.
-    error PrimaryAgentIdReserved(uint256 agentId);
-    error PrimaryCounterfactualAgentHashReserved(bytes32 registrationHash);
+    /// indistinguishable from a never-written entry. Clear via `clearWalletAgentID[For]` instead.
+    error WalletAgentIDReserved(uint256 agentId);
+    error WalletCounterfactualIDReserved(bytes32 registrationHash);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
 
@@ -134,15 +134,15 @@ contract Adapter8004 is
     mapping(uint256 agentId => Binding binding) private _bindings;
 
     /// @notice Full-system unset sentinel. Agent id zero remains representable.
-    uint256 public constant PRIMARY_AGENT_UNSET = type(uint256).max;
-    bytes32 public constant PRIMARY_COUNTERFACTUAL_AGENT_UNSET = bytes32(type(uint256).max);
+    uint256 public constant WALLET_AGENT_ID_UNSET = type(uint256).max;
+    bytes32 public constant WALLET_COUNTERFACTUAL_ID_UNSET = bytes32(type(uint256).max);
 
     /// @dev Reverse claims. These two mappings occupy regular slots 2 and 3, in the order declared
     /// here, and are append-only: never reorder, insert between them, or repurpose one. They begin
     /// empty on a proxy upgraded from the deployed baseline, which holds slots 0 and 1 only. No slots
     /// are reserved ahead of them.
-    mapping(address account => uint256 complementAgentId) private _primaryAgent;
-    mapping(address account => bytes32 complementRegistrationHash) private _primaryCounterfactualAgent;
+    mapping(address account => uint256 complementAgentId) private _walletAgentID;
+    mapping(address account => bytes32 complementRegistrationHash) private _walletCounterfactualID;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -618,114 +618,112 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
-    //  Full ERC-8004 primary agent (reverse resolution: address -> registry agent id)
+    //  Wallet agent id (reverse resolution: wallet -> registry agent id)
     // -----------------------------------------------------------------
 
-    /// @notice Set the caller's own primary agent id. The caller always controls itself, so no extra
+    /// @notice Set the caller's own wallet agent id. The caller always controls itself, so no extra
     /// authorization is required. The id is strictly an ERC-8004 registry token id. To remove an id,
-    /// call `clearPrimaryAgent`; passing
-    /// `PRIMARY_AGENT_UNSET` (all ones) reverts `PrimaryAgentIdReserved` (it is the unset sentinel).
-    function setPrimaryAgent(uint256 agentId) external {
-        _setPrimaryAgent(msg.sender, agentId);
+    /// call `clearWalletAgentID`; passing
+    /// `WALLET_AGENT_ID_UNSET` (all ones) reverts `WalletAgentIDReserved` (it is the unset sentinel).
+    function setWalletAgentID(uint256 agentId) external {
+        _setWalletAgentID(msg.sender, agentId);
     }
 
-    /// @notice Set the primary agent id for `account`. Authorized when the caller is the account
+    /// @notice Set the wallet agent id for `account`. Authorized when the caller is the account
     /// itself, the account's `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`. To
-    /// remove an id, call `clearPrimaryAgentFor`. Reverts `PrimaryAgentIdReserved` for the all-ones id.
-    function setPrimaryAgentFor(address account, uint256 agentId) external {
+    /// remove an id, call `clearWalletAgentIDFor`. Reverts `WalletAgentIDReserved` for the all-ones id.
+    function setWalletAgentIDFor(address account, uint256 agentId) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _setPrimaryAgent(account, agentId);
+        _setWalletAgentID(account, agentId);
     }
 
-    /// @notice Clear the caller's own primary agent id. Afterwards `primaryAgentOf` returns
-    /// `PRIMARY_AGENT_UNSET`. Idempotent: clearing an already-unset account still emits
-    /// `PrimaryAgentCleared`.
-    function clearPrimaryAgent() external {
-        _clearPrimaryAgent(msg.sender);
+    /// @notice Clear the caller's own wallet agent id. Afterwards `walletAgentIDOf` returns
+    /// `WALLET_AGENT_ID_UNSET`. Idempotent: clearing an already-unset account still emits
+    /// `WalletAgentIDCleared`.
+    function clearWalletAgentID() external {
+        _clearWalletAgentID(msg.sender);
     }
 
-    /// @notice Clear the primary agent id for `account`, under the same authorization model as
-    /// `setPrimaryAgentFor`. Reverts `NotAccountController` when the caller is not authorized.
-    function clearPrimaryAgentFor(address account) external {
+    /// @notice Clear the wallet agent id for `account`, under the same authorization model as
+    /// `setWalletAgentIDFor`. Reverts `NotAccountController` when the caller is not authorized.
+    function clearWalletAgentIDFor(address account) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _clearPrimaryAgent(account);
+        _clearWalletAgentID(account);
     }
 
-    /// @notice Reverse-resolve an address to its primary agent id. Returns `PRIMARY_AGENT_UNSET` (all
+    /// @notice Reverse-resolve a wallet to its agent id. Returns `WALLET_AGENT_ID_UNSET` (all
     /// ones) when the account has never set an id or has cleared it. Every real id, including agent
     /// id `0`, is returned as itself.
-    function primaryAgentOf(address account) external view returns (uint256) {
-        uint256 stored = _primaryAgent[account];
-        return stored == 0 ? PRIMARY_AGENT_UNSET : ~stored;
+    function walletAgentIDOf(address account) external view returns (uint256) {
+        uint256 stored = _walletAgentID[account];
+        return stored == 0 ? WALLET_AGENT_ID_UNSET : ~stored;
     }
 
-    function _setPrimaryAgent(address account, uint256 agentId) private {
-        if (agentId == type(uint256).max) revert PrimaryAgentIdReserved(agentId);
-        _primaryAgent[account] = ~agentId;
-        emit PrimaryAgentSet(account, agentId, msg.sender);
+    function _setWalletAgentID(address account, uint256 agentId) private {
+        if (agentId == type(uint256).max) revert WalletAgentIDReserved(agentId);
+        _walletAgentID[account] = ~agentId;
+        emit WalletAgentIDSet(account, agentId, msg.sender);
     }
 
-    /// @dev Reset the account's complement slot to zero, which reads back as `PRIMARY_AGENT_UNSET`,
-    /// and emit `PrimaryAgentCleared`. `delete` restores the exact "unwritten == unset" invariant.
-    function _clearPrimaryAgent(address account) private {
-        delete _primaryAgent[account];
-        emit PrimaryAgentCleared(account, msg.sender);
+    /// @dev Reset the account's complement slot to zero, which reads back as `WALLET_AGENT_ID_UNSET`,
+    /// and emit `WalletAgentIDCleared`. `delete` restores the exact "unwritten == unset" invariant.
+    function _clearWalletAgentID(address account) private {
+        delete _walletAgentID[account];
+        emit WalletAgentIDCleared(account, msg.sender);
     }
 
     // -----------------------------------------------------------------
-    //  Counterfactual primary agent (reverse resolution: address -> registration hash)
+    //  Wallet counterfactual id (reverse resolution: wallet -> registration hash)
     // -----------------------------------------------------------------
 
-    function setPrimaryCounterfactualAgent(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function setWalletCounterfactualID(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 computedHash)
     {
-        return _setPrimaryCounterfactualAgent(msg.sender, standard, boundAddress, tokenId);
+        return _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
     }
 
-    function setPrimaryCounterfactualAgentFor(
+    function setWalletCounterfactualIDFor(
         address account,
         TokenStandard standard,
         address boundAddress,
         uint256 tokenId
     ) external returns (bytes32 computedHash) {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        return _setPrimaryCounterfactualAgent(account, standard, boundAddress, tokenId);
+        return _setWalletCounterfactualID(account, standard, boundAddress, tokenId);
     }
 
-    function clearPrimaryCounterfactualAgent() external {
-        _clearPrimaryCounterfactualAgent(msg.sender);
+    function clearWalletCounterfactualID() external {
+        _clearWalletCounterfactualID(msg.sender);
     }
 
-    function clearPrimaryCounterfactualAgentFor(address account) external {
+    function clearWalletCounterfactualIDFor(address account) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _clearPrimaryCounterfactualAgent(account);
+        _clearWalletCounterfactualID(account);
     }
 
-    function primaryCounterfactualAgentOf(address account) external view returns (bytes32) {
-        bytes32 stored = _primaryCounterfactualAgent[account];
-        return stored == bytes32(0) ? PRIMARY_COUNTERFACTUAL_AGENT_UNSET : ~stored;
+    function walletCounterfactualIDOf(address account) external view returns (bytes32) {
+        bytes32 stored = _walletCounterfactualID[account];
+        return stored == bytes32(0) ? WALLET_COUNTERFACTUAL_ID_UNSET : ~stored;
     }
 
-    function _setPrimaryCounterfactualAgent(
-        address account,
-        TokenStandard standard,
-        address boundAddress,
-        uint256 tokenId
-    ) private returns (bytes32 computedHash) {
+    function _setWalletCounterfactualID(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
+        private
+        returns (bytes32 computedHash)
+    {
         computedHash = _registrationHash(standard, boundAddress, tokenId);
         if (computedHash == bytes32(type(uint256).max)) {
-            revert PrimaryCounterfactualAgentHashReserved(computedHash);
+            revert WalletCounterfactualIDReserved(computedHash);
         }
-        _primaryCounterfactualAgent[account] = ~computedHash;
-        emit PrimaryCounterfactualAgentSet(
+        _walletCounterfactualID[account] = ~computedHash;
+        emit WalletCounterfactualIDSet(
             account, computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, msg.sender
         );
     }
 
-    function _clearPrimaryCounterfactualAgent(address account) private {
-        delete _primaryCounterfactualAgent[account];
-        emit PrimaryCounterfactualAgentCleared(account, msg.sender);
+    function _clearWalletCounterfactualID(address account) private {
+        delete _walletCounterfactualID[account];
+        emit WalletCounterfactualIDCleared(account, msg.sender);
     }
 
     // -----------------------------------------------------------------
@@ -994,7 +992,7 @@ contract Adapter8004 is
         // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Authority
         //    belongs to holders of `DEFAULT_ADMIN_ROLE`, read on every call, so revoking the role
         //    removes authority immediately. It matches `_controlsAccount`, which has always accepted
-        //    an admin, closing an asymmetry where an admin could set a contract's primary agent but
+        //    an admin, closing an asymmetry where an admin could set a contract's wallet agent id but
         //    not manage an identity bound to it. Direct authority only: a role is a membership
         //    predicate that many addresses satisfy and none can enumerate, so there is no
         //    well-defined delegator for delegate.xyz to name.

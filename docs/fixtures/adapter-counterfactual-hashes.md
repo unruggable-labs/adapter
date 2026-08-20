@@ -146,7 +146,7 @@ before the upgrade.
 The counterfactual event signatures changed alongside each scheme. At v0.0.15 every event gained a
 non-indexed `bytes32 extraData` and the former `uint8 version` field was removed, because `topic0` is
 the keccak of the full signature and already discriminates schema on its own. At v0.0.17 the five
-counterfactual update events and `PrimaryCounterfactualAgentSet` each gained a non-indexed `uint8
+counterfactual update events and `WalletCounterfactualIDSet` each gained a non-indexed `uint8
 standard`, directly after `extraData`, so a single log line now carries everything needed to
 recompute the hash it names. `topic0` moved again for those six events. `CounterfactualAgentRegistered`
 already carried the standard in that position and is unchanged at v0.0.17.

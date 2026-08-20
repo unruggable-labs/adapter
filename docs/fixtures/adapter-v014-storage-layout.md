@@ -6,8 +6,8 @@ Captured with `forge inspect Adapter8004 storageLayout`:
 |---:|---|---|---|
 | 0 | `identityRegistry` | `IERC8004IdentityRegistry` | unchanged |
 | 1 | `_bindings` | `mapping(uint256 => Binding)` | unchanged |
-| 2 | `_primaryAgent` | `mapping(address => uint256)` | appended full pointer |
-| 3 | `_primaryCounterfactualAgent` | `mapping(address => bytes32)` | appended CF pointer |
+| 2 | `_walletAgentID` | `mapping(address => uint256)` | appended full pointer |
+| 3 | `_walletCounterfactualID` | `mapping(address => bytes32)` | appended CF pointer |
 
 Regular storage ends at slot 3. A fourth mapping, `_primaryAgentNonces`, backed the signed
 primary-agent surface and was removed at `0.0.17`; it was never written on any chain, because no
