@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
@@ -83,6 +84,50 @@ contract Adapter8004InterfacesTest is Test {
             )
         );
         assertFalse(counterfactualClearWithSig);
+    }
+
+    /// @dev The signed primary-agent surface was removed at `0.0.17`. A stale selector that still
+    /// resolves is the failure mode worth a test, so each removed entry point is probed directly:
+    /// the call must fail because the function is absent, not because its arguments were wrong.
+    function testRemovedSignedPrimaryAgentSelectorsDoNotResolve() external {
+        string[3] memory removed = [
+            "setPrimaryAgentWithSig(address,uint256,uint256,bytes)",
+            "clearPrimaryAgentWithSig(address,uint256,bytes)",
+            "primaryAgentNonces(address)"
+        ];
+        for (uint256 i; i < removed.length; ++i) {
+            (bool resolved,) = address(adapter).call(abi.encodeWithSignature(removed[i], alice, uint256(0), bytes("")));
+            assertFalse(resolved, "a removed signed-surface selector still resolves");
+        }
+
+        // The surviving surface is untouched, so the assertions above are not passing because the
+        // whole primary-agent family went away.
+        vm.prank(alice);
+        adapter.setPrimaryAgent(7);
+        assertEq(adapter.primaryAgentOf(alice), 7);
+        vm.prank(alice);
+        adapter.clearPrimaryAgent();
+        assertEq(adapter.primaryAgentOf(alice), type(uint256).max);
+    }
+
+    /// @dev The two `WithSig` events go with their functions, so nothing should still emit or expect
+    /// their topics. Pinned by signature rather than by selector, since the events are gone from the
+    /// interface and cannot be referenced by name any more.
+    function testRemovedSignedPrimaryAgentEventTopicsAreUnused() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        adapter.setPrimaryAgent(3);
+        vm.prank(alice);
+        adapter.clearPrimaryAgent();
+
+        bytes32 setWithSig = keccak256("PrimaryAgentSetWithSig(address,uint256,address,uint256)");
+        bytes32 clearedWithSig = keccak256("PrimaryAgentClearedWithSig(address,address,uint256)");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            assertTrue(logs[i].topics[0] != setWithSig, "PrimaryAgentSetWithSig still emitted");
+            assertTrue(logs[i].topics[0] != clearedWithSig, "PrimaryAgentClearedWithSig still emitted");
+        }
+        assertEq(logs.length, 2, "the plain set and clear events still fire");
     }
 
     function testCounterfactualHashInterfaceCastAndSelectors() external view {

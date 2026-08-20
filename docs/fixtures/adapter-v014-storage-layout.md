@@ -8,12 +8,17 @@ Captured with `forge inspect Adapter8004 storageLayout`:
 | 1 | `_bindings` | `mapping(uint256 => Binding)` | unchanged |
 | 2 | `_primaryAgent` | `mapping(address => uint256)` | appended full pointer |
 | 3 | `_primaryCounterfactualAgent` | `mapping(address => bytes32)` | appended CF pointer |
-| 4 | `_primaryAgentNonces` | `mapping(address => uint256)` | appended full nonce |
+
+Regular storage ends at slot 3. A fourth mapping, `_primaryAgentNonces`, backed the signed
+primary-agent surface and was removed at `0.0.17`; it was never written on any chain, because no
+live implementation exposed a function that could reach it, so the slot is simply gone rather than
+reserved or deprecated. Verified on 2026-08-19: `primaryAgentNonces(address)` reverts on all three
+live proxies and raw slot 4 reads zero on each.
 
 The actual deployed Mainnet/Base (`a20035c`) and Sepolia (`4647ddd`) baselines contain only slots
 0 and 1. No initializer or heuristic migration is used: direct upgrades use empty
 `upgradeToAndCall` data. The upgrade tests start from minimal implementations with that exact
-regular layout, populate slots 0 and 1, prove slots 2-4 are empty before the upgrade, preserve the
-registry and binding, and verify new writes land at slots 2 and 3. Direct slot probes also verify
-the full-system public nonce getter reads slot 4. A
-separate Sepolia-baseline test proves delegate.xyz authorization survives the upgrade.
+regular layout, populate slots 0 and 1, prove slots 2 and 3 are empty before the upgrade, preserve
+the registry and binding, verify new writes land at slots 2 and 3, and assert that nothing writes
+past slot 3. A separate Sepolia-baseline test proves delegate.xyz authorization survives the
+upgrade.

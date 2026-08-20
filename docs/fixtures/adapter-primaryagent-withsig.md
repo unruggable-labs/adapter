@@ -1,5 +1,12 @@
 # Adapter8004 v0.0.14 — full ERC-8004 primary signatures
 
+> **Removed.** The signed primary-agent surface was removed in `0.0.17` before any deployment.
+> `setPrimaryAgentWithSig`, `clearPrimaryAgentWithSig`, `primaryAgentNonces`, the two `WithSig`
+> events and the adapter's EIP-712 domain are all gone, and storage now ends at slot 3. Setting a
+> primary agent for another account remains available through `setPrimaryAgentFor`, which a
+> controller calls directly. See CHANGELOG.md. This document is kept as the design record, and the
+> vectors below describe a scheme no deployed contract implements.
+
 The full system stores only registry `uint256 agentId` values. Read `primaryAgentNonces(account)`
 immediately before signing. Signed authorization is account-self (EOA or ERC-1271); any relayer may
 submit it. The deadline is inclusive and at most 30 minutes ahead.

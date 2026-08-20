@@ -240,8 +240,8 @@ Implementation upgrades are governed by the Safe multisig through UUPS. The [`de
 The unreleased implementation upgrades directly from the active
 Mainnet/Base May 15 build or the active Sepolia delegate.xyz build—not from
 unreleased numbered source versions. Both live layouts populate only regular
-slots 0 and 1. The three new primary-agent mappings append directly at slots
-2-4. Existing proxies must use empty
+slots 0 and 1. The two new primary-agent mappings append directly at slots
+2 and 3. Existing proxies must use empty
 `upgradeToAndCall` data; `initialize(...)` is only for a new proxy. No storage
 migration or reinitializer is required. Sepolia's delegate.xyz getters and
 authorization remain present.
@@ -536,7 +536,6 @@ Full ERC-8004:
 - `setPrimaryAgent(uint256 agentId)` / `setPrimaryAgentFor(account, agentId)`
 - `clearPrimaryAgent()` / `clearPrimaryAgentFor(account)`
 - `primaryAgentOf(account) -> uint256`
-- `setPrimaryAgentWithSig(...)`, `clearPrimaryAgentWithSig(...)`, and `primaryAgentNonces(account)`
 - unset is `PRIMARY_AGENT_UNSET == type(uint256).max`; agent ID `0` is valid
 
 Counterfactual:
@@ -547,11 +546,9 @@ Counterfactual:
 - setters derive the hash; callers cannot store an arbitrary value
 - unset is `PRIMARY_COUNTERFACTUAL_AGENT_UNSET == bytes32(type(uint256).max)`
 
-Paid `...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. The full-system signed reverse-pointer calls are strictly account-self through EOA/ERC-1271 `SignatureChecker`, allow any relayer, and retain the inclusive 30-minute deadline cap. Counterfactual primaries intentionally have no signed/gasless surface; collections use the direct unsigned register-at-mint path and `setPrimaryCounterfactualAgentFor`.
+`...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. Both are set directly by a controller, so both cost the caller gas. An earlier build carried a signed, relayer-submittable variant of the full-system setters; it was removed at `0.0.17` before any deployment, and `setPrimaryAgentFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
 
-Each full-system signed reverse-pointer path emits its state event first and its `WithSig` provenance event second.
-
-This is a hard cutover from unreleased source behavior, not a production storage migration. Live proxies never deployed the old mixed pointer or shared nonce, so the new mappings occupy slots 2–4 and start empty. Old bare-chain-id hashes and old EIP-712 signatures are invalid. See the [full signed-primary fixture](./docs/fixtures/adapter-primaryagent-withsig.md), [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md), and [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
+This is a hard cutover from unreleased source behavior, not a production storage migration. Live proxies never deployed the old mixed pointer, so the two mappings occupy slots 2 and 3 and start empty. Old bare-chain-id hashes are invalid. See the [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md) and the [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
 
 ## Counterfactual Attestations
 
@@ -600,7 +597,7 @@ One thing the enum buys: the ABI decoder rejects a value above the last member b
 
 Everything else is the reader's: target resolution, payload well-formedness, whether a revocation counts at all (only from the original attester, which an emit-only contract cannot check), and reviewer independence from the subject. The projection rules, payload encodings, and full type registry are normative in [the type-registry specification](./docs/specs/attestation-type-registry-v1.md), with identifier vectors in [the attestation fixture](./docs/fixtures/adapter-attestation-ids.md).
 
-**Emit-only, with two consequences.** No contract can read attestations on chain — nothing needs to today, and a stored system can be added later if that changes. And the surface adds no storage slot, so the layout still ends at slot 4. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
+**Emit-only, with two consequences.** No contract can read attestations on chain. Nothing needs to today, and a stored system can be added later if that changes. The surface also adds no storage slot, so regular storage still ends at slot 3. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
 
 Execution gas measured in the assembled contract, excluding the fixed 21,000 per transaction: `attest` with a small payload 7,581, `confirmAdditionalAccount` 6,916, `revoke` 1,889, plus roughly 9 gas per payload byte. `revoke` is much the cheapest because it derives no identifier at all. The other two are dominated by the ERC-7930 envelope every identity derivation builds, which every counterfactual write pays too, since they share the helper.
 
@@ -680,9 +677,6 @@ Counterfactual (emit-only) functions:
 - `clearPrimaryAgent()`
 - `clearPrimaryAgentFor(address account)`
 - `primaryAgentOf(address account)`
-- `setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes signature)`
-- `clearPrimaryAgentWithSig(address account, uint256 deadline, bytes signature)`
-- `primaryAgentNonces(address account)`
 - `setPrimaryCounterfactualAgent(TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `setPrimaryCounterfactualAgentFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `clearPrimaryCounterfactualAgent()`
@@ -777,7 +771,10 @@ The Foundry suite currently covers:
 - repeated registration using the same external token
 - control transfer after external token transfers
 - metadata and URI updates
-- wallet-binding pass-through with valid and invalid ERC-8004 signatures
+- wallet-binding pass-through with valid and invalid ERC-8004 signatures, which is the registry's
+  own EIP-712 surface and is unaffected by the adapter dropping its own
+- the signed primary-agent surface staying removed: each removed selector probed and required not to
+  resolve, neither `WithSig` event topic emitted, and nothing written past slot 3
 - the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
 - the ERC-7930 encoding, which production now takes from OpenZeppelin's `draft-InteroperableAddress`,
   pinned against three independent oracles: the two former in-house encoders kept frozen as

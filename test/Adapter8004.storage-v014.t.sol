@@ -107,7 +107,7 @@ contract Adapter8004StorageV014Test is Test {
         address proxy = address(baseline);
 
         assertEq(address(uint160(uint256(vm.load(proxy, bytes32(uint256(0)))))), address(registry));
-        _assertSlotsTwoThroughFourEmpty(proxy);
+        _assertSlotsTwoAndThreeEmpty(proxy);
 
         Adapter8004 adapter = _upgrade(baseline);
 
@@ -118,8 +118,7 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(binding.tokenId, 41);
         assertEq(adapter.primaryAgentOf(account), type(uint256).max);
         assertEq(adapter.primaryCounterfactualAgentOf(account), bytes32(type(uint256).max));
-        assertEq(adapter.primaryAgentNonces(account), 0);
-        _assertSlotsTwoThroughFourEmpty(proxy);
+        _assertSlotsTwoAndThreeEmpty(proxy);
 
         vm.startPrank(account);
         adapter.setPrimaryAgent(9);
@@ -132,8 +131,9 @@ contract Adapter8004StorageV014Test is Test {
             ~adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 41)
         );
 
-        vm.store(proxy, _mappingSlot(account, 4), bytes32(uint256(11)));
-        assertEq(adapter.primaryAgentNonces(account), 11);
+        // Slot 4 is past the declared layout now that the signed surface is gone, so it must stay
+        // untouched by every write the contract can perform.
+        assertEq(vm.load(proxy, _mappingSlot(account, 4)), bytes32(0), "nothing writes past slot 3");
     }
 
     /// @dev Appending `ACCOUNT` and `CONTRACT_OWNABLE` to `TokenStandard` must not renumber the values
@@ -177,14 +177,14 @@ contract Adapter8004StorageV014Test is Test {
         Adapter8004LiveBaseline baseline = _deployBaseline(new Adapter8004SepoliaBaseline());
         baseline.seedLiveBinding(7, IERCAgentBindings.TokenStandard.ERC721, address(token), 41);
         assertTrue(baseline.isController(7, hot));
-        _assertSlotsTwoThroughFourEmpty(address(baseline));
+        _assertSlotsTwoAndThreeEmpty(address(baseline));
 
         Adapter8004 adapter = _upgrade(baseline);
 
         assertEq(adapter.DELEGATE_REGISTRY(), DELEGATE_REGISTRY);
         assertEq(adapter.DELEGATE_RIGHTS(), DELEGATE_RIGHTS);
         assertTrue(adapter.isController(7, hot));
-        _assertSlotsTwoThroughFourEmpty(address(adapter));
+        _assertSlotsTwoAndThreeEmpty(address(adapter));
     }
 
     function _deployBaseline(Adapter8004LiveBaseline implementation) private returns (Adapter8004LiveBaseline) {
@@ -204,8 +204,8 @@ contract Adapter8004StorageV014Test is Test {
         adapter = Adapter8004(address(baseline));
     }
 
-    function _assertSlotsTwoThroughFourEmpty(address proxy) private view {
-        for (uint256 slot = 2; slot <= 4; ++slot) {
+    function _assertSlotsTwoAndThreeEmpty(address proxy) private view {
+        for (uint256 slot = 2; slot <= 3; ++slot) {
             assertEq(vm.load(proxy, _mappingSlot(account, slot)), bytes32(0));
         }
     }

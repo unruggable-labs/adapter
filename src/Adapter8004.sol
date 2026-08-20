@@ -9,8 +9,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
@@ -30,7 +28,7 @@ interface IOwnableContract {
 }
 
 /// @notice Upgrade target for the active Adapter8004 proxies.
-/// @dev Regular storage ends at slot 4 and is append-only, so a live proxy upgrades with empty
+/// @dev Regular storage ends at slot 3 and is append-only, so a live proxy upgrades with empty
 /// `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
 /// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId,
 /// extraData))`, a different preimage from the one live proxies compute today, so upgrading one is a
@@ -80,27 +78,6 @@ contract Adapter8004 is
     /// @dev Introducing a non-zero value for a pair that hashed with zero re-keys a live identity.
     bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
 
-    /// @notice Stateless EIP-712 domain for the signed primary-agent surface. The domain name
-    /// identifies the adapter (not the underlying ERC-8004 registry); the separator is computed
-    /// inline from `block.chainid` and `address(this)` so no storage slot or cached separator is
-    /// introduced and the contract stays storage-layout neutral across upgrades.
-    bytes32 private constant EIP712_DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-    string private constant EIP712_NAME = "Adapter8004";
-    string private constant EIP712_VERSION = "1";
-
-    /// @notice Upper bound on how far in the future a signed primary-agent `deadline` may sit. A
-    /// short lifetime bounds replay exposure for relayer-submitted reverse-pointer updates.
-    uint256 private constant MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME = 30 minutes;
-
-    /// @notice EIP-712 typehashes for the gasless (account-self) full-system primary-agent surface.
-    /// The signed payloads embed the operation's on-chain nonce and a bounded `deadline`;
-    /// the `nonce` is deliberately not a calldata argument.
-    bytes32 private constant SET_PRIMARY_AGENT_TYPEHASH =
-        keccak256("SetPrimary8004Agent(address account,uint256 agentId,uint256 nonce,uint256 deadline)");
-    bytes32 private constant CLEAR_PRIMARY_AGENT_TYPEHASH =
-        keccak256("ClearPrimary8004Agent(address account,uint256 nonce,uint256 deadline)");
-
     /// @notice Thrown when the address a binding names is unusable: the zero address under any
     /// standard, or an address with no runtime code under any standard except `ACCOUNT`.
     error InvalidBoundAddress();
@@ -135,15 +112,6 @@ contract Adapter8004 is
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
 
-    /// @notice Thrown when the current block timestamp is past a signed primary-agent `deadline`.
-    error SignatureExpired(uint256 deadline);
-    /// @notice Thrown when a signed primary-agent `deadline` is more than
-    /// `MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME` seconds in the future.
-    error SignatureDeadlineTooFar(uint256 deadline);
-    /// @notice Thrown when an account signature fails EOA and ERC-1271 verification for the digest.
-    /// This covers a wrong signer, tampered payload, stale nonce, or wrong operation type.
-    error InvalidSignature();
-
     event AgentBound(
         uint256 indexed agentId,
         TokenStandard indexed standard,
@@ -169,13 +137,12 @@ contract Adapter8004 is
     uint256 public constant PRIMARY_AGENT_UNSET = type(uint256).max;
     bytes32 public constant PRIMARY_COUNTERFACTUAL_AGENT_UNSET = bytes32(type(uint256).max);
 
-    /// @dev Reverse claims and full-system nonces. These three mappings occupy regular slots 2 through
-    /// 4, in the order declared here, and are append-only: never reorder, insert between them, or
-    /// repurpose one. They begin empty on a proxy upgraded from the deployed baseline, which holds
-    /// slots 0 and 1 only. No slots are reserved ahead of them.
+    /// @dev Reverse claims. These two mappings occupy regular slots 2 and 3, in the order declared
+    /// here, and are append-only: never reorder, insert between them, or repurpose one. They begin
+    /// empty on a proxy upgraded from the deployed baseline, which holds slots 0 and 1 only. No slots
+    /// are reserved ahead of them.
     mapping(address account => uint256 complementAgentId) private _primaryAgent;
     mapping(address account => bytes32 complementRegistrationHash) private _primaryCounterfactualAgent;
-    mapping(address account => uint256 nonce) private _primaryAgentNonces;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -826,84 +793,12 @@ contract Adapter8004 is
     function _revoke(bytes32 attestationId) private {
         emit AttestationRevoked(attestationId, msg.sender);
     }
-
-    // -----------------------------------------------------------------
-    //  Signed (gasless, account-self) primary agent surface
-    // -----------------------------------------------------------------
-
-    function setPrimaryAgentWithSig(address account, uint256 agentId, uint256 deadline, bytes calldata signature)
-        external
-    {
-        // 1. Enforce the bounded, unexpired deadline.
-        _requirePrimaryAgentDeadline(deadline);
-
-        // 2. Load the canonical current nonce and build the operation-specific digest over it.
-        uint256 nonce = _primaryAgentNonces[account];
-        bytes32 structHash = keccak256(abi.encode(SET_PRIMARY_AGENT_TYPEHASH, account, agentId, nonce, deadline));
-
-        // 3. Require a valid account signature (EOA or ERC-1271) over that exact digest.
-        _verifyPrimaryAgentSig(account, structHash, signature);
-
-        // 4. Consume the nonce exactly once (before the pointer write; any later revert rolls it back).
-        _primaryAgentNonces[account] = nonce + 1;
-
-        // 5. Perform the shared storage op (keeps the all-ones rejection and agent-id-zero rules).
-        _setPrimaryAgent(account, agentId);
-
-        // 6. Emit the signed-path audit event with the nonce consumed in step 2.
-        emit PrimaryAgentSetWithSig(account, agentId, msg.sender, nonce);
-    }
-
-    function clearPrimaryAgentWithSig(address account, uint256 deadline, bytes calldata signature) external {
-        // 1. Enforce the bounded, unexpired deadline.
-        _requirePrimaryAgentDeadline(deadline);
-
-        // 2. Load the canonical current nonce and build the clear digest over it.
-        uint256 nonce = _primaryAgentNonces[account];
-        bytes32 structHash = keccak256(abi.encode(CLEAR_PRIMARY_AGENT_TYPEHASH, account, nonce, deadline));
-
-        // 3. Require a valid account signature (EOA or ERC-1271) over that exact digest.
-        _verifyPrimaryAgentSig(account, structHash, signature);
-
-        // 4. Consume the nonce exactly once.
-        _primaryAgentNonces[account] = nonce + 1;
-
-        // 5. Clear the pointer through the shared helper.
-        _clearPrimaryAgent(account);
-
-        // 6. Emit the signed-path audit event with the nonce consumed in step 2.
-        emit PrimaryAgentClearedWithSig(account, msg.sender, nonce);
-    }
-
-    function primaryAgentNonces(address account) external view returns (uint256) {
-        return _primaryAgentNonces[account];
-    }
-
-    /// @dev Reject a signed primary-agent `deadline` that is beyond the lifetime cap or already past.
-    /// A deadline equal to `block.timestamp` is still valid for that block, matching the counterfactual
-    /// convention.
-    function _requirePrimaryAgentDeadline(uint256 deadline) private view {
-        if (deadline > block.timestamp + MAX_PRIMARY_AGENT_SIGNATURE_LIFETIME) revert SignatureDeadlineTooFar(deadline);
-        if (block.timestamp > deadline) revert SignatureExpired(deadline);
-    }
-
-    /// @dev Verify `account`'s EIP-712 signature (EOA or ERC-1271) over `structHash` bound to the live
-    /// domain separator. Reverts `InvalidSignature` on failure. Strictly validates against `account`.
-    function _verifyPrimaryAgentSig(address account, bytes32 structHash, bytes calldata signature) private view {
-        if (
-            !SignatureChecker.isValidSignatureNow(
-                account, MessageHashUtils.toTypedDataHash(_domainSeparator(), structHash), signature
-            )
-        ) {
-            revert InvalidSignature();
-        }
-    }
-
     /// @dev True when `caller` controls `account`: the account itself, its `owner()` / `getOwner()`,
     /// or a `DEFAULT_ADMIN_ROLE` (`0x00`) holder. Contract checks are best-effort static calls that
     /// tolerate accounts (including EOAs) that do not implement them; the low-level path avoids
     /// reverting on non-conforming return data. A contract that misreports its controller can only
     /// affect its own mapping entry, so the checks are account-scoped and safe.
+
     function _controlsAccount(address account, address caller) private view returns (bool) {
         if (caller == account) return true;
 
@@ -1279,21 +1174,6 @@ contract Adapter8004 is
     ) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA)
-        );
-    }
-
-    /// @dev Stateless EIP-712 domain separator for the signed primary-agent surface. Computed inline
-    /// from constants, `block.chainid`, and `address(this)`; never cached, so no storage is added and
-    /// cross-chain / cross-adapter replay is blocked by `chainId` and `verifyingContract`.
-    function _domainSeparator() internal view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                EIP712_DOMAIN_TYPEHASH,
-                keccak256(bytes(EIP712_NAME)),
-                keccak256(bytes(EIP712_VERSION)),
-                block.chainid,
-                address(this)
-            )
         );
     }
 }

@@ -62,7 +62,7 @@ implementation is called. Read all four together when reviewing an upgrade.
 Adds no storage slot and keeps the `0.0.14` layout, so it upgrades from the same
 deployed baselines with empty `upgradeToAndCall` data. That holds for the
 attestation surface below as much as for the identifier change: the whole
-subsystem is emit-only, so the layout still ends at slot 4.
+subsystem is emit-only, so it adds no slot at all.
 
 ### Added
 
@@ -161,6 +161,40 @@ subsystem is emit-only, so the layout still ends at slot 4.
   `Attested(address,uint8,bytes32,bytes32,bytes32,bytes)`, so its `topic0`
   changed, and `attest`'s selector moved with its signature. Nothing was
   deployed under the old scheme, so no on-chain record is orphaned.
+
+### Removed
+
+- **The signed primary-agent surface.** `setPrimaryAgentWithSig`,
+  `clearPrimaryAgentWithSig` and `primaryAgentNonces` are gone, along with the
+  `PrimaryAgentSetWithSig` and `PrimaryAgentClearedWithSig` events, the adapter's
+  EIP-712 domain and typehashes, the 30-minute deadline bound, and the
+  `SignatureExpired`, `SignatureDeadlineTooFar` and `InvalidSignature` errors. The
+  `MessageHashUtils` and `SignatureChecker` imports went with them, since nothing
+  else used either.
+
+  What it offered was relayed, gasless setting of another account's primary agent
+  from that account's own signature. `setPrimaryAgentFor` already covers the
+  acting-for-an-account case, with the controller calling directly and paying gas,
+  so what is lost is the relayer path alone. Adding it back later is append-only.
+  `setPrimaryAgent`, `setPrimaryAgentFor`, `clearPrimaryAgent`,
+  `clearPrimaryAgentFor`, `primaryAgentOf` and the whole counterfactual primary
+  surface are untouched.
+
+  **Storage now ends at slot 3.** `_primaryAgentNonces` was slot 4, the last one,
+  with nothing after it, so it is removed outright rather than left as a gap or a
+  deprecated placeholder. That is safe because it was never written on any chain:
+  verified on 2026-08-19 by calling `primaryAgentNonces(address)` on all three live
+  proxies, where it reverts because no live implementation exposes it, and by
+  reading raw slot 4 on each, which is zero. The storage header, the
+  upgrade-validation tests and
+  [`docs/fixtures/adapter-v014-storage-layout.md`](./docs/fixtures/adapter-v014-storage-layout.md)
+  move with it, and a test asserts nothing writes past slot 3.
+
+  Two tests assert the removal is complete rather than merely compiling: one probes
+  each removed selector and requires it not to resolve, the other requires neither
+  `WithSig` event topic to appear on the surviving set and clear paths.
+  [`docs/fixtures/adapter-primaryagent-withsig.md`](./docs/fixtures/adapter-primaryagent-withsig.md)
+  is kept as the design record, marked removed.
 
 ### Deliberately absent
 
@@ -423,9 +457,10 @@ size, not gas.
 
 - **The `Binding` struct is untouched**, and `extraData` was considered as a
   fourth field and rejected as too disruptive to existing bindings.
-- **Storage is untouched.** The layout still ends at slot 4. No slot is added,
-  reserved or repurposed, and the upgrade still takes empty `upgradeToAndCall`
-  data.
+- **Storage is untouched by the identifier change.** No slot is added, reserved
+  or repurposed by it, and the upgrade still takes empty `upgradeToAndCall` data.
+  The layout ends at slot 3 once the signed primary-agent surface is removed,
+  recorded under Removed above.
 - **`bindingOf` keeps its signature and return encoding**, and `AgentBound` keeps
   its shape and `topic0`.
 - **`register` gains no parameter.** It already takes the standard.
@@ -436,7 +471,7 @@ size, not gas.
 
 | Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
 | --- | ---: | ---: | ---: |
-| `Adapter8004` | 19,449 | 19,734 | 5,127 |
+| `Adapter8004` | 17,688 | 17,973 | 6,888 |
 
 Against the 24,576-byte cap, built up from `0.0.16`:
 
@@ -448,10 +483,13 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | − the five type-constant readers, replaced by the enum | 19,365 | 5,211 |
 | + the word-aligned ERC-7930 encoder | 19,492 | 5,084 |
 | − the in-house encoder, + OpenZeppelin's | 19,449 | 5,127 |
+| − the signed primary-agent surface | 17,688 | 6,888 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
 at, and the enum handed 342 of them back by deleting five public getters. The
-encoder rewrite cost 127, and handing the encoding to OpenZeppelin gave 43 back —
+removing the signed primary-agent surface gave back 1,761, far more than its three
+functions suggest, because the ECDSA and ERC-1271 verification machinery went with
+them. The encoder rewrite cost 127, and handing the encoding to OpenZeppelin gave 43 back —
 the library's `Math`, `SafeCast` and `Bytes` dependencies did not bloat the
 artifact, because only the reached paths survive dead-code elimination and the
 removed in-house body more than paid for them. Margin is 5,127 bytes, comfortably
@@ -885,7 +923,8 @@ read the latest `CounterfactualAgentRegistered.standard` in log order to see whi
 ### Storage and migration
 
 - Appended `_primaryAgent` (slot 2), `_primaryCounterfactualAgent` (slot 3), and
-  `_primaryAgentNonces` (slot 4) directly after the live fields. The unreleased
+  `_primaryAgentNonces` (slot 4) directly after the live fields. Slot 4 was
+  removed again at `0.0.17`, so the shipped layout ends at slot 3. The unreleased
   0.0.9-0.0.13 layouts consume no
   compatibility slots because they were never deployed.
 - There is no production primary-agent state to migrate and no heuristic migration or
