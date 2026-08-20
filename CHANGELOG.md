@@ -334,6 +334,12 @@ size, not gas.
 
   Exactly one derivation's worth in each case.
 
+  These four figures are gas-report numbers taken on the local test chain and are
+  not comparable to the per-chain table in the Gas section above, which was
+  measured in the assembled contract at each live chain id. They are kept because
+  the *difference* is what this entry is about, and both columns share one basis.
+  The absolute numbers of record are the ones in the Gas section.
+
   **That framing was misleading and is corrected here.** "Recovers 85–88% of the
   build" invited the reading that the rewrite put this contract ahead of the
   ecosystem reference. It did not. Those savings were measured against this

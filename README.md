@@ -489,6 +489,14 @@ Indexer rules:
   here
 - `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
   chain plus AddressLength `20` and the raw EVM address
+- **the adapter does not implement that encoding itself.** Since `0.0.17` it calls OpenZeppelin's
+  `InteroperableAddress.formatEvmV1`. The values are unchanged — every published vector still holds
+  byte for byte — but anyone forking this contract, or bumping the OpenZeppelin submodule, should
+  know that the library's file is `draft-` prefixed and therefore carries no encoding stability
+  guarantee across releases. Since this encoding is the preimage of every `registrationHash` and
+  every `attestationId`, a change to it would re-key every identity silently. `test/Adapter8004.erc7930-frozen.t.sol`
+  exists to turn that into an immediate test failure; the two former in-house encoders are kept
+  frozen there as independent oracles and must not be deleted
 - `chainIdentifier()` returns the same local chain envelope with AddressLength `0`; it remains a
   useful chain diagnostic but is not one of the canonical hash fields
 - chain binding comes from the adapter proxy's Interoperable Address alone; do not encode
@@ -594,7 +602,7 @@ Everything else is the reader's: target resolution, payload well-formedness, whe
 
 **Emit-only, with two consequences.** No contract can read attestations on chain — nothing needs to today, and a stored system can be added later if that changes. And the surface adds no storage slot, so the layout still ends at slot 4. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
 
-Execution gas, excluding the fixed 21,000 per transaction: `attest` with a small payload 6,385, `confirmAdditionalAccount` 5,902, `revoke` 1,889, plus roughly 9 gas per payload byte. `revoke` is much the cheapest because it derives no identifier. The other two were about 7,000 gas dearer before the ERC-7930 encoder was word-aligned at `0.0.17`; that same saving applies to every counterfactual write, since they share the helper.
+Execution gas measured in the assembled contract, excluding the fixed 21,000 per transaction: `attest` with a small payload 7,581, `confirmAdditionalAccount` 6,916, `revoke` 1,889, plus roughly 9 gas per payload byte. `revoke` is much the cheapest because it derives no identifier at all. The other two are dominated by the ERC-7930 envelope every identity derivation builds, which every counterfactual write pays too, since they share the helper.
 
 **Joining to a registration.** For any adapter-registered agent the two histories merge with no transaction and no link assertion: `bindingOf(agentId)` yields the standard, bound address and token id from which the agent's counterfactual-era `registrationHash` derives. A registration joins only the counterfactual history claimed under its own standard, which is one of the reasons the standard is in the identifier.
 
@@ -751,8 +759,8 @@ The Foundry suite currently covers:
   bound-address-only authority, acceptance of an address with no runtime code on every entry path,
   identical behavior with and without an EIP-7702 designator, denial of every delegate.xyz delegation
   shape, rejection of the zero address at every entry point, the `tokenId == 0` rule at every write
-  entry point, absence of any `ownerOf` / `balanceOf` probe, the `(X, 0)` standard alias, and raw
-  `AgentBound` / `CounterfactualAgentRegistered` layout compatibility
+  entry point, absence of any `ownerOf` / `balanceOf` probe, the `(X, 0)` per-standard identity
+  separation, and raw `AgentBound` / `CounterfactualAgentRegistered` layout compatibility
 - constructor-time binding: a contract binding itself as `ACCOUNT` from its own constructor on both the
   on-chain and counterfactual paths, staying sole controller once code exists, contrasted with all seven
   code-requiring standards still rejecting the same call

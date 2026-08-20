@@ -17,10 +17,9 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// # Why this file exists
 ///
 /// This contract used to carry its own ERC-7930 encoder. At `0.0.17` it adopted OpenZeppelin's
-/// `InteroperableAddress`, which is measurably cheaper at every chain id this contract runs on. That
-/// swap is safe only for as long as OpenZeppelin's output stays byte-identical to what the old
-/// encoders produced, because this encoding is the preimage of every counterfactual
-/// `registrationHash` and every `attestationId` this contract has ever issued.
+/// `InteroperableAddress`. That swap is safe only for as long as OpenZeppelin's output stays
+/// byte-identical to what the old encoders produced, because this encoding is the preimage of every
+/// counterfactual `registrationHash` and every `attestationId` this contract has ever issued.
 ///
 /// The exposure is real and specific. The library's file is `draft-` prefixed, so OpenZeppelin owes
 /// no encoding stability across releases, and the dependency is a git submodule that somebody will

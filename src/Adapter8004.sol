@@ -49,6 +49,13 @@ interface IOwnableContract {
 /// ABI and reindex before upgrading. `Binding` rows and full ERC-8004 registrations are not keyed by
 /// this hash and are unaffected. See CHANGELOG.md for the cutover detail and for anything this
 /// implementation changed relative to a deployed one.
+///
+/// The ERC-7930 envelope inside that hash is produced by OpenZeppelin's `InteroperableAddress`, not
+/// by this contract. That is worth knowing before touching the dependency: the library's file is
+/// `draft-` prefixed, so its encoding carries no stability guarantee across releases, and it is the
+/// preimage of every counterfactual `registrationHash` and every `attestationId` this contract
+/// issues. A submodule bump that changed the encoding would re-key every identity silently. See
+/// `test/Adapter8004.erc7930-frozen.t.sol`, which exists to turn that into a loud test failure.
 /// @custom:version 0.0.17
 contract Adapter8004 is
     Initializable,
@@ -1355,20 +1362,25 @@ contract Adapter8004 is
 
     /// @dev ERC-7930 v1 encoding, delegated to OpenZeppelin's `InteroperableAddress`.
     ///
-    /// This contract carried its own encoder until `0.0.17`. It was replaced because OpenZeppelin's
-    /// is cheaper at every chain id this contract runs on: their branchless `Math.log256` beats a
-    /// byte-at-a-time length loop by more than a single-word composition beats their three-buffer
-    /// assembly. Measured, the local encoder cost 21 more gas on Ethereum, 126 more on Base and 231
-    /// more on Sepolia, and degraded sharply for long chain references. **The output is unchanged**:
-    /// both former encoders are frozen in `test/Adapter8004.erc7930.t.sol` and the published fixture
+    /// This contract carried its own encoder until `0.0.17`. **The output is unchanged**: both
+    /// former encoders are frozen in `test/Adapter8004.erc7930.t.sol` and the published fixture
     /// vectors are asserted against this path byte for byte, so no identity re-keys.
+    ///
+    /// On gas the swap is close to neutral and slightly negative where it matters. Measured in the
+    /// assembled contract, `registrationHash` costs 147 gas more on Ethereum and 42 more on Base than
+    /// the encoder this replaced, and 63 less on Sepolia; `attest` and `confirmAdditionalAccount`
+    /// move the same way. An earlier benchmark showed the reverse, but it was run in a small contract
+    /// where the optimizer inlined the library far more freely than it does here. What the change
+    /// does buy is one fewer hand-written encoder to keep correct, and the removal of a fallback path
+    /// that cost roughly 11,000 gas at a seven-byte chain reference.
     ///
     /// The dependency is load-bearing in a way an ordinary one is not. This encoding is the preimage
     /// of every counterfactual `registrationHash` and every `attestationId`, the library's file is
     /// `draft-` prefixed, and OpenZeppelin therefore owes no encoding stability across releases. A
     /// submodule bump that changed the output would silently re-key every identity ever issued. The
     /// tests exist to make that loud rather than silent; read the note on
-    /// `testOpenZeppelinEncodingIsFrozenByFixtureVectors` before touching them.
+    /// `testOpenZeppelinEncodingIsFrozen` in `test/Adapter8004.erc7930-frozen.t.sol` before touching
+    /// them, and note that anyone forking this contract inherits the same obligation.
     ///
     /// @dev The zero-chain-id rejection stays here rather than being left to the library. A chain id
     /// of zero identifies no chain and `block.chainid` never returns it, so this contract refuses it

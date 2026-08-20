@@ -16,7 +16,9 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// the independent oracle. Production now uses OZ, so the roles inverted and this is the oracle:
 /// together with `ReferenceErc7930` it is what proves OZ's output is still the encoding every
 /// identity this contract has ever issued was built from. Two implementations written here, one
-/// written by OpenZeppelin, all three agreeing, is the whole safety argument.
+/// written by OpenZeppelin, all three agreeing, is the whole safety argument. Deleting either
+/// reference collapses that to a two-way agreement; deleting both leaves the dependency checked only
+/// against itself.
 library WordAlignedErc7930 {
     error InvalidChainId();
 
@@ -81,16 +83,20 @@ library WordAlignedErc7930 {
     }
 }
 
-/// @notice The pre-`0.0.17` byte-at-a-time ERC-7930 encoder, kept verbatim as the reference the
-/// word-aligned rewrite is measured against.
+/// @notice The byte-at-a-time ERC-7930 encoder this contract carried before `0.0.17`, kept verbatim
+/// as a frozen oracle. It is no longer an implementation of anything; production takes the encoding
+/// from OpenZeppelin's `InteroperableAddress`.
 ///
 /// **Do not delete, and do not "fix" it to match production.** Its whole value is that it was
-/// written independently of the code it now checks; a test that compares the new encoder to itself
-/// proves nothing. This encoding is the preimage of every counterfactual `registrationHash`, every
-/// `attestationId`, and the EIP-712 surface, and a one-byte divergence would silently re-key
-/// identities rather than revert, so byte-identity against this reference is the safety argument for
-/// the rewrite. If it ever disagrees with production, the question is which one moved, and every
-/// existing identity depends on the answer.
+/// written independently of the code it now checks. Together with `WordAlignedErc7930` it is what
+/// proves OpenZeppelin's output is still the exact encoding every identity this contract has issued
+/// was built from; deleting either one collapses a three-way agreement into a two-way one, and
+/// deleting both leaves the dependency checked only against itself, which proves nothing.
+///
+/// This encoding is the preimage of every counterfactual `registrationHash` and every
+/// `attestationId`. A one-byte divergence would silently re-key identities rather than revert. If
+/// this ever disagrees with production, the question is which one moved, and every existing identity
+/// depends on the answer.
 library ReferenceErc7930 {
     error InvalidChainId();
 
