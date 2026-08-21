@@ -219,7 +219,7 @@ contract Adapter8004InterfacesTest is Test {
         );
         assertEq(
             IERC8004AdapterWalletCounterfactualID.WalletCounterfactualIDSet.selector,
-            keccak256("WalletCounterfactualIDSet(address,bytes32,address,uint256,bytes32,uint8,address)")
+            keccak256("WalletCounterfactualIDSet(address,bytes32,address,uint256,uint8,address)")
         );
     }
 

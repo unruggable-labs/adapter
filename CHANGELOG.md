@@ -223,10 +223,11 @@ subsystem is emit-only, so it adds no slot at all.
   `SSTORE` on the most-used function, and it would snapshot a formula that has
   already changed once in this version.
 
-  The returned value carries the reserved zero `extraData`, so an identity claimed
-  counterfactually under a non-zero discriminator will not match it. Bindings are
-  immutable, so the answer is fixed at registration and survives token transfers,
-  which is the property that makes the view safe to rely on.
+  The returned value is the same identity the counterfactual surface derives for
+  those coordinates, so a registered agent and its counterfactual claims answer
+  alike. Bindings are immutable, so the answer is fixed at registration and
+  survives token transfers, which is the property that makes the view safe to rely
+  on.
 
   **Every counterfactual function that derives an identity now returns it.** The
   five updaters, `counterfactualSetAgentURI`, `counterfactualSetMetadata`,
@@ -572,16 +573,16 @@ size, not gas.
   changes no deployment property at all.
 
 - **The counterfactual identity gains the token standard.** The
-  `registrationHash` preimage becomes five components:
+  `registrationHash` preimage becomes four components:
 
   ```
-  keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))
+  keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
   ```
 
   `standard` is the `TokenStandard` enum as its `uint8`, sitting between the
-  adapter's ERC-7930 Interoperable Address and `boundAddress`. `extraData` is the
-  existing reserved discriminator, still `bytes32(0)` everywhere. Always
-  `abi.encode`, never packed.
+  adapter's ERC-7930 Interoperable Address and `boundAddress`. Always
+  `abi.encode`, never packed. The reserved `extraData` discriminator that also
+  stood in this preimage earlier in the version was removed, recorded below.
 
   **Why.** Without the standard, token 5 on one contract collapsed to a single
   coordinate whether it was claimed as `ERC721`, `ACCOUNT` or `CONTRACT_OWNABLE`.
@@ -624,19 +625,44 @@ size, not gas.
   and `walletCounterfactualIDOf` are unchanged.
 
 - **The five counterfactual update events and `WalletCounterfactualIDSet` gain
-  a non-indexed `standard`**, directly after `extraData`:
+  a non-indexed `standard`**, as their first non-indexed field:
   `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
   `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
   `CounterfactualAgentWalletUnset`. This makes a log line verifiable on its own: a
   reader recomputes the `registrationHash` the event names from the event's own
-  fields, with no lookup of the claim that created the identity. Their `topic0`
-  values move, so indexers resubscribe. `CounterfactualAgentRegistered` already
-  carried the standard in that position and its signature is unchanged.
+  fields, with no lookup of the claim that created the identity.
+  `CounterfactualAgentRegistered` already carried the standard. Every
+  counterfactual `topic0` moves in this version, so indexers resubscribe to all
+  eight; the current values are tabulated in
+  [`adapter-counterfactual-hashes.md`](./docs/fixtures/adapter-counterfactual-hashes.md).
+
+- **The reserved `extraData` discriminator is removed**, from the
+  `registrationHash` preimage and from every counterfactual event. The preimage
+  loses its trailing `bytes32` and the eight events lose their `bytes32 extraData`
+  field, so every counterfactual hash and every counterfactual `topic0` moves
+  again within this version.
+
+  **Why.** The field preserved no optionality. It was a compile-time constant no
+  caller could reach, so every on-chain path derived with zero, and an identity
+  under a non-zero discriminator could be attested to but never claimed or
+  registered: there was no function that would emit one. Removing it makes the
+  identifier correspond exactly to stored state, the adapter address plus exactly
+  the `Binding`, with nothing in the preimage that `bindingOf` cannot return. It
+  also takes 32 bytes off every counterfactual log line and one word out of every
+  hash.
+
+  **Cost on chain: none**, for the same reason the standard's insertion was free.
+  No proxy ever ran a preimage containing `extraData`; every live proxy still runs
+  the pre-ERC-7930 scheme, so this rides the `0.0.14` cutover rather than adding
+  one. The two superseded `extraData` schemes are retained under their own headings
+  in the hash fixture so a reimplementer can tell which formula their output
+  matches.
 
 ### Unchanged, deliberately
 
-- **The `Binding` struct is untouched**, and `extraData` was considered as a
-  fourth field and rejected as too disruptive to existing bindings.
+- **The `Binding` struct is untouched.** With `extraData` gone, the identity
+  preimage is now exactly the adapter address plus the three fields the struct
+  already holds, so there is nothing left to add to it.
 - **Storage is untouched by the identifier change.** No slot is added, reserved
   or repurposed by it, and the upgrade still takes empty `upgradeToAndCall` data.
   The layout ends at slot 3 once the signed primary-agent surface is removed,

@@ -30,12 +30,12 @@ interface IOwnableContract {
 /// @notice Upgrade target for the active Adapter8004 proxies.
 /// @dev Regular storage ends at slot 3 and is append-only, so a live proxy upgrades with empty
 /// `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
-/// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId,
-/// extraData))`, a different preimage from the one live proxies compute today, so upgrading one is a
-/// hard cutover for any indexer reading counterfactual events, detailed in CHANGELOG.md. That
-/// envelope comes from OpenZeppelin's `draft-` prefixed `InteroperableAddress`, which carries no
-/// encoding stability guarantee, so read `testOpenZeppelinEncodingIsFrozen` before bumping the
-/// submodule.
+/// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId))`, the
+/// adapter address plus exactly the stored `Binding`, and a different preimage from the one live
+/// proxies compute today, so upgrading one is a hard cutover for any indexer reading counterfactual
+/// events, detailed in CHANGELOG.md. That envelope comes from OpenZeppelin's `draft-` prefixed
+/// `InteroperableAddress`, which carries no encoding stability guarantee, so read
+/// `testOpenZeppelinEncodingIsFrozen` before bumping the submodule.
 /// @custom:version 0.0.17
 contract Adapter8004 is
     Initializable,
@@ -70,13 +70,6 @@ contract Adapter8004 is
     /// @notice Rights identifier a cold wallet delegates to scope a hot wallet to Adapter8004 management
     /// only. delegate.xyz v2 also accepts empty/full delegations when this nonzero rights value is checked.
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
-
-    /// @notice Identity discriminator folded into every counterfactual `registrationHash` and emitted
-    /// on every counterfactual event, fixed at zero in this implementation. It is reserved so a later
-    /// implementation can separate tokens that share a `(boundAddress, tokenId)`, such as a contract
-    /// whose Class A id 1 and Class B id 1 are different tokens.
-    /// @dev Introducing a non-zero value for a pair that hashed with zero re-keys a live identity.
-    bytes32 private constant COUNTERFACTUAL_EXTRA_DATA = bytes32(0);
 
     /// @notice Thrown when the address a binding names is unusable: the zero address under any
     /// standard, or an address with no runtime code under any standard except `ACCOUNT`.
@@ -490,7 +483,7 @@ contract Adapter8004 is
 
         // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
         emit CounterfactualAgentRegistered(
-            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, agentURI, metadata, msg.sender
+            computedHash, boundAddress, tokenId, standard, agentURI, metadata, msg.sender
         );
     }
 
@@ -514,9 +507,7 @@ contract Adapter8004 is
         // 3. Emit the URI update, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
         computedHash = _registrationHash(standard, boundAddress, tokenId);
-        emit CounterfactualAgentURISet(
-            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, newURI, msg.sender
-        );
+        emit CounterfactualAgentURISet(computedHash, boundAddress, tokenId, standard, newURI, msg.sender);
     }
 
     /// @notice Records one metadata entry for a counterfactual identity. The entry is carried only by
@@ -547,14 +538,7 @@ contract Adapter8004 is
         //    hand the identity back so the caller need not recompute it.
         computedHash = _registrationHash(standard, boundAddress, tokenId);
         emit CounterfactualMetadataSet(
-            computedHash,
-            boundAddress,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            standard,
-            metadataKey,
-            metadataValue,
-            msg.sender
+            computedHash, boundAddress, tokenId, standard, metadataKey, metadataValue, msg.sender
         );
     }
 
@@ -584,9 +568,7 @@ contract Adapter8004 is
         //    identity back so the caller need not recompute it. Every entry lands on this one
         //    identity, so one hash covers the whole batch.
         computedHash = _registrationHash(standard, boundAddress, tokenId);
-        emit CounterfactualMetadataBatchSet(
-            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, metadata, msg.sender
-        );
+        emit CounterfactualMetadataBatchSet(computedHash, boundAddress, tokenId, standard, metadata, msg.sender);
     }
 
     /// @notice Assigns the agent wallet for a counterfactual identity. It deliberately accepts no
@@ -610,9 +592,7 @@ contract Adapter8004 is
         // 3. Emit the wallet assignment, which is the only on-chain record this function produces,
         //    and hand the identity back so the caller need not recompute it.
         computedHash = _registrationHash(standard, boundAddress, tokenId);
-        emit CounterfactualAgentWalletSet(
-            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, newWallet, msg.sender
-        );
+        emit CounterfactualAgentWalletSet(computedHash, boundAddress, tokenId, standard, newWallet, msg.sender);
     }
 
     /// @notice Name yourself as this identity's agent wallet and point your wallet back at it, in one
@@ -638,13 +618,7 @@ contract Adapter8004 is
 
         // 3. Emit the wallet assignment, matching `counterfactualSetAgentWallet` exactly.
         emit CounterfactualAgentWalletSet(
-            _registrationHash(standard, boundAddress, tokenId),
-            boundAddress,
-            tokenId,
-            COUNTERFACTUAL_EXTRA_DATA,
-            standard,
-            msg.sender,
-            msg.sender
+            _registrationHash(standard, boundAddress, tokenId), boundAddress, tokenId, standard, msg.sender, msg.sender
         );
 
         // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
@@ -673,9 +647,7 @@ contract Adapter8004 is
         // 3. Emit the wallet clear, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
         computedHash = _registrationHash(standard, boundAddress, tokenId);
-        emit CounterfactualAgentWalletUnset(
-            computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, msg.sender
-        );
+        emit CounterfactualAgentWalletUnset(computedHash, boundAddress, tokenId, standard, msg.sender);
     }
 
     // -----------------------------------------------------------------
@@ -777,9 +749,7 @@ contract Adapter8004 is
             revert WalletCounterfactualIDReserved(computedHash);
         }
         _walletCounterfactualID[account] = ~computedHash;
-        emit WalletCounterfactualIDSet(
-            account, computedHash, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA, standard, msg.sender
-        );
+        emit WalletCounterfactualIDSet(account, computedHash, boundAddress, tokenId, standard, msg.sender);
     }
 
     function _clearWalletCounterfactualID(address account) private {
@@ -1212,8 +1182,8 @@ contract Adapter8004 is
     }
 
     /// @dev The canonical counterfactual identity is
-    /// `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))`,
-    /// with `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
+    /// `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))`, with
+    /// `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
     /// `abi.encodePacked`: the interoperable address is dynamic, and packing it would let a different
     /// (address, standard) pair produce the same preimage bytes.
     function _registrationHashFor(
@@ -1222,8 +1192,6 @@ contract Adapter8004 is
         address boundAddress,
         uint256 tokenId
     ) internal pure returns (bytes32) {
-        return keccak256(
-            abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, COUNTERFACTUAL_EXTRA_DATA)
-        );
+        return keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId));
     }
 }

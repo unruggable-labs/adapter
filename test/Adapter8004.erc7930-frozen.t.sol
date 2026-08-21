@@ -39,14 +39,14 @@ contract Adapter8004Erc7930FrozenTest is Test {
     /// @dev The published ERC-721 counterfactual identity for `(VECTOR_TOKEN, 42)` on Ethereum, from
     /// `docs/fixtures/adapter-counterfactual-hashes.md`.
     bytes32 internal constant PUBLISHED_CFID_MAINNET =
-        0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b;
-    bytes32 internal constant PUBLISHED_CFID_BASE = 0x59d0dda43bf31104928591e57cb9ea008cdc5010d128f5e9a1f22976d67f66c2;
+        0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
+    bytes32 internal constant PUBLISHED_CFID_BASE = 0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3;
     bytes32 internal constant PUBLISHED_CFID_SEPOLIA =
-        0xda9417c2cab17e8973b2f8dc1661d856455d4877473006a492b1e4bc4b7960ff;
+        0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
 
     /// @dev Vector 1 from `docs/fixtures/adapter-attestation-ids.md`.
     bytes32 internal constant PUBLISHED_ATTESTATION_ID =
-        0xaf7980abec6ffd6f5d97df444510ce368dcbfcf7de185badd957b43a4fe8e105;
+        0x7fde72c738899c71442073381b50194c322b2ea08732ae9b3ea121e57979b58d;
 
     Adapter8004 internal adapter;
     Adapter8004HashHarness internal harness;

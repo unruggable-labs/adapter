@@ -56,42 +56,44 @@ fixture:
 | Caller `alice` | `0x00000000000000000000000000000000000a11ce` |
 | Caller `bob` | `0x0000000000000000000000000000000000000b0b` |
 
-The target `cfid` used below is a real five-component counterfactual hash, computed with the
-standard in the preimage and the reserved zero discriminator:
+The target `cfid` used below is a real four-component counterfactual hash, computed with the
+standard in the preimage:
 
 ```text
-cfid = keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))
+cfid = keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
 ```
 
 With the environment above, `boundAddress = 0x2222222222222222222222222222222222222222`, token id
-`42`, `extraData = bytes32(0)`:
+`42`:
 
 | Standard | Hash |
 |---|---|
-| `ERC721` (`uint8` 0) | `0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b` |
-| `ERC1155` (`uint8` 1) | `0xa0822064813ff079eaead2d292b1cadd618d2350840f9813c5ee86605c6b654a` |
+| `ERC721` (`uint8` 0) | `0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9` |
+| `ERC1155` (`uint8` 1) | `0x14cfea274e2d2b7367bffaa93dbfdda489fd4fbed711f949a321a75789fdec44` |
 
-The two rows differ only in the standard and produce different identities, which is the point of
-the five-component scheme. The four-component tables in `adapter-counterfactual-hashes.md` describe
-the superseded scheme without the standard; an implementation reproducing those values for new
-hashes is behind.
+The two rows differ only in the standard and produce different identities, which is why the standard
+is in the preimage. These are the current values from `adapter-counterfactual-hashes.md`; that
+document also lists three superseded cfid schemes, and an implementation reproducing any of those
+for new hashes is behind. The identifier formula itself did not change when the cfid scheme did: the
+target is opaque here, so the identifiers below moved only because their target moved.
 
 ## Identifier vectors
 
-All vectors use the `ERC721` cfid `0xefa9…7a0b` above. `type` names a constant from the table.
+All vectors use the `ERC721` cfid `0x8493…15f9` above. `type` names a constant from the table.
 
 | # | Caller | Type | Block | `variant` | `data` | `attestationId` |
 |---|---|---|---|---|---|---|
-| 1 | alice | `CONFIRM_ACCOUNT` (`1`) | `19000000` | `0` | empty | `0xaf7980abec6ffd6f5d97df444510ce368dcbfcf7de185badd957b43a4fe8e105` |
-| 2 | alice | `CONFIRM_ACCOUNT` (`1`) | `19000000` | `bytes32(1)` | empty | `0x9965d93cc49e1045bd26bffee741bc0182c227f5753af94bbcf5a3b0986a0455` |
-| 3 | alice | `RATING` (`3`) | `19000000` | `0` | `0x57` | `0x76644bf03fd7b84cdc504cde53b335802d68ae53ea278033c9c42cb0807657df` |
-| 4 | bob | `CONFIRM_ACCOUNT` (`1`) | `19000000` | `0` | empty | `0x35c0df33a0a54b1edd204dcee6109cf347492fd170950dddca74c0d392a4ee66` |
-| 5 | alice | `CONFIRM_ACCOUNT` (`1`) | `19000001` | `0` | empty | `0xea933f7f114bd9eaedd2215c27110cc2892b27817c6159770705a33afedec6d5` |
+| 1 | alice | `CONFIRM_ACCOUNT` (`1`) | `19000000` | `0` | empty | `0x7fde72c738899c71442073381b50194c322b2ea08732ae9b3ea121e57979b58d` |
+| 2 | alice | `CONFIRM_ACCOUNT` (`1`) | `19000000` | `bytes32(1)` | empty | `0x579f37809a02f3f7fafa7ae9169874cb38d0bd965cc0474d6cafee7fa71c666d` |
+| 3 | alice | `RATING` (`3`) | `19000000` | `0` | `0x57` | `0x68515a455383792a4087826ce399f87dc918b3a4ffc923470e5ce3fd1fee28d1` |
+| 4 | bob | `CONFIRM_ACCOUNT` (`1`) | `19000000` | `0` | empty | `0x717e8cfdd3b3b7262f89dbdca8b077e972b2dc8e82ead73a2cb891ec4d76a30a` |
+| 5 | alice | `CONFIRM_ACCOUNT` (`1`) | `19000001` | `0` | empty | `0xbd9c0f8e47f1feb43681b30583fae344e99d1b770c9cfe9ed8b4055f0546e9f4` |
 
-> **These replaced an earlier set.** When the type was a hash-named `bytes32`, `abi.encode` put the
-> raw 32 bytes in the preimage; as an enum it puts the `uint8` right-aligned in a word. Every
-> identifier therefore moved. The superseded values are listed at the end of this document so an
-> implementation can tell which scheme it reproduces.
+> **These have now replaced two earlier sets.** The first set moved when the type stopped being a
+> hash-named `bytes32`, whose raw 32 bytes `abi.encode` placed in the preimage, and became an enum,
+> whose `uint8` sits right-aligned in a word. The second moved when the `extraData` discriminator
+> left the cfid preimage, which changed the target rather than the formula. Both superseded sets are
+> listed at the end of this document so an implementation can tell which one it reproduces.
 
 Each pair of vectors pins one component's place in the formula. Vectors 1 and 2 differ only in
 `variant`, 1 and 3 only in type and payload, 1 and 4 only in caller, 1 and 5 only in block.
@@ -118,7 +120,24 @@ Negative vectors that MUST differ include `abi.encodePacked(...)`, any preimage 
 domain constant, the fields in any other order, a naked adapter address in place of the
 Interoperable Address, the implementation address in place of the proxy, the transaction sender's
 relayer or bundler in place of the calling account, and the superseded hash-named type below in
-place of the enum's `uint8`.
+place of the enum's `uint8`. A target from any superseded cfid scheme also produces a different
+identifier, which is what the second superseded table below records.
+
+## Superseded: identifiers against the pre-removal cfid
+
+Retained for identification only. Do not implement. Never deployed. These are the same five vectors
+under the same formula, differing only in the target: they name the v0.0.17 pre-release cfid
+`0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b`, which carried the reserved
+`extraData` discriminator. Reproducing this table means your cfid derivation is behind, not your
+identifier derivation.
+
+| # | Superseded `attestationId` |
+|---|---|
+| 1 | `0xaf7980abec6ffd6f5d97df444510ce368dcbfcf7de185badd957b43a4fe8e105` |
+| 2 | `0x9965d93cc49e1045bd26bffee741bc0182c227f5753af94bbcf5a3b0986a0455` |
+| 3 | `0x76644bf03fd7b84cdc504cde53b335802d68ae53ea278033c9c42cb0807657df` |
+| 4 | `0x35c0df33a0a54b1edd204dcee6109cf347492fd170950dddca74c0d392a4ee66` |
+| 5 | `0xea933f7f114bd9eaedd2215c27110cc2892b27817c6159770705a33afedec6d5` |
 
 ## Superseded: hash-named `bytes32` types
 
@@ -134,7 +153,8 @@ the preimage.
 | `REVIEW` | `adapter8004.attest.v1.review` | `0x0ce439abec3b50d9bb4c1c26b71f5e02b7dac5a8f4546824b09b0066c94e6aed` |
 | `INTERACTION` | `adapter8004.attest.v1.interaction` | `0x38bd7d6c19f392ef255c7033e6700c65ef16fc48f3ced5e18caf837f3231fedf` |
 
-The identifiers those produced, in the same environment as the current table:
+The identifiers those produced, in the environment of the table current at that time, which also
+used the pre-removal cfid above:
 
 | # | Superseded `attestationId` |
 |---|---|
@@ -149,6 +169,11 @@ The `Attested` event signature moved with the type, from
 `Attested(address,uint8,bytes32,bytes32,bytes32,bytes)`, so `topic0` differs too. Likewise `attest`,
 from `attest(bytes32,bytes32,bytes32,bytes)` to `attest(uint8,bytes32,bytes32,bytes)`.
 
-For any one adapter the two derivation schemes cannot collide by construction: the five-component
-cfid encoding is a fixed 224 bytes and the identifier encoding is at least 320 bytes, so the two
-preimages are never the same length.
+For any one adapter the two derivation schemes cannot collide by construction, because the identifier
+preimage is always the longer of the two. Both carry the same adapter Interoperable Address and so
+grow with it in step: writing `A` for that address padded up to a whole number of words and `D` for
+the payload padded the same way, the four-component cfid encoding is `160 + A` bytes and this
+encoding is `288 + A + D`, a gap of at least 128 bytes whatever the adapter address. For the EVM
+adapter in the environment above the concrete figures are 192 bytes against 320. Stating the gap
+rather than two fixed sizes matters, because neither size is fixed: the Solana namespace stress
+adapter in `adapter-counterfactual-hashes.md` gives 224 and 352 instead, and the gap still holds.

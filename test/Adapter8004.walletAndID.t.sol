@@ -214,7 +214,7 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.prank(alice);
         adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory logs = vm.getRecordedLogs();
-        (,, address newWallet, address emitter) = abi.decode(logs[0].data, (bytes32, uint8, address, address));
+        (, address newWallet, address emitter) = abi.decode(logs[0].data, (uint8, address, address));
         assertEq(newWallet, alice, "forward: the wallet named is the caller");
         assertEq(emitter, alice, "forward: emitted by the caller");
     }

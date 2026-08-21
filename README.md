@@ -482,14 +482,14 @@ Functions:
 
 Indexer rules:
 
-- each event carries `bytes32 extraData` as its first non-indexed field, followed by the `uint8 standard`; this baseline emits `bytes32(0)` for `extraData`. Carrying the standard on every event is what makes a single log line verifiable against the hash it names, with no lookup. There is no in-payload schema version: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
+- each event carries the `uint8 standard` as its first non-indexed field. Carrying the standard on every event is what makes a single log line verifiable against the hash it names, with no lookup. There is no in-payload schema version and no reserved discriminator: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
 - the three indexed topics are fixed across every event: `(registrationHash, boundAddress, tokenId)`
 - the `registrationHash` is
-  `keccak256(abi.encode(interoperableAddress(adapterProxy), standard, boundAddress, tokenId, extraData))`,
-  using standard `(bytes,uint8,address,uint256,bytes32)` ABI encoding (not packed); the adapter proxy
-  carries the full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, `standard` is
-  the `TokenStandard` enum's `uint8`, and `extraData` is the reserved discriminator, `bytes32(0)`
-  here
+  `keccak256(abi.encode(interoperableAddress(adapterProxy), standard, boundAddress, tokenId))`,
+  using standard `(bytes,uint8,address,uint256)` ABI encoding (not packed); the adapter proxy
+  carries the full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, and
+  `standard` is the `TokenStandard` enum's `uint8`. Those four components are the adapter address
+  plus exactly the stored `Binding`, so nothing in the preimage is unavailable from `bindingOf`
 - `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
   chain plus AddressLength `20` and the raw EVM address
 - **the adapter does not implement that encoding itself.** Since `0.0.17` it calls OpenZeppelin's
@@ -788,7 +788,7 @@ The Foundry suite currently covers:
   own EIP-712 surface and is unaffected by the adapter dropping its own
 - the signed primary-agent surface staying removed: each removed selector probed and required not to
   resolve, neither `WithSig` event topic emitted, and nothing written past slot 3
-- the counterfactual register family, including reserved-key rejection and the reserved `extraData` field
+- the counterfactual register family, including reserved-key rejection and the event body shape
 - the ERC-7930 encoding, which production now takes from OpenZeppelin's `draft-InteroperableAddress`,
   pinned against three independent oracles: the two former in-house encoders kept frozen as
   `ReferenceErc7930` and `WordAlignedErc7930`, exact bytes for twelve chain ids on both shapes, and

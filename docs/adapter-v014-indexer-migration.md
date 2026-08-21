@@ -15,20 +15,22 @@ At the cutover block:
 - start separate wallet agent id and wallet counterfactual id projections;
 - subscribe to the `WalletAgentIDSet` / `WalletAgentIDCleared` topics and the `WalletCounterfactualIDSet` / `WalletCounterfactualIDCleared` family. These were named `Primary*` in an earlier build and every one of those topic0 values changed with the rename;
 - validate every counterfactual indexed hash as
-  `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId, extraData))`,
+  `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId))`,
   with the dynamic adapter bytes carrying the full chain plus proxy address, `boundAddress` kept as a
-  naked EVM address, `standard` the `TokenStandard` enum value, and `extraData` the reserved
-  discriminator, `bytes32(0)` in this release;
+  naked EVM address, and `standard` the `TokenStandard` enum value. There is no trailing discriminator
+  word; a preimage carrying one is an earlier scheme, tabulated as superseded in the hash fixture;
 - key rows by that hash alone. One `(boundAddress, tokenId)` under two standards is two identities
   from this cutover forward, so a projection that collapses by coordinate merges histories belonging
   to different claimants;
 - retain old mixed events and bare-chain-id hashes as versioned legacy history.
 
 Counterfactual event topic0 values change as well as their indexed hash values. Every counterfactual
-event gained a non-indexed `bytes32 extraData` at `0.0.15`, and at `0.0.17` the five update events
-and `WalletCounterfactualIDSet` each gained a non-indexed `uint8 standard` after it, so
-subscriptions must be rewritten rather than reused. `CounterfactualAgentRegistered` already carried
-the standard in that position and its `0.0.17` signature is unchanged from `0.0.15`. Never silently
+event gained a non-indexed `bytes32 extraData` at `0.0.15`; at `0.0.17` the five update events and
+`WalletCounterfactualIDSet` each gained a non-indexed `uint8 standard`, and then `extraData` was
+dropped from all eight. Every counterfactual topic0 therefore differs from `0.0.15`, including
+`CounterfactualAgentRegistered`, so subscriptions must be rewritten rather than reused. The current
+values are tabulated in
+[`adapter-counterfactual-hashes.md`](./fixtures/adapter-counterfactual-hashes.md). Never silently
 re-key historical logs into the new namespace. Optional old-to-new coordinate redirects
 are discovery hints, not proof of a new claim. Do not seed either new pointer from frozen mixed
 storage or legacy events; accounts re-attest. Record implementation addresses/code hashes, Safe

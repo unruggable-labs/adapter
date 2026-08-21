@@ -62,19 +62,18 @@ contract DeployAdapterImplementationScript is Script {
     /// and `DeployAdapterImplementationEventSignatures.t.sol` fails if any drifts from the contract.
     string internal constant SIG_PRIMARY_AGENT_SET = "WalletAgentIDSet(address,uint256,address)";
     string internal constant SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET =
-        "WalletCounterfactualIDSet(address,bytes32,address,uint256,bytes32,uint8,address)";
+        "WalletCounterfactualIDSet(address,bytes32,address,uint256,uint8,address)";
     string internal constant SIG_CF_REGISTERED =
-        "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)";
-    string internal constant SIG_CF_URI_SET =
-        "CounterfactualAgentURISet(bytes32,address,uint256,bytes32,uint8,string,address)";
+        "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)";
+    string internal constant SIG_CF_URI_SET = "CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)";
     string internal constant SIG_CF_METADATA_SET =
-        "CounterfactualMetadataSet(bytes32,address,uint256,bytes32,uint8,string,bytes,address)";
+        "CounterfactualMetadataSet(bytes32,address,uint256,uint8,string,bytes,address)";
     string internal constant SIG_CF_METADATA_BATCH_SET =
-        "CounterfactualMetadataBatchSet(bytes32,address,uint256,bytes32,uint8,(string,bytes)[],address)";
+        "CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)";
     string internal constant SIG_CF_WALLET_SET =
-        "CounterfactualAgentWalletSet(bytes32,address,uint256,bytes32,uint8,address,address)";
+        "CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)";
     string internal constant SIG_CF_WALLET_UNSET =
-        "CounterfactualAgentWalletUnset(bytes32,address,uint256,bytes32,uint8,address)";
+        "CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)";
     string internal constant SIG_AGENT_BOUND = "AgentBound(uint256,uint8,address,uint256,address)";
     string internal constant SIG_ATTESTED = "Attested(address,uint8,bytes32,bytes32,bytes32,bytes)";
     string internal constant SIG_ATTESTATION_REVOKED = "AttestationRevoked(bytes32,address)";
@@ -159,7 +158,7 @@ contract DeployAdapterImplementationScript is Script {
         address boundAddress,
         uint256 tokenId
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(proxyInteroperableAddress, standard, boundAddress, tokenId, bytes32(0)));
+        return keccak256(abi.encode(proxyInteroperableAddress, standard, boundAddress, tokenId));
     }
 
     /// @dev Writes the Safe Transaction Builder JSON for this chain. The chain id is
@@ -198,7 +197,7 @@ contract DeployAdapterImplementationScript is Script {
             vm.toString(block.timestamp * 1000),
             ",\n",
             '  "meta": {\n',
-            '    "name": "Adapter8004 v0.0.17 - split primaries, ERC-7930 hashes with the token standard and reserved extraData, contract-binding authority - ',
+            '    "name": "Adapter8004 v0.0.17 - split primaries, ERC-7930 hashes keyed on the token standard with no reserved discriminator, contract-binding authority - ',
             networkDisplayName,
             '",\n',
             '    "description": "Upgrade the Adapter8004 UUPS proxy directly from its active deployed implementation to v0.0.17. Separates full uint256 and counterfactual bytes32 wallet-id mappings and events, and changes every counterfactual registration hash to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), uint8 standard, boundAddress, tokenId, extraData)), where standard is the TokenStandard enum value and extraData is a reserved discriminator fixed at bytes32(0) in this release. Because the standard is in the preimage, one (boundAddress, tokenId) claimed under two standards is now two identities rather than one, which removes the aliasing the previous scheme documented; TokenStandard numbering is therefore identity-critical and append-only forever. The five counterfactual update events and WalletCounterfactualIDSet each gain a non-indexed uint8 standard field, so their topic0 values change and indexers must resubscribe. The public registrationHash(address,uint256) view is REPLACED by registrationHash(uint8,address,uint256), and setWalletCounterfactualID / setWalletCounterfactualIDFor each gain a leading uint8 standard parameter, so all three old selectors are gone and stale callers revert rather than silently computing a hash that no longer identifies anything. The Binding struct, bindingOf and AgentBound are untouched. Two mappings append directly after the live layout at slots 2-3, so regular storage ends at slot 3. Renames TokenStandard value 5 from CONTRACT to ACCOUNT and relaxes it to accept any address, with or without runtime code, since its authority is a bare msg.sender comparison that never calls the address; the enum position is unchanged, but the NonZeroTokenIdForContract error is renamed NonZeroTokenIdForAccount and its selector changes. Two consequences of that relaxation a signer should see: the zero address is now rejected explicitly under every standard including ACCOUNT, because a zero boundAddress is the unbound sentinel, and a contract can now bind itself as ACCOUNT from its own constructor, which stays rejected for all seven other standards. ACCOUNT authority remains exactly msg.sender == boundAddress with no delegate.xyz route. Adds two contract-level binding standards, CONTRACT_OWNABLE (6) and CONTRACT_ADMIN (7), whose authority is the bound contract owner() or a DEFAULT_ADMIN_ROLE holder respectively and never the bound contract itself. Removes the MetadataBatchSet event; setMetadataBatch now emits one MetadataSet per entry. Adds an emit-only attestation surface for counterfactual identities: attest, confirmAdditionalAccount and revoke, three new entry points. The attestation type is an AttestationType enum with UNSPECIFIED at zero, so the set of types is closed and admitting a sixth is a further upgrade; its numbering is identity-critical because the uint8 sits in the identifier preimage. It writes no storage, makes no external call, and derives its identifier as keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), attester, cfid, attestationType, block.number, variant, data)); the caller is always the attester and there is no acting-for path. It carries no reentrancy guard, deliberately, because it makes no external call. Two new events, Attested and AttestationRevoked, are additive, so existing indexers add subscriptions rather than re-index for them. The ERC-7930 envelope inside every counterfactual registration hash and every attestation identifier is now produced by the OpenZeppelin InteroperableAddress library rather than by code in this contract; the encoding is byte-identical and every published fixture vector still holds, but a signer should know a dependency now sits under the identity derivation and that its file is draft- prefixed, so it carries no encoding stability guarantee across releases. Removes the signed primary-agent surface: setPrimaryAgentWithSig, clearPrimaryAgentWithSig, primaryAgentNonces, the PrimaryAgentSetWithSig and PrimaryAgentClearedWithSig events and the adapter EIP-712 domain are all gone, so those three selectors no longer resolve. The mapping that backed it was slot 4 and was never written on any chain, since no live implementation exposed a function reaching it, so the slot is removed rather than reserved. Setting a wallet agent id for another account stays available on setWalletAgentIDFor. RENAMES THE WHOLE WALLET-ID SURFACE: setPrimaryAgent, setPrimaryAgentFor, clearPrimaryAgent, clearPrimaryAgentFor, primaryAgentOf, PRIMARY_AGENT_UNSET and their counterfactual counterparts become setWalletAgentID, setWalletAgentIDFor, clearWalletAgentID, clearWalletAgentIDFor, walletAgentIDOf, WALLET_AGENT_ID_UNSET, setWalletCounterfactualID, setWalletCounterfactualIDFor, clearWalletCounterfactualID, clearWalletCounterfactualIDFor, walletCounterfactualIDOf and WALLET_COUNTERFACTUAL_ID_UNSET. The PrimaryAgentSet, PrimaryAgentCleared, PrimaryCounterfactualAgentSet and PrimaryCounterfactualAgentCleared events become WalletAgentIDSet, WalletAgentIDCleared, WalletCounterfactualIDSet and WalletCounterfactualIDCleared. Every one of those selectors and topic0 values changes, so this is a full indexer and integrator cutover on top of the registration-hash one. Compiled with solc 0.8.30 targeting the prague EVM, so the implementation EXTCODEHASH differs from any earlier build. Implementation deployed at ',

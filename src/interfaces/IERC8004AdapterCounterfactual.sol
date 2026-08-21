@@ -9,19 +9,17 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// declarations so off-chain consumers and tests can depend on a stable type without importing
 /// the full contract.
 ///
-/// Every counterfactual event below carries `bytes32 extraData` as its first non-indexed field,
-/// followed by the `TokenStandard`. The three indexed slots are fixed across every event and already
-/// spent on `(registrationHash, boundAddress, tokenId)`, so the standard is non-indexed; carrying it
-/// on every event is what makes a single log line verifiable against the hash on its own, with no
-/// lookup of the claim that created the identity. There is deliberately no in-payload schema
-/// version, because `topic0` is the keccak of the full event signature and so already discriminates
-/// schema on its own.
+/// Every counterfactual event below carries the `TokenStandard` as its first non-indexed field. The
+/// three indexed slots are fixed across every event and already spent on
+/// `(registrationHash, boundAddress, tokenId)`, so the standard is non-indexed; carrying it on every
+/// event is what makes a single log line verifiable against the hash on its own, with no lookup of
+/// the claim that created the identity. There is deliberately no in-payload schema version, because
+/// `topic0` is the keccak of the full event signature and so already discriminates schema on its own.
 ///
-/// The identity is the `registrationHash`. Each token under each standard has exactly one identity,
-/// but `(boundAddress, tokenId)` is not considered a unique identifier, because one contract may
-/// have more than one set of ids. An example is a contract with classes of ids, where Class A id 1
-/// and Class B id 1 are different tokens. `extraData` is what separates them, so consumers must key
-/// on `registrationHash` and must not collapse rows by `(boundAddress, tokenId)`.
+/// The identity is the `registrationHash`, which is the adapter address plus exactly
+/// `(standard, boundAddress, tokenId)`. One coordinate under one standard is one identity, and the
+/// same coordinate under two standards is two. Consumers must key on `registrationHash` and must not
+/// collapse rows by `(boundAddress, tokenId)`, which does not name a standard.
 ///
 /// Adapter8004's existing unsigned counterfactual functions accept either ordinary current-controller
 /// authority or, for ERC-721/ERC-1155F/ERC-6909F only, temporary authority from the directly calling
@@ -121,14 +119,13 @@ interface IERC8004AdapterCounterfactual {
     /// @notice Computes the canonical counterfactual registration hash, scoped to this chain and this
     /// adapter proxy, so off-chain consumers can derive it without reimplementing the rules. The
     /// identity is
-    /// `keccak256(abi.encode(interoperableAddress(adapter), standard, boundAddress, tokenId, extraData))`,
-    /// with `standard` encoded as the `TokenStandard` enum's `uint8` and `extraData` fixed at
-    /// `bytes32(0)` for every implementation of this baseline. Always `abi.encode`, never
+    /// `keccak256(abi.encode(interoperableAddress(adapter), standard, boundAddress, tokenId))`, with
+    /// `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
     /// `abi.encodePacked`.
-    /// @dev `extraData` is deliberately not a parameter anywhere on this surface, because it is
-    /// reserved rather than used. Read its value from the `extraData` field on any counterfactual
-    /// event. `standard` is a parameter, because it selects the identity: the same
-    /// `(boundAddress, tokenId)` under two standards yields two different hashes.
+    /// @dev The four components are exactly the adapter address plus the stored `Binding`, so a
+    /// registered agent's identity is derivable from state alone; `registrationHashOf` does that.
+    /// `standard` is a parameter because it selects the identity: the same `(boundAddress, tokenId)`
+    /// under two standards yields two different hashes.
     function registrationHash(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         view
@@ -138,9 +135,8 @@ interface IERC8004AdapterCounterfactual {
     /// derived from its stored binding, so one call replaces `bindingOf` followed by
     /// `registrationHash`. Reverts `UnknownAgent` for an id that was never registered, matching
     /// `bindingOf` rather than returning zero.
-    /// @dev The value carries the reserved zero `extraData`, so an identity claimed counterfactually
-    /// under a non-zero discriminator will not match it. Bindings are immutable, so the answer never
-    /// changes for a given agent, token transfers included.
+    /// @dev Bindings are immutable, so the answer never changes for a given agent, token transfers
+    /// included.
     function registrationHashOf(uint256 agentId) external view returns (bytes32);
 
     /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
@@ -150,7 +146,6 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         string agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
@@ -163,7 +158,6 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         string newURI,
         address emitter
@@ -175,7 +169,6 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         string metadataKey,
         bytes metadataValue,
@@ -189,7 +182,6 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
@@ -201,7 +193,6 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         address newWallet,
         address emitter
@@ -213,7 +204,6 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         address emitter
     );

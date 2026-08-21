@@ -3,22 +3,21 @@
 Canonical formula:
 
 ```text
-keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))
+keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
 ```
 
-> **Scheme revision, v0.0.17.** The `TokenStandard` was inserted into the preimage as its `uint8`,
-> between the adapter Interoperable Address and `boundAddress`, so every hash below changed again.
-> The two superseded schemes are retained at the end of this document so that a reimplementer can
-> tell which one their output matches. `extraData` is `bytes32(0)` in this implementation and no
-> caller can supply it, because it is a compile-time constant rather than an argument. `standard` is
-> a caller-supplied argument, because it selects the identity.
+> **Scheme revision, v0.0.17.** The reserved `extraData` discriminator was removed from the preimage
+> and from every counterfactual event, so every hash below changed again. It preserved no optionality:
+> it was a compile-time constant no caller could reach, so every on-chain path derived with zero, and
+> a non-zero identity could be attested to but never claimed or registered. What remains corresponds
+> exactly to stored state, the adapter address plus exactly the `Binding`. The three superseded schemes
+> are retained at the end of this document so that a reimplementer can tell which one their output
+> matches. `standard` is a caller-supplied argument, because it selects the identity.
 
-**Identity.** The identity is the `registrationHash`. Each token under each standard has exactly one
-identity, but `(boundAddress, tokenId)` is not a unique identifier, for two reasons. One contract may
-carry more than one set of ids — Class A id 1 and Class B id 1 being different tokens — and
-`extraData` is what separates those. And one `(boundAddress, tokenId)` may be claimed under more than
-one standard, which `standard` separates. Key on the `registrationHash`; never collapse rows by
-`(boundAddress, tokenId)`.
+**Identity.** The identity is the `registrationHash`, which is the adapter address plus exactly
+`(standard, boundAddress, tokenId)`. One coordinate under one standard is one identity, and the same
+coordinate under two standards is two. Key on the `registrationHash`; never collapse rows by
+`(boundAddress, tokenId)`, which does not name a standard.
 
 **What the standard means here.** It records that the claimer passed *that standard's* authority
 probe at claim time. It is not an assertion that the bound contract conforms to the ERC; the adapter
@@ -27,18 +26,23 @@ probes authority, never `supportsInterface`.
 **Attestations key on these hashes.** The attestation identifier scheme in
 [`adapter-attestation-ids.md`](./adapter-attestation-ids.md) takes a `cfid` from this document as an
 opaque target. The two schemes are derived by the same contract from overlapping material and cannot
-collide: for one adapter this preimage is a fixed 224 bytes and the identifier preimage is at least
-320, so they can never even be the same length. Because attestations accumulate against these hashes,
-a scheme change orphans every statement made against the old value; that is why the standard went in
-before the attestation surface shipped rather than after.
+collide, because for any one adapter the identifier preimage is always longer than this one. Both
+carry the same adapter Interoperable Address, so both grow with it in step: writing `A` for the
+adapter address padded up to a whole number of words and `D` for the payload padded the same way,
+this preimage is `160 + A` bytes and the identifier preimage is `288 + A + D`. The identifier is
+therefore at least 128 bytes longer, whatever the adapter address. For the EVM adapters in the table
+below the concrete figures are 192 bytes here against at least 320 there. Because attestations
+accumulate against these hashes, a scheme change orphans every statement made against the old value;
+that is why both the standard insertion and the `extraData` removal landed before the attestation
+surface shipped rather than after.
 
 **The enum numbering is identity-critical.** `standard` enters the preimage as the enum's `uint8`, so
 renumbering a `TokenStandard` member re-keys every identity claimed under it. The numbering is
 append-only forever: never renumber, never reorder, never remove.
 
-Use ABI encoding for `(bytes,uint8,address,uint256,bytes32)`, not packed encoding. The adapter is a
-full ERC-7930 Interoperable Address and is not hashed first. `boundAddress` is deliberately a naked
-EVM `address`; do not encode it as an Interoperable Address. Chain binding comes from the adapter
+Use ABI encoding for `(bytes,uint8,address,uint256)`, not packed encoding. The adapter is a full
+ERC-7930 Interoperable Address and is not hashed first. `boundAddress` is deliberately a naked EVM
+`address`; do not encode it as an Interoperable Address. Chain binding comes from the adapter
 Interoperable Address alone. For EVM, the adapter address is ERC-7930 v1 plus CAIP-350 `eip155`:
 
 ```text
@@ -50,15 +54,14 @@ uint16(1) || uint16(0) || uint8(referenceLength)
 `ACCOUNT = 5`, `CONTRACT_OWNABLE = 6`, `CONTRACT_ADMIN = 7`.
 
 With adapter `0x1111111111111111111111111111111111111111`, token
-`0x2222222222222222222222222222222222222222`, token ID `42`, `standard = ERC721 (0)`,
-`extraData = bytes32(0)`:
+`0x2222222222222222222222222222222222222222`, token ID `42`, `standard = ERC721 (0)`:
 
 | Namespace | Adapter Interoperable Address | Naked token contract | Hash |
 |---|---|---|---|
-| Ethereum | `0x000100000101141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b` |
-| Base | `0x00010000022105141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0x59d0dda43bf31104928591e57cb9ea008cdc5010d128f5e9a1f22976d67f66c2` |
-| Sepolia | `0x0001000003aa36a7141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0xda9417c2cab17e8973b2f8dc1661d856455d4877473006a492b1e4bc4b7960ff` |
-| Solana namespace stress example | `0x000100022045296998a6f8e2a784db5d9f95e18fc23f70441a1039446801089879b08c7ef0141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0x9022fffd555f635b84981ac2056283d8325a432a0a01f3cac8ebf7cd4ba2cefc` |
+| Ethereum | `0x000100000101141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9` |
+| Base | `0x00010000022105141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3` |
+| Sepolia | `0x0001000003aa36a7141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f` |
+| Solana namespace stress example | `0x000100022045296998a6f8e2a784db5d9f95e18fc23f70441a1039446801089879b08c7ef0141111111111111111111111111111111111111111` | `0x2222222222222222222222222222222222222222` | `0x0f9c133f3a5c0ca7b20f94b3b57e5ac97f214b004e73fa71b1d6a2075deaa3cc` |
 
 The final row is an adapter-chain namespace stress vector; its illustrative adapter address is not
 a native Solana CAIP-350 address.
@@ -68,10 +71,10 @@ would move if the enum were ever renumbered:
 
 | Standard | `uint8` | Hash |
 |---|---|---|
-| `ERC721` | `0` | `0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b` |
-| `ERC1155` | `1` | `0xa0822064813ff079eaead2d292b1cadd618d2350840f9813c5ee86605c6b654a` |
-| `ACCOUNT` | `5` | `0xac6fc4a157cade654f49676a086bdcf2e514f0a21d5086cb22b6f9f1af59b029` |
-| `CONTRACT_OWNABLE` | `6` | `0x06d91290d593090a0dc24da2056eb88f3c6a7e7f76f1a37a04061632933d9cb1` |
+| `ERC721` | `0` | `0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9` |
+| `ERC1155` | `1` | `0x14cfea274e2d2b7367bffaa93dbfdda489fd4fbed711f949a321a75789fdec44` |
+| `ACCOUNT` | `5` | `0x3d8eaa0572359ac90e967f6acdd9106d9c026f3c35872baa01de02f78a997c69` |
+| `CONTRACT_OWNABLE` | `6` | `0x5bdc0e660d093b00b2552ec33586abf07d3b1572decf08bdd5563fa8c3180787` |
 
 ```ts
 import { encodeAbiParameters, keccak256 } from 'viem'
@@ -80,20 +83,47 @@ export function registrationHash(
   standard: number,
   boundAddress: `0x${string}`,
   tokenId: bigint,
-  extraData: `0x${string}` = `0x${'00'.repeat(32)}`,
 ) {
   return keccak256(encodeAbiParameters(
-    [{type:'bytes'}, {type:'uint8'}, {type:'address'}, {type:'uint256'}, {type:'bytes32'}],
-    [adapterInteroperableAddress, standard, boundAddress, tokenId, extraData],
+    [{type:'bytes'}, {type:'uint8'}, {type:'address'}, {type:'uint256'}],
+    [adapterInteroperableAddress, standard, boundAddress, tokenId],
   ))
 }
 ```
 
-Negative vectors that MUST differ include `abi.encodePacked(...)`, both superseded preimages below,
-the same fields with `standard` after the coordinates rather than before them, a different `standard`
-value, the same fields with `extraData` leading rather than trailing, a different `extraData` value,
-the superseded `abi.encode(chainIdentifier, adapter, boundAddress, tokenId)` candidate, a naked
-adapter address, and any preimage that encodes `boundAddress` as an Interoperable Address.
+Negative vectors that MUST differ include `abi.encodePacked(...)`, all three superseded preimages
+below, the same fields with `standard` after the coordinates rather than before them, a different
+`standard` value, any preimage carrying a trailing `bytes32(0)` discriminator, the superseded
+`abi.encode(chainIdentifier, adapter, boundAddress, tokenId)` candidate, a naked adapter address, and
+any preimage that encodes `boundAddress` as an Interoperable Address.
+
+## Superseded: v0.0.17 pre-release scheme (`extraData` and standard)
+
+Retained for identification only. Do not implement. This scheme was never deployed to any chain; it
+existed in source only, between the standard's insertion and the discriminator's removal.
+
+```text
+keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId, extraData))
+```
+
+Same inputs as the tables above, with `extraData = bytes32(0)`, the only value any caller could ever
+observe:
+
+| Namespace | Superseded hash |
+|---|---|
+| Ethereum | `0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b` |
+| Base | `0x59d0dda43bf31104928591e57cb9ea008cdc5010d128f5e9a1f22976d67f66c2` |
+| Sepolia | `0xda9417c2cab17e8973b2f8dc1661d856455d4877473006a492b1e4bc4b7960ff` |
+| Solana namespace stress example | `0x9022fffd555f635b84981ac2056283d8325a432a0a01f3cac8ebf7cd4ba2cefc` |
+
+And the standard-varying table under the same scheme:
+
+| Standard | `uint8` | Superseded hash |
+|---|---|---|
+| `ERC721` | `0` | `0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b` |
+| `ERC1155` | `1` | `0xa0822064813ff079eaead2d292b1cadd618d2350840f9813c5ee86605c6b654a` |
+| `ACCOUNT` | `5` | `0xac6fc4a157cade654f49676a086bdcf2e514f0a21d5086cb22b6f9f1af59b029` |
+| `CONTRACT_OWNABLE` | `6` | `0x06d91290d593090a0dc24da2056eb88f3c6a7e7f76f1a37a04061632933d9cb1` |
 
 ## Superseded: v0.0.15–v0.0.16 scheme (`extraData`, no standard)
 
@@ -143,10 +173,21 @@ the vector tables above its Ethereum value is
 If your implementation reproduces the live table, you are on the deployed scheme and must cut over
 before the upgrade.
 
-The counterfactual event signatures changed alongside each scheme. At v0.0.15 every event gained a
-non-indexed `bytes32 extraData` and the former `uint8 version` field was removed, because `topic0` is
-the keccak of the full signature and already discriminates schema on its own. At v0.0.17 the five
+The counterfactual event signatures changed alongside each scheme, and `topic0` is the keccak of the
+full signature, so it discriminates schema on its own. At v0.0.15 every event gained a non-indexed
+`bytes32 extraData` and the former `uint8 version` field was removed. At v0.0.17 the five
 counterfactual update events and `WalletCounterfactualIDSet` each gained a non-indexed `uint8
-standard`, directly after `extraData`, so a single log line now carries everything needed to
-recompute the hash it names. `topic0` moved again for those six events. `CounterfactualAgentRegistered`
-already carried the standard in that position and is unchanged at v0.0.17.
+standard`, and then `extraData` was dropped from all six of those plus `CounterfactualAgentRegistered`
+and `CounterfactualAgentWalletUnset`, so `topic0` moved once more for every counterfactual event. A
+single log line still carries everything needed to recompute the hash it names. The current values
+are:
+
+| Event | `topic0` |
+|---|---|
+| `CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)` | `0x97d00c8567205a5cc677f706846d109951c59a16a119d3ebc5257e2abb21d2de` |
+| `CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)` | `0x208006a8f39020b431e3b41391b77cee3f3484699443ec87628668357a203032` |
+| `CounterfactualMetadataSet(bytes32,address,uint256,uint8,string,bytes,address)` | `0xe180e66feab1e2a5e41801375bae16bd8c51c3a049c9f8807e1c4d94411eb745` |
+| `CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)` | `0xeae9f3081237409ccdb4af04402271802d256ead57b5ca5eefb6b0b61c62715a` |
+| `CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)` | `0xe8fa73832d285f8d56860e6d330c5b5fd1793f142062ccfa2cd2f9322f96b7e8` |
+| `CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)` | `0x531cc4f9206c5d286ad84b9b965069e88bfd025f84a64b41bb58d9bfb3b503d8` |
+| `WalletCounterfactualIDSet(address,bytes32,address,uint256,uint8,address)` | `0xc53d80905aaf1d8095f570fa85c068ab1a7e1e496c173d5cf3f3d3761b56a761` |

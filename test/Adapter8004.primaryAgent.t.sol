@@ -46,7 +46,6 @@ contract Adapter8004PrimaryAgentTest is Test {
         bytes32 indexed registrationHash,
         address boundAddress,
         uint256 tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         address indexed setBy
     );
@@ -117,7 +116,7 @@ contract Adapter8004PrimaryAgentTest is Test {
 
         bytes32 hash = adapter.registrationHash(STD, token, 7);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletCounterfactualIDSet(alice, hash, token, 7, bytes32(0), STD, alice);
+        emit WalletCounterfactualIDSet(alice, hash, token, 7, STD, alice);
         vm.prank(alice);
         adapter.setWalletCounterfactualID(STD, token, 7);
     }

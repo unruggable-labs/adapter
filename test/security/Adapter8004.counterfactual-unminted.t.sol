@@ -205,7 +205,6 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         string newURI,
         address emitter
@@ -214,7 +213,6 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         string metadataKey,
         bytes metadataValue,
@@ -224,7 +222,6 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
@@ -233,7 +230,6 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         address newWallet,
         address emitter
@@ -242,7 +238,6 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed registrationHash,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         address emitter
     );
@@ -289,50 +284,31 @@ contract CounterfactualUnmintedTest is Test {
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentURISet(
-            hash,
-            address(collection),
-            7,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ERC721,
-            "ipfs://uri",
-            address(collection)
+            hash, address(collection), 7, IERCAgentBindings.TokenStandard.ERC721, "ipfs://uri", address(collection)
         );
         collection.setURI(7, "ipfs://uri");
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualMetadataSet(
-            hash,
-            address(collection),
-            7,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ERC721,
-            "k",
-            bytes("v"),
-            address(collection)
+            hash, address(collection), 7, IERCAgentBindings.TokenStandard.ERC721, "k", bytes("v"), address(collection)
         );
         collection.setMetadata(7, "k", bytes("v"));
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualMetadataBatchSet(
-            hash,
-            address(collection),
-            7,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ERC721,
-            metadata,
-            address(collection)
+            hash, address(collection), 7, IERCAgentBindings.TokenStandard.ERC721, metadata, address(collection)
         );
         collection.setMetadataBatch(7, metadata);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentWalletSet(
-            hash, address(collection), 7, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, alice, address(collection)
+            hash, address(collection), 7, IERCAgentBindings.TokenStandard.ERC721, alice, address(collection)
         );
         collection.setWallet(7, alice);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentWalletUnset(
-            hash, address(collection), 7, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, address(collection)
+            hash, address(collection), 7, IERCAgentBindings.TokenStandard.ERC721, address(collection)
         );
         collection.unsetWallet(7);
     }
@@ -349,9 +325,7 @@ contract CounterfactualUnmintedTest is Test {
         assertEq(logs.length, 2);
         assertEq(
             logs[0].topics[0],
-            keccak256(
-                "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
-            )
+            keccak256("CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)")
         );
         assertEq(logs[0].emitter, address(adapter));
         assertEq(logs[1].topics[0], keccak256("Transfer(address,address,uint256)"));
@@ -411,13 +385,7 @@ contract CounterfactualUnmintedTest is Test {
         );
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentURISet(
-            hash,
-            address(collection),
-            tokenId,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ERC721,
-            "ipfs://latest",
-            alice
+            hash, address(collection), tokenId, IERCAgentBindings.TokenStandard.ERC721, "ipfs://latest", alice
         );
         adapter.counterfactualSetAgentURI(
             IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId, "ipfs://latest"
@@ -508,9 +476,7 @@ contract CounterfactualUnmintedTest is Test {
         assertEq(logs.length, 1, "reentrant URI write must not emit");
         assertEq(
             logs[0].topics[0],
-            keccak256(
-                "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
-            )
+            keccak256("CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)")
         );
     }
 
@@ -588,16 +554,14 @@ contract CounterfactualUnmintedTest is Test {
         assertEq(entry.emitter, address(adapter));
         assertEq(
             entry.topics[0],
-            keccak256(
-                "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
-            )
+            keccak256("CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)")
         );
         assertEq(entry.topics[1], expectedHash);
         assertEq(entry.topics[2], bytes32(uint256(uint160(collection))));
         assertEq(entry.topics[3], bytes32(tokenId));
         assertEq(
             keccak256(entry.data),
-            keccak256(abi.encode(bytes32(0), IERCAgentBindings.TokenStandard.ERC721, uri, metadata, collection))
+            keccak256(abi.encode(IERCAgentBindings.TokenStandard.ERC721, uri, metadata, collection))
         );
     }
 

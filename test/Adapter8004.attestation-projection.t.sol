@@ -294,33 +294,33 @@ contract AttestationProjectionTest is Test {
         vm.chainId(1);
         vm.roll(19000000);
         IERC8004AdapterAttestation fx = IERC8004AdapterAttestation(proxy);
-        bytes32 fxCfid = 0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b;
+        bytes32 fxCfid = 0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
 
         vm.prank(alice);
         fx.confirmAdditionalAccount(fxCfid);
         drain();
-        assertEq(lastId(), 0xaf7980abec6ffd6f5d97df444510ce368dcbfcf7de185badd957b43a4fe8e105, "vector 1");
+        assertEq(lastId(), 0x7fde72c738899c71442073381b50194c322b2ea08732ae9b3ea121e57979b58d, "vector 1");
 
         vm.prank(alice);
         fx.attest(tConfirm, fxCfid, bytes32(uint256(1)), "");
         drain();
-        assertEq(lastId(), 0x9965d93cc49e1045bd26bffee741bc0182c227f5753af94bbcf5a3b0986a0455, "vector 2");
+        assertEq(lastId(), 0x579f37809a02f3f7fafa7ae9169874cb38d0bd965cc0474d6cafee7fa71c666d, "vector 2");
 
         vm.prank(alice);
         fx.attest(tRating, fxCfid, bytes32(0), hex"57");
         drain();
-        assertEq(lastId(), 0x76644bf03fd7b84cdc504cde53b335802d68ae53ea278033c9c42cb0807657df, "vector 3");
+        assertEq(lastId(), 0x68515a455383792a4087826ce399f87dc918b3a4ffc923470e5ce3fd1fee28d1, "vector 3");
 
         vm.prank(bob);
         fx.confirmAdditionalAccount(fxCfid);
         drain();
-        assertEq(lastId(), 0x35c0df33a0a54b1edd204dcee6109cf347492fd170950dddca74c0d392a4ee66, "vector 4");
+        assertEq(lastId(), 0x717e8cfdd3b3b7262f89dbdca8b077e972b2dc8e82ead73a2cb891ec4d76a30a, "vector 4");
 
         vm.roll(19000001);
         vm.prank(alice);
         fx.confirmAdditionalAccount(fxCfid);
         drain();
-        assertEq(lastId(), 0xea933f7f114bd9eaedd2215c27110cc2892b27817c6159770705a33afedec6d5, "vector 5");
+        assertEq(lastId(), 0xbd9c0f8e47f1feb43681b30583fae344e99d1b770c9cfe9ed8b4055f0546e9f4, "vector 5");
     }
 
     // ----------------------------------------------------------------

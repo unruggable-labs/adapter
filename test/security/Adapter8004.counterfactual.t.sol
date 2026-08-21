@@ -148,14 +148,13 @@ contract CounterfactualSecurityTest is Test {
         vm.stopPrank();
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 topic = keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,uint8,string,address)");
+        bytes32 topic = keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)");
         bytes32 expectedHash = keccak256(
             abi.encode(
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
         bytes32 expectedTokenContract = bytes32(uint256(uint160(address(token721))));
@@ -166,11 +165,9 @@ contract CounterfactualSecurityTest is Test {
                 assertEq(logs[i].topics[1], expectedHash);
                 assertEq(logs[i].topics[2], expectedTokenContract);
                 assertEq(logs[i].topics[3], expectedTokenId);
-                // Decode the non-indexed payload (bytes32 extraData, uint8 standard, string
-                // newURI, address emitter) and confirm the reserved discriminator and the standard
-                // ride on every event.
-                (bytes32 extraData, uint8 standard,,) = abi.decode(logs[i].data, (bytes32, uint8, string, address));
-                assertEq(extraData, bytes32(0), "extraData must ride on every counterfactual event");
+                // Decode the non-indexed payload (uint8 standard, string newURI, address emitter)
+                // and confirm the standard rides on every event.
+                (uint8 standard,,) = abi.decode(logs[i].data, (uint8, string, address));
                 assertEq(
                     standard,
                     uint8(IERCAgentBindings.TokenStandard.ERC721),
@@ -195,22 +192,27 @@ contract CounterfactualSecurityTest is Test {
         assertEq(logs.length, 1);
         assertEq(
             logs[0].topics[0],
-            keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,uint8,string,address)"),
+            keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)"),
             "topic0 is the keccak of the current signature"
         );
-        // The superseded shapes must not match the emitted topic.
+        // Every superseded shape must fail to match the emitted topic.
         assertTrue(
-            logs[0].topics[0] != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)"),
-            "pre-extraData shape"
+            logs[0].topics[0] != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,string,address)"),
+            "original shape, before extraData and before the standard"
+        );
+        assertTrue(
+            logs[0].topics[0] != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,string,address)"),
+            "extraData shape, before the standard"
+        );
+        assertTrue(
+            logs[0].topics[0]
+                != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,uint8,string,address)"),
+            "extraData plus standard shape, superseded at 0.0.17"
         );
         assertTrue(
             logs[0].topics[0]
                 != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,uint8,bytes32,string,address)"),
             "versioned extraData shape"
-        );
-        assertTrue(
-            logs[0].topics[0] != keccak256("CounterfactualAgentURISet(bytes32,address,uint256,bytes32,string,address)"),
-            "pre-standard extraData shape"
         );
 
         // No adapter function advertises a payload version any more.

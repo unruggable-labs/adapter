@@ -447,7 +447,6 @@ contract Adapter8004ContractBindingTest is Test {
             expectedHash,
             address(token),
             0,
-            bytes32(0),
             IERCAgentBindings.TokenStandard.ACCOUNT,
             "ipfs://erc20-agent",
             empty,
@@ -461,7 +460,6 @@ contract Adapter8004ContractBindingTest is Test {
             expectedHash,
             address(token),
             0,
-            bytes32(0),
             IERCAgentBindings.TokenStandard.ACCOUNT,
             "ipfs://full",
             metadata,
@@ -471,50 +469,31 @@ contract Adapter8004ContractBindingTest is Test {
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentURISet(
-            expectedHash,
-            address(token),
-            0,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ACCOUNT,
-            "ipfs://cf-uri",
-            address(token)
+            expectedHash, address(token), 0, IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://cf-uri", address(token)
         );
         token.counterfactualSetAgentURI(0, "ipfs://cf-uri");
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataSet(
-            expectedHash,
-            address(token),
-            0,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ACCOUNT,
-            "k",
-            bytes("v"),
-            address(token)
+            expectedHash, address(token), 0, IERCAgentBindings.TokenStandard.ACCOUNT, "k", bytes("v"), address(token)
         );
         token.counterfactualSetMetadata(0, "k", bytes("v"));
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataBatchSet(
-            expectedHash,
-            address(token),
-            0,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ACCOUNT,
-            metadata,
-            address(token)
+            expectedHash, address(token), 0, IERCAgentBindings.TokenStandard.ACCOUNT, metadata, address(token)
         );
         token.counterfactualSetMetadataBatch(0, metadata);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletSet(
-            expectedHash, address(token), 0, bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, wallet, address(token)
+            expectedHash, address(token), 0, IERCAgentBindings.TokenStandard.ACCOUNT, wallet, address(token)
         );
         token.counterfactualSetAgentWallet(0, wallet);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletUnset(
-            expectedHash, address(token), 0, bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, address(token)
+            expectedHash, address(token), 0, IERCAgentBindings.TokenStandard.ACCOUNT, address(token)
         );
         token.counterfactualUnsetAgentWallet(0);
     }
@@ -639,24 +618,19 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(logs[0].topics.length, 4);
         assertEq(
             logs[0].topics[0],
-            keccak256(
-                "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
-            )
+            keccak256("CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)")
         );
         assertEq(logs[0].topics[1], hash);
         assertEq(logs[0].topics[2], bytes32(uint256(uint160(address(token)))));
         assertEq(logs[0].topics[3], bytes32(uint256(0)), "a contract binding's tokenId topic is always 0");
 
-        // Non-indexed head words: `bytes32 extraData` then `uint8 standard`.
-        assertEq(_word(logs[0].data, 0), 0, "reserved extraData rides as the first non-indexed word");
-        assertEq(_word(logs[0].data, 1), 5, "non-indexed standard is the appended CONTRACT value");
+        // The `uint8 standard` is the first non-indexed head word.
+        assertEq(_word(logs[0].data, 0), 5, "non-indexed standard is the appended ACCOUNT value");
 
         // Whole body, including `emitter == boundAddress` for a contract-authorized claim.
         assertEq(
             keccak256(logs[0].data),
-            keccak256(
-                abi.encode(bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://raw", metadata, address(token))
-            )
+            keccak256(abi.encode(IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://raw", metadata, address(token)))
         );
     }
 
@@ -688,15 +662,12 @@ contract Adapter8004ContractBindingTest is Test {
         assertEq(logs.length, 1);
         assertEq(
             logs[0].topics[0],
-            keccak256(
-                "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
-            )
+            keccak256("CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)")
         );
         assertEq(logs[0].topics[1], hash);
         assertEq(logs[0].topics[2], bytes32(uint256(uint160(address(ownable)))));
         assertEq(logs[0].topics[3], bytes32(uint256(0)));
-        assertEq(_word(logs[0].data, 0), 0);
-        assertEq(_word(logs[0].data, 1), 6);
+        assertEq(_word(logs[0].data, 0), 6);
     }
 
     function testAgentBoundRawLayoutIsUnchangedForOwnableContractBindings() external {
@@ -746,9 +717,8 @@ contract Adapter8004ContractBindingTest is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         assertEq(logs.length, 3);
-        bytes32 topic0 = keccak256(
-            "CounterfactualAgentRegistered(bytes32,address,uint256,bytes32,uint8,string,(string,bytes)[],address)"
-        );
+        bytes32 topic0 =
+            keccak256("CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)");
         bytes32[3] memory expectedHashes = [hash721, hashAccount, hashOwnable];
         for (uint256 i; i < 3; ++i) {
             assertEq(logs[i].emitter, address(adapter));
@@ -765,36 +735,26 @@ contract Adapter8004ContractBindingTest is Test {
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         assertEq(
             keccak256(logs[0].data),
-            keccak256(
-                abi.encode(bytes32(0), IERCAgentBindings.TokenStandard.ERC721, "ipfs://as-721", empty, address(hybrid))
-            ),
+            keccak256(abi.encode(IERCAgentBindings.TokenStandard.ERC721, "ipfs://as-721", empty, address(hybrid))),
             "log 0 is the ERC-721 identity's claim"
         );
         assertEq(
             keccak256(logs[1].data),
-            keccak256(
-                abi.encode(
-                    bytes32(0), IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://erc20-agent", empty, address(hybrid)
-                )
-            ),
+            keccak256(abi.encode(IERCAgentBindings.TokenStandard.ACCOUNT, "ipfs://erc20-agent", empty, address(hybrid))),
             "log 1 is the ACCOUNT identity's claim"
         );
         assertEq(
             keccak256(logs[2].data),
             keccak256(
                 abi.encode(
-                    bytes32(0),
-                    IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE,
-                    "ipfs://as-ownable",
-                    empty,
-                    address(hybrid)
+                    IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, "ipfs://as-ownable", empty, address(hybrid)
                 )
             ),
             "log 2 is the CONTRACT_OWNABLE identity's claim"
         );
-        assertEq(_word(logs[0].data, 1), uint8(IERCAgentBindings.TokenStandard.ERC721));
-        assertEq(_word(logs[1].data, 1), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
-        assertEq(_word(logs[2].data, 1), uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE));
+        assertEq(_word(logs[0].data, 0), uint8(IERCAgentBindings.TokenStandard.ERC721));
+        assertEq(_word(logs[1].data, 0), uint8(IERCAgentBindings.TokenStandard.ACCOUNT));
+        assertEq(_word(logs[2].data, 0), uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE));
 
         // The standard each log advertises is the one folded into the hash that log names, so a
         // reader verifies a line without looking up anything else.
@@ -802,9 +762,7 @@ contract Adapter8004ContractBindingTest is Test {
         for (uint256 i; i < 3; ++i) {
             assertEq(
                 logs[i].topics[1],
-                keccak256(
-                    abi.encode(adapterAddress, uint8(_word(logs[i].data, 1)), address(hybrid), uint256(0), bytes32(0))
-                ),
+                keccak256(abi.encode(adapterAddress, uint8(_word(logs[i].data, 0)), address(hybrid), uint256(0))),
                 "log is self-verifying"
             );
         }

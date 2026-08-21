@@ -11,16 +11,14 @@ import {IERCAgentBindings} from "./IERCAgentBindings.sol";
 interface IERC8004AdapterWalletCounterfactualID {
     function WALLET_COUNTERFACTUAL_ID_UNSET() external pure returns (bytes32);
 
-    /// @notice `extraData` is the discriminator folded into `registrationHash`, and `standard` is the
-    /// `TokenStandard` folded into it. Both are carried here because `(boundAddress, tokenId)` alone
-    /// is not unique, so a reader can recompute the hash from this one log line. See
-    /// `IERC8004AdapterCounterfactual`.
+    /// @notice `standard` is the `TokenStandard` folded into `registrationHash`. It is carried here
+    /// because `(boundAddress, tokenId)` alone does not name an identity, so a reader can recompute
+    /// the hash from this one log line. See `IERC8004AdapterCounterfactual`.
     event WalletCounterfactualIDSet(
         address indexed account,
         bytes32 indexed registrationHash,
         address boundAddress,
         uint256 tokenId,
-        bytes32 extraData,
         IERCAgentBindings.TokenStandard standard,
         address indexed setBy
     );

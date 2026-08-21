@@ -520,8 +520,7 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
@@ -531,7 +530,6 @@ contract Adapter8004Test is Test {
             expectedHash,
             address(token721),
             1,
-            bytes32(0),
             IERCAgentBindings.TokenStandard.ERC721,
             "ipfs://agent/cf",
             metadata,
@@ -551,8 +549,7 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
         assertEq(viewHash, expectedHash);
@@ -575,8 +572,7 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
@@ -639,21 +635,14 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentURISet(
-            expectedHash,
-            address(token721),
-            1,
-            bytes32(0),
-            IERCAgentBindings.TokenStandard.ERC721,
-            "ipfs://updated",
-            alice
+            expectedHash, address(token721), 1, IERCAgentBindings.TokenStandard.ERC721, "ipfs://updated", alice
         );
         adapter.counterfactualSetAgentURI(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://updated"
@@ -678,8 +667,7 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
@@ -689,7 +677,6 @@ contract Adapter8004Test is Test {
             expectedHash,
             address(token721),
             1,
-            bytes32(0),
             IERCAgentBindings.TokenStandard.ERC721,
             "description",
             bytes("hello"),
@@ -737,8 +724,7 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
@@ -749,7 +735,7 @@ contract Adapter8004Test is Test {
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataBatchSet(
-            expectedHash, address(token721), 1, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, metadata, alice
+            expectedHash, address(token721), 1, IERCAgentBindings.TokenStandard.ERC721, metadata, alice
         );
         adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, metadata);
     }
@@ -800,15 +786,14 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletSet(
-            expectedHash, address(token721), 1, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, wallet, alice
+            expectedHash, address(token721), 1, IERCAgentBindings.TokenStandard.ERC721, wallet, alice
         );
         adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, wallet);
     }
@@ -831,15 +816,14 @@ contract Adapter8004Test is Test {
                 adapter.interoperableAddress(address(adapter)),
                 uint8(IERCAgentBindings.TokenStandard.ERC721),
                 address(token721),
-                uint256(1),
-                bytes32(0)
+                uint256(1)
             )
         );
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit IERC8004AdapterCounterfactual.CounterfactualAgentWalletUnset(
-            expectedHash, address(token721), 1, bytes32(0), IERCAgentBindings.TokenStandard.ERC721, alice
+            expectedHash, address(token721), 1, IERCAgentBindings.TokenStandard.ERC721, alice
         );
         adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
     }
