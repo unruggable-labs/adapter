@@ -74,6 +74,34 @@ contract Adapter8004DelegateTest is Test {
     }
 
     // -----------------------------------------------------------------
+    // A zero owner confers authority on nobody
+    // -----------------------------------------------------------------
+
+    /// @dev A collection that answers `ownerOf` with the zero address rather than reverting. The
+    /// adapter already treats that answer as a real state in `_hasNoCurrentOwner`, so the control
+    /// path has to handle it too.
+    function testZeroOwnerGrantsNobodyEvenIfTheRegistryRecordsADelegation() external {
+        ZeroOwnerCollection collection = new ZeroOwnerCollection();
+
+        // The real delegate.xyz records the vault as `msg.sender`, so a delegation from the zero
+        // address cannot normally exist. The mock has no such rule, which is exactly the assumption
+        // under test: the adapter must not depend on an external contract declining to record one.
+        delegateRegistry.delegateERC721(hot, address(0), address(collection), 1, rights, true);
+        assertTrue(
+            delegateRegistry.checkDelegateForERC721(hot, address(0), address(collection), 1, rights),
+            "premise: the registry reports a delegation from the zero address"
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
+        vm.prank(hot);
+        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1, "ipfs://x");
+
+        // And a real delegation from a real owner still works, so the guard did not close the path.
+        vm.prank(cold);
+        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://ok");
+    }
+
+    // -----------------------------------------------------------------
     // Direct owner — unchanged behavior
     // -----------------------------------------------------------------
 
@@ -430,5 +458,13 @@ contract Adapter8004DelegateTest is Test {
         bytes32 digest = keccak256(abi.encodePacked(hex"1901", domainSeparator, structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
         return abi.encodePacked(r, s, v);
+    }
+}
+
+/// @dev Answers every `ownerOf` with the zero address instead of reverting. Non-compliant, but a
+/// real shape the adapter must fail closed against rather than pass to the delegate registry.
+contract ZeroOwnerCollection {
+    function ownerOf(uint256) external pure returns (address) {
+        return address(0);
     }
 }

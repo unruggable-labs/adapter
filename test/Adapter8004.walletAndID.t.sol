@@ -58,6 +58,85 @@ contract Adapter8004WalletAndIDTest is Test {
     }
 
     // ----------------------------------------------------------------
+    //  Coordinate validation on the wallet-counterfactual-id path
+    // ----------------------------------------------------------------
+
+    /// @dev These two setters write and emit without checking authority, deliberately, but they used
+    /// to skip coordinate validation too. That let a wallet name an identity no forward claim could
+    /// ever match, which an indexer following the interface's own recompute-from-the-triple rule
+    /// would then index as an identity that cannot exist.
+    function testWalletCounterfactualIDRejectsCoordinatesNoClaimCanMatch() external {
+        // `ACCOUNT` with a nonzero id: rejected by both claim paths, so it must be rejected here.
+        vm.expectRevert(
+            abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
+        );
+        vm.prank(alice);
+        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1);
+
+        // The zero address is the unbound sentinel under every standard.
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.prank(alice);
+        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
+
+        // A code-less address under a code-requiring standard.
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.prank(alice);
+        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, bob, 1);
+
+        // The registry itself, which would resolve control to the adapter once bound.
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.BoundAddressIsRegistry.selector));
+        vm.prank(alice);
+        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(registry), 1);
+
+        // Nothing was written by any of the four rejected calls.
+        assertEq(adapter.walletCounterfactualIDOf(alice), adapter.WALLET_COUNTERFACTUAL_ID_UNSET(), "no write");
+    }
+
+    /// @dev The `For` variant reaches the same private writer, so it must reject identically rather
+    /// than becoming the way around the guard.
+    function testWalletCounterfactualIDForRejectsTheSameCoordinates() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
+        );
+        vm.prank(alice);
+        adapter.setWalletCounterfactualIDFor(alice, IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1);
+
+        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.prank(alice);
+        adapter.setWalletCounterfactualIDFor(alice, IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
+    }
+
+    /// @dev The guard must reject only what the claim paths already reject, so it cannot cost anyone
+    /// a designation they could legitimately want. Each coordinate is put through
+    /// `counterfactualRegister` first to establish that it is claimable, then designated.
+    function testWalletCounterfactualIDStillAcceptsEveryClaimableCoordinate() external {
+        // A token in a real collection, unowned by the designator and not yet registered.
+        vm.prank(alice);
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token), 1, "ipfs://a");
+        vm.prank(bob);
+        bytes32 erc721 = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        assertEq(erc721, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 1));
+
+        // `ACCOUNT` at its canonical id, against a code-less address, which the claim path allows.
+        vm.prank(bob);
+        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0, "ipfs://b");
+        vm.prank(bob);
+        bytes32 account = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0);
+        assertEq(account, adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0));
+        assertEq(adapter.walletCounterfactualIDOf(bob), account, "the last designation stands");
+    }
+
+    /// @dev A token that does not exist yet in a collection that does is still designatable, which is
+    /// the counterfactual case the guard must not break. Only the collection needs code.
+    function testWalletCounterfactualIDStillAcceptsAnUnmintedTokenId() external {
+        uint256 unminted = 999;
+        vm.prank(bob);
+        bytes32 designated =
+            adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted);
+        assertEq(designated, adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted));
+    }
+
+    // ----------------------------------------------------------------
     //  Registered path
     // ----------------------------------------------------------------
 

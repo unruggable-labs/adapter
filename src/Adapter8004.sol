@@ -740,10 +740,18 @@ contract Adapter8004 is
         return stored == bytes32(0) ? WALLET_COUNTERFACTUAL_ID_UNSET : ~stored;
     }
 
+    /// @dev Validates the coordinates before deriving from them, so this path cannot name an identity
+    /// no forward claim could ever match. Authority is deliberately not checked, since a wallet
+    /// pointing at an identity asserts nothing about that identity, but a coordinate the claim paths
+    /// reject is one nothing can ever resolve to. Placed here rather than in the two entry points so
+    /// a future caller stays covered.
     function _setWalletCounterfactualID(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 computedHash)
     {
+        _requireValidBoundAddress(standard, boundAddress);
+        _requireCanonicalTokenId(standard, boundAddress, tokenId);
+
         computedHash = _registrationHash(standard, boundAddress, tokenId);
         if (computedHash == bytes32(type(uint256).max)) {
             revert WalletCounterfactualIDReserved(computedHash);
@@ -1029,9 +1037,14 @@ contract Adapter8004 is
         // 4. Single-owner standards are the other three members of the owner-and-delegate pattern.
         //    Control means current token ownership, or a valid delegate.xyz delegation from the
         //    current owner. Direct ownership is checked first so current owners never incur a
-        //    registry call.
+        //    registry call. A zero owner short-circuits to nobody, matching `CONTRACT_OWNABLE`, so
+        //    the delegation check always names a real delegator rather than resting on delegate.xyz
+        //    refusing to record one from the zero address.
         if (_isSingleOwnerStandard(standard)) {
             address owner = ISingleOwnerToken(boundAddress).ownerOf(tokenId);
+            if (owner == address(0)) {
+                return false;
+            }
             if (account == owner) {
                 return true;
             }

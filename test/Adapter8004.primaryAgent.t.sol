@@ -6,6 +6,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
+import {MockERC721} from "./mocks/MockERC721.sol";
 
 contract Adapter8004ZeroHashHarness is Adapter8004 {
     function _registrationHash(IERCAgentBindings.TokenStandard, address, uint256)
@@ -54,7 +55,10 @@ contract Adapter8004PrimaryAgentTest is Test {
     Adapter8004 internal adapter;
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
-    address internal token = address(0xBEEF);
+    /// @dev A real deployed collection rather than a bare placeholder address. The wallet
+    /// counterfactual id setters validate their coordinates, so a code-less address under a
+    /// code-requiring standard is rejected, exactly as the claim paths reject it.
+    address internal token;
     IERCAgentBindings.TokenStandard internal constant STD = IERCAgentBindings.TokenStandard.ERC721;
 
     function setUp() external {
@@ -67,6 +71,7 @@ contract Adapter8004PrimaryAgentTest is Test {
                 )
             )
         );
+        token = address(new MockERC721());
     }
 
     function testIndependentUnsetSentinelsAndZeroFullId() external {
