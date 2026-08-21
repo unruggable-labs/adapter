@@ -9,6 +9,7 @@ import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
+import {MockContractBinder} from "./mocks/MockContractBinder.sol";
 
 /// @notice Every counterfactual function that derives an identity returns it.
 ///
@@ -100,7 +101,59 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         assertEq(adapter.counterfactualUnsetAgentWallet(STD, address(token), 1), published, "unsetAgentWallet");
         assertEq(adapter.counterfactualSetAgentWalletAndID(STD, address(token), 1), published, "setAgentWalletAndID");
         assertEq(adapter.setWalletCounterfactualID(STD, address(token), 1), published, "setWalletCounterfactualID");
+        uint256 agentId = adapter.register(STD, address(token), 1, "ipfs://agent");
         vm.stopPrank();
+
+        assertEq(adapter.registrationHashOf(agentId), published, "registrationHashOf");
+    }
+
+    /// @dev `registrationHashOf` answers from the stored binding, so it must agree with the
+    /// coordinate form for every standard rather than only for ERC-721.
+    function testRegistrationHashOfMatchesTheCoordinateFormAcrossStandards() external {
+        MockERC721 other = new MockERC721();
+        other.mint(alice, 7);
+        MockContractBinder binder = new MockContractBinder(adapter);
+
+        vm.startPrank(alice);
+        uint256 erc721Agent = adapter.register(STD, address(other), 7, "ipfs://a");
+        vm.stopPrank();
+        uint256 accountAgent = binder.register(0);
+
+        assertEq(adapter.registrationHashOf(erc721Agent), adapter.registrationHash(STD, address(other), 7), "ERC721");
+        assertEq(
+            adapter.registrationHashOf(accountAgent),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
+            "ACCOUNT"
+        );
+        assertTrue(
+            adapter.registrationHashOf(erc721Agent) != adapter.registrationHashOf(accountAgent),
+            "two agents, two identities"
+        );
+    }
+
+    /// @dev Unknown agents revert rather than answering zero, matching `bindingOf`. A zero answer
+    /// would be indistinguishable from a real identity that happened to hash to zero.
+    function testRegistrationHashOfRevertsForAnUnknownAgent() external {
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(42)));
+        adapter.registrationHashOf(42);
+
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
+        adapter.registrationHashOf(0);
+    }
+
+    /// @dev The property that makes this view safe to rely on: bindings are immutable, so the answer
+    /// is fixed at registration and a token changing hands does not move it.
+    function testRegistrationHashOfSurvivesATokenTransfer() external {
+        vm.prank(alice);
+        uint256 agentId = adapter.register(STD, address(token), 1, "ipfs://agent");
+        bytes32 before = adapter.registrationHashOf(agentId);
+
+        vm.prank(alice);
+        token.transferFrom(alice, wallet, 1);
+        assertEq(token.ownerOf(1), wallet, "premise: the token moved");
+
+        assertEq(adapter.registrationHashOf(agentId), before, "the identity is unchanged");
+        assertEq(before, adapter.registrationHash(STD, address(token), 1), "and still the coordinate form");
     }
 
     // ----------------------------------------------------------------

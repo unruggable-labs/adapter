@@ -204,6 +204,30 @@ subsystem is emit-only, so it adds no slot at all.
   there the registry verifies a deadline-bounded EIP-712 signature scoped to that
   agent and wallet, so naming a wallet other than the caller is the point.
 
+- **`registrationHashOf(uint256 agentId)`**, a view returning the counterfactual
+  identity of an agent already registered through this adapter. It loads the
+  stored binding and derives the identifier from those coordinates, so one call
+  replaces `bindingOf` followed by `registrationHash` and the answer is the same
+  value. Unknown agents revert `UnknownAgent` rather than returning zero, sharing
+  one definition of unknown with `bindingOf` through a new private
+  `_knownBinding` helper that both use, and which `_requireController` now uses
+  too. No storage is added and no new copy of the formula exists; the derivation
+  is the same internal helper `registrationHash` calls.
+
+  It exists because attestations target counterfactual identifiers, and an
+  integrator holding a registered `agentId` had to make two calls to find the one
+  to attest against. The alternative considered was writing the reserved
+  `cf-registration` key on every `register`, which was rejected: it would record
+  something anyone can already compute from `bindingOf`, or from `AgentBound`
+  which carries all three coordinates, at the cost of an external call and a cold
+  `SSTORE` on the most-used function, and it would snapshot a formula that has
+  already changed once in this version.
+
+  The returned value carries the reserved zero `extraData`, so an identity claimed
+  counterfactually under a non-zero discriminator will not match it. Bindings are
+  immutable, so the answer is fixed at registration and survives token transfers,
+  which is the property that makes the view safe to rely on.
+
   **Every counterfactual function that derives an identity now returns it.** The
   five updaters, `counterfactualSetAgentURI`, `counterfactualSetMetadata`,
   `counterfactualSetMetadataBatch`, `counterfactualSetAgentWallet` and

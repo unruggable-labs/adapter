@@ -373,16 +373,17 @@ contract Adapter8004 is
     }
 
     function bindingOf(uint256 agentId) external view returns (Binding memory) {
-        // 1. Load the stored binding for the requested agent.
-        Binding memory binding = _bindings[agentId];
+        return _knownBinding(agentId);
+    }
 
-        // 2. Reject unknown agents instead of returning an empty struct.
+    /// @dev Loads a binding and rejects unknown agents, so every caller that needs a real binding
+    /// agrees on what unknown means. A zero `boundAddress` is the unbound sentinel, which is why the
+    /// zero address is refused at every write entry point.
+    function _knownBinding(uint256 agentId) private view returns (Binding memory binding) {
+        binding = _bindings[agentId];
         if (binding.boundAddress == address(0)) {
             revert UnknownAgent(agentId);
         }
-
-        // 3. Return the immutable token binding.
-        return binding;
     }
 
     /// @notice Whether `account` may act for `agentId` right now, the same check every adapter write
@@ -425,6 +426,12 @@ contract Adapter8004 is
         returns (bytes32)
     {
         return _registrationHash(standard, boundAddress, tokenId);
+    }
+
+    /// @inheritdoc IERC8004AdapterCounterfactual
+    function registrationHashOf(uint256 agentId) external view returns (bytes32) {
+        Binding memory binding = _knownBinding(agentId);
+        return _registrationHash(binding.standard, binding.boundAddress, binding.tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -921,15 +928,10 @@ contract Adapter8004 is
     }
 
     function _requireController(uint256 agentId, address account) internal view {
-        // 1. Load the binding for the requested agent.
-        Binding memory binding = _bindings[agentId];
+        // 1. Load the binding, rejecting unknown agents before checking ownership state.
+        Binding memory binding = _knownBinding(agentId);
 
-        // 2. Reject unknown agents before checking token ownership state.
-        if (binding.boundAddress == address(0)) {
-            revert UnknownAgent(agentId);
-        }
-
-        // 3. Revert when the caller no longer controls the bound token.
+        // 2. Revert when the caller no longer controls the bound token.
         if (!_hasBindingControl(binding, account)) {
             revert NotController(account, agentId);
         }

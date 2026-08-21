@@ -134,6 +134,15 @@ interface IERC8004AdapterCounterfactual {
         view
         returns (bytes32);
 
+    /// @notice The counterfactual identity of an agent already registered through this adapter,
+    /// derived from its stored binding, so one call replaces `bindingOf` followed by
+    /// `registrationHash`. Reverts `UnknownAgent` for an id that was never registered, matching
+    /// `bindingOf` rather than returning zero.
+    /// @dev The value carries the reserved zero `extraData`, so an identity claimed counterfactually
+    /// under a non-zero discriminator will not match it. Bindings are immutable, so the answer never
+    /// changes for a given agent, token transfers included.
+    function registrationHashOf(uint256 agentId) external view returns (bytes32);
+
     /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
     /// entirely in the event log. Indexers MUST treat the latest event per `registrationHash` as
     /// authoritative, latest meaning highest block number, then highest log index.
