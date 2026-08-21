@@ -32,7 +32,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         adapter = Adapter8004(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004()), abi.encodeCall(Adapter8004.initialize, (address(registry), admin))
+                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (admin))
                 )
             )
         );

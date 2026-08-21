@@ -32,9 +32,8 @@ contract CounterfactualSecurityTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004();
-        ERC1967Proxy proxy =
-            new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(registry), admin)));
+        Adapter8004 impl = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token721 = new MockERC721();

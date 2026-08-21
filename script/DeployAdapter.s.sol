@@ -17,13 +17,13 @@ contract DeployAdapterScript is Script {
         // 3. Start the deployment broadcast as the deployer.
         vm.startBroadcast(deployerKey);
 
-        // 4. Deploy the adapter implementation contract.
-        Adapter8004 implementation = new Adapter8004();
+        // 4. Deploy the adapter implementation, baking the registry into its runtime code.
+        Adapter8004 implementation = new Adapter8004(identityRegistry);
 
-        // 5. Deploy the proxy and initialize it with the registry and deployer-as-admin.
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Adapter8004.initialize, (identityRegistry, deployer))
-        );
+        // 5. Deploy the proxy and initialize it with deployer-as-admin. The registry is no longer an
+        //    initializer argument; it came from the constructor above.
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (deployer)));
 
         // 6. Return the proxy address typed as the adapter interface.
         adapter = Adapter8004(address(proxy));

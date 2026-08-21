@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {DeployAdapterImplementationScript} from "../script/DeployAdapterImplementation.s.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
+import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERC8004AdapterWalletCounterfactualID} from "../src/interfaces/IERC8004AdapterWalletCounterfactualID.sol";
@@ -81,7 +82,7 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
     /// that omits a field is as misleading as a signature that names the wrong one. This compares the
     /// script's formula against the contract's, for inputs the script itself uses.
     function testPrintedSampleRegistrationHashMatchesTheContract() external {
-        Adapter8004 adapter = new Adapter8004();
+        Adapter8004 adapter = new Adapter8004(address(new MockIdentityRegistry()));
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, address(adapter));
 
         assertEq(

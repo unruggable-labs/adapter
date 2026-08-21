@@ -131,6 +131,8 @@ library ReferenceErc7930 {
 }
 
 contract Adapter8004HashHarness is Adapter8004 {
+    constructor(address registry_) Adapter8004(registry_) {}
+
     function chainIdentifierFor(uint256 chainId) external pure returns (bytes memory) {
         return _chainIdentifierFor(chainId);
     }
@@ -199,15 +201,11 @@ contract Adapter8004ERC7930Test is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004();
+        Adapter8004 implementation = new Adapter8004(address(registry));
         adapter = Adapter8004(
-            address(
-                new ERC1967Proxy(
-                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
-                )
-            )
+            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
-        harness = new Adapter8004HashHarness();
+        harness = new Adapter8004HashHarness(address(registry));
     }
 
     /// @dev Vectors for the four-component preimage. Each value was computed outside the contract as

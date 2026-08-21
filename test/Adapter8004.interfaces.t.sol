@@ -31,10 +31,8 @@ contract Adapter8004InterfacesTest is Test {
 
         registry = new MockIdentityRegistry();
 
-        Adapter8004 implementation = new Adapter8004();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), admin))
-        );
+        Adapter8004 implementation = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token721 = new MockERC721();
@@ -279,40 +277,43 @@ contract Adapter8004InterfacesTest is Test {
     // (b) Read-revert forwarding from the underlying registry
     // ---------------------------------------------------------------------
 
-    function testGetMetadataForwardsRegistryRevert() external {
+    /// @dev These used to swap the registry under the live adapter. The registry is fixed at
+    /// construction since `0.0.17`, so each builds a whole adapter on the reverting registry
+    /// instead. The property under test is unchanged: a view must bubble the registry's revert
+    /// rather than swallow it and answer zero.
+    function _onReverting() private returns (Adapter8004) {
         RevertingRegistry reverting = new RevertingRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(reverting));
+        return Adapter8004(
+            address(
+                new ERC1967Proxy(
+                    address(new Adapter8004(address(reverting))), abi.encodeCall(Adapter8004.initialize, (admin))
+                )
+            )
+        );
+    }
 
+    function testGetMetadataForwardsRegistryRevert() external {
+        Adapter8004 reverting = _onReverting();
         vm.expectRevert(bytes("getMetadata reverted"));
-        adapter.getMetadata(0, "any");
+        reverting.getMetadata(0, "any");
     }
 
     function testGetAgentWalletForwardsRegistryRevert() external {
-        RevertingRegistry reverting = new RevertingRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(reverting));
-
+        Adapter8004 reverting = _onReverting();
         vm.expectRevert(bytes("getAgentWallet reverted"));
-        adapter.getAgentWallet(0);
+        reverting.getAgentWallet(0);
     }
 
     function testOwnerOfForwardsRegistryRevert() external {
-        RevertingRegistry reverting = new RevertingRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(reverting));
-
+        Adapter8004 reverting = _onReverting();
         vm.expectRevert(bytes("ownerOf reverted"));
-        adapter.ownerOf(0);
+        reverting.ownerOf(0);
     }
 
     function testTokenURIForwardsRegistryRevert() external {
-        RevertingRegistry reverting = new RevertingRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(reverting));
-
+        Adapter8004 reverting = _onReverting();
         vm.expectRevert(bytes("tokenURI reverted"));
-        adapter.tokenURI(0);
+        reverting.tokenURI(0);
     }
 
     // ---------------------------------------------------------------------

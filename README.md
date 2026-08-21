@@ -240,7 +240,10 @@ Implementation upgrades are governed by the Safe multisig through UUPS. The [`de
 The unreleased implementation upgrades directly from the active
 Mainnet/Base May 15 build or the active Sepolia delegate.xyz build—not from
 unreleased numbered source versions. Both live layouts populate only regular
-slots 0 and 1. The two new wallet-id mappings append directly at slots
+slots 0 and 1. Slot 0 held `identityRegistry`, which is now `immutable` and lives in the
+implementation's runtime code instead, so slot 0 becomes dead and is reserved
+forever by a placeholder; regular storage now begins at slot 1 with `_bindings`.
+The two new wallet-id mappings append directly at slots
 2 and 3. Existing proxies must use empty
 `upgradeToAndCall` data; `initialize(...)` is only for a new proxy. No storage
 migration or reinitializer is required. Sepolia's delegate.xyz getters and
@@ -254,15 +257,15 @@ You deploy:
 
 - an adapter implementation
 - an `ERC1967Proxy`
-- the proxy is initialized with:
-  - `identityRegistry`
-  - `initialOwner` / admin
+- the implementation is constructed with `identityRegistry`, which is baked into its
+  runtime code and can never change
+- the proxy is initialized with `initialOwner` / admin only
 
 After deployment:
 
 - users interact with the proxy address
-- the admin can upgrade the adapter
-- the admin can update the `identityRegistry` address if ERC-8004 migrates
+- the admin can upgrade the adapter, but only to an implementation carrying the same registry
+- nobody can repoint `identityRegistry`, the admin included
 
 ### 2. Register A Bound Agent
 
@@ -427,16 +430,17 @@ not:
 
 - `owner = <external token holder>`
 
-### 6. Upgrade Or Repoint
+### 6. Upgrade
 
-The admin can:
+The admin can upgrade the adapter implementation through UUPS. That is the whole escape hatch for
+future ERC-8004 changes.
 
-- upgrade the adapter implementation through UUPS
-- update `identityRegistry` to a new ERC-8004 registry address
-
-This is the escape hatch for future ERC-8004 changes.
-
-Note that repointing only changes where future forwarded calls go. It does not migrate already-created ERC-8004 identities out of an old registry.
+**The registry cannot be repointed.** It is fixed when the implementation is constructed, and
+`_authorizeUpgrade` refuses any implementation carrying a different one, so upgrading is not a way
+around it either. Repointing used to be available to the owner and was removed at `0.0.17` because
+it allowed binding capture: agent ids are only meaningful inside the registry that issued them, so
+pointing the adapter at a different registry made previously issued ids resolve to different agents.
+Moving to a new ERC-8004 registry now means a new deployment, which is the honest cost.
 
 ## Counterfactual Registration
 
@@ -642,11 +646,10 @@ The adapter intentionally goes beyond the ERC draft by also exposing:
 
 The adapter owner can:
 
-- upgrade the adapter implementation
-- change `identityRegistry`
+- upgrade the adapter implementation, to an implementation carrying the same `identityRegistry`
 - transfer adapter ownership to a new admin
 
-That is the whole owner surface. **No owner function reaches into an individual agent's state.** The owner cannot rewrite a binding, cannot rewrite an agent's metadata, cannot move an agent, and cannot act as a controller for one. Changing `identityRegistry` is contract-level configuration and changes where every agent resolves, which is why it is Safe-owned, but it writes to no agent.
+That is the whole owner surface. **No owner function reaches into an individual agent's state.** The owner cannot rewrite a binding, cannot rewrite an agent's metadata, cannot move an agent, and cannot act as a controller for one. The owner also cannot change `identityRegistry`: it is `immutable`, there is no setter, and the upgrade path checks it.
 
 ## Contract Surface
 
@@ -706,9 +709,10 @@ Adapter-specific convenience function:
 
 Admin-facing functions:
 
-- `initialize(address identityRegistry, address initialOwner)`
-- `setIdentityRegistry(address newIdentityRegistry)`
+- `initialize(address initialOwner)`
 - `upgradeToAndCall(address newImplementation, bytes data)`
+
+`identityRegistry()` is a view over an `immutable` set in the constructor. There is no setter.
 
 ## Build And Test
 

@@ -9,6 +9,8 @@ import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
 contract Adapter8004ZeroHashHarness is Adapter8004 {
+    constructor(address registry_) Adapter8004(registry_) {}
+
     function _registrationHash(IERCAgentBindings.TokenStandard, address, uint256)
         internal
         pure
@@ -63,13 +65,9 @@ contract Adapter8004PrimaryAgentTest is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004();
+        Adapter8004 implementation = new Adapter8004(address(registry));
         adapter = Adapter8004(
-            address(
-                new ERC1967Proxy(
-                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
-                )
-            )
+            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
         token = address(new MockERC721());
     }
@@ -153,13 +151,9 @@ contract Adapter8004PrimaryAgentTest is Test {
 
     function testCounterfactualHashZeroIsRepresentable() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004ZeroHashHarness implementation = new Adapter8004ZeroHashHarness();
+        Adapter8004ZeroHashHarness implementation = new Adapter8004ZeroHashHarness(address(registry));
         Adapter8004ZeroHashHarness zeroAdapter = Adapter8004ZeroHashHarness(
-            address(
-                new ERC1967Proxy(
-                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
-                )
-            )
+            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
         vm.prank(alice);
         assertEq(zeroAdapter.setWalletCounterfactualID(STD, token, 1), bytes32(0));

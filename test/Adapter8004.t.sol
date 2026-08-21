@@ -54,10 +54,8 @@ contract Adapter8004Test is Test {
         registry = new MockIdentityRegistry();
         registry2 = new MockIdentityRegistry();
 
-        Adapter8004 implementation = new Adapter8004();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), admin))
-        );
+        Adapter8004 implementation = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token721 = new MockERC721();
@@ -927,10 +925,8 @@ contract Adapter8004Test is Test {
     }
 
     function testCounterfactualRegistrationHashChangesWithAdapterAddress() external {
-        Adapter8004 implementation = new Adapter8004();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), admin))
-        );
+        Adapter8004 implementation = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
         Adapter8004 secondAdapter = Adapter8004(address(proxy));
 
         vm.prank(alice);
@@ -944,29 +940,32 @@ contract Adapter8004Test is Test {
         assertTrue(address(adapter) != address(secondAdapter));
     }
 
-    function testAdminCanUpdateRegistryReference() external {
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(registry2));
+    /// @dev Closes audit finding G2-01. The registry is fixed at construction and there is no
+    /// setter, so nobody can repoint the proxy, the owner included. Probed by selector rather than
+    /// by a typed call, since a typed call would not compile once the function is gone.
+    function testRegistryCannotBeRepointedByAnyone() external {
+        bytes memory call = abi.encodeWithSignature("setIdentityRegistry(address)", address(registry2));
 
-        assertEq(address(adapter.identityRegistry()), address(registry2));
+        vm.prank(admin);
+        (bool byOwner,) = address(adapter).call(call);
+        assertFalse(byOwner, "the owner must not be able to repoint the registry");
 
         vm.prank(alice);
-        uint256 agentId = adapter.register(
-            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/new", _emptyMetadata()
-        );
+        (bool byStranger,) = address(adapter).call(call);
+        assertFalse(byStranger, "nor anyone else");
 
-        assertEq(registry2.ownerOf(agentId), address(adapter));
-        assertEq(registry2.tokenURI(agentId), "ipfs://agent/new");
+        assertEq(address(adapter.identityRegistry()), address(registry), "the registry is unchanged");
     }
 
-    function testNonAdminCannotUpdateRegistryReference() external {
-        vm.prank(alice);
-        vm.expectRevert();
-        adapter.setIdentityRegistry(address(registry2));
+    /// @dev The getter still answers through the proxy after the field became immutable. It is baked
+    /// into the implementation's runtime code, so the proxy's `delegatecall` reads the value from
+    /// the implementation rather than from slot 0, which now holds dead bytes.
+    function testRegistryGetterAnswersThroughTheProxy() external view {
+        assertEq(address(adapter.identityRegistry()), address(registry));
     }
 
     function testAdminCanUpgradeImplementation() external {
-        Adapter8004V2 nextImplementation = new Adapter8004V2();
+        Adapter8004V2 nextImplementation = new Adapter8004V2(address(registry));
 
         vm.prank(admin);
         adapter.upgradeToAndCall(address(nextImplementation), bytes(""));
@@ -976,8 +975,74 @@ contract Adapter8004Test is Test {
         assertEq(adapter.owner(), admin);
     }
 
+    /// @dev The guard that makes the registry unchangeable across upgrades too, not just within
+    /// one implementation. `upgradeToAndCall` runs against the OUTGOING implementation, so it reads
+    /// the incoming one's baked registry and refuses a mismatch. Without this an owner could repoint
+    /// the proxy by upgrading, which would put audit finding G2-01 straight back.
+    function testUpgradeRejectsAnImplementationBakedWithADifferentRegistry() external {
+        Adapter8004V2 wrongRegistry = new Adapter8004V2(address(registry2));
+        assertEq(address(wrongRegistry.identityRegistry()), address(registry2), "premise: it carries the other one");
+
+        vm.prank(admin);
+        vm.expectRevert(Adapter8004.RegistryMismatch.selector);
+        adapter.upgradeToAndCall(address(wrongRegistry), bytes(""));
+
+        assertEq(address(adapter.identityRegistry()), address(registry), "the proxy still names the original");
+    }
+
+    /// @dev And accepts one baked with the same registry, so the guard rejects the mismatch rather
+    /// than blocking upgrades outright.
+    function testUpgradeAcceptsAnImplementationBakedWithTheSameRegistry() external {
+        Adapter8004V2 sameRegistry = new Adapter8004V2(address(registry));
+
+        vm.prank(admin);
+        adapter.upgradeToAndCall(address(sameRegistry), bytes(""));
+
+        assertEq(Adapter8004V2(address(adapter)).version(), "2", "the upgrade landed");
+        assertEq(address(adapter.identityRegistry()), address(registry));
+    }
+
+    /// @dev Slot 0 held `identityRegistry` before `0.0.17` made it immutable, and every live proxy
+    /// has a real address written there. The field no longer occupies it and nothing else may, so
+    /// regular storage starts at slot 1. Read from the compiled layout rather than asserted from
+    /// the declarations, so a reordering that moved a mapping into slot 0 fails here.
+    function testRegularStorageBeginsAtSlotOneAndSlotZeroIsUnused() external {
+        // Seed slot 0 with a sentinel standing in for the registry address a live proxy still holds
+        // there. Nothing the contract does may read or overwrite it.
+        bytes32 sentinel = bytes32(uint256(0xdeadbeef));
+        vm.store(address(adapter), bytes32(uint256(0)), sentinel);
+
+        vm.prank(alice);
+        uint256 agentId = adapter.register(
+            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://slots", _emptyMetadata()
+        );
+        vm.startPrank(alice);
+        adapter.setWalletAgentID(agentId);
+        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        vm.stopPrank();
+
+        assertEq(vm.load(address(adapter), bytes32(uint256(0))), sentinel, "slot 0 must never be touched");
+
+        // Each write landed in the mapping whose base slot is the declared one, which is what pins
+        // `_bindings` to slot 1 rather than 0.
+        assertTrue(
+            vm.load(address(adapter), keccak256(abi.encode(agentId, uint256(1)))) != bytes32(0), "_bindings at slot 1"
+        );
+        assertTrue(
+            vm.load(address(adapter), keccak256(abi.encode(alice, uint256(2)))) != bytes32(0),
+            "_walletAgentID at slot 2"
+        );
+        assertTrue(
+            vm.load(address(adapter), keccak256(abi.encode(alice, uint256(3)))) != bytes32(0),
+            "_walletCounterfactualID at slot 3"
+        );
+
+        // And nothing was appended past the last declared mapping.
+        assertEq(vm.load(address(adapter), bytes32(uint256(4))), bytes32(0), "regular storage ends at slot 3");
+    }
+
     function testNonAdminCannotUpgradeImplementation() external {
-        Adapter8004V2 nextImplementation = new Adapter8004V2();
+        Adapter8004V2 nextImplementation = new Adapter8004V2(address(registry));
 
         vm.prank(alice);
         vm.expectRevert();
@@ -1110,6 +1175,8 @@ contract Adapter8004Test is Test {
 }
 
 contract Adapter8004V2 is Adapter8004 {
+    constructor(address registry_) Adapter8004(registry_) {}
+
     function version() external pure returns (string memory) {
         return "2";
     }

@@ -49,13 +49,9 @@ contract AttestationProjectionTest is Test {
 
     function setUp() public {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004();
+        Adapter8004 implementation = new Adapter8004(address(registry));
         adapter = Adapter8004(
-            address(
-                new ERC1967Proxy(
-                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
-                )
-            )
+            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
         vm.recordLogs();
     }
@@ -290,7 +286,7 @@ contract AttestationProjectionTest is Test {
     /// itself, which is the failure this fixture would otherwise be blind to.
     function testFixtureVectors() public {
         address proxy = 0x1111111111111111111111111111111111111111;
-        vm.etch(proxy, address(new Adapter8004()).code);
+        vm.etch(proxy, address(new Adapter8004(address(adapter.identityRegistry()))).code);
         vm.chainId(1);
         vm.roll(19000000);
         IERC8004AdapterAttestation fx = IERC8004AdapterAttestation(proxy);

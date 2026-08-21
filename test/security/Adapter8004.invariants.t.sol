@@ -27,9 +27,8 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004();
-        ERC1967Proxy proxy =
-            new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(registry), admin)));
+        Adapter8004 impl = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token721 = new MockERC721();
@@ -157,14 +156,20 @@ contract SecurityAdapter8004InvariantsTest is Test {
     // comment for the contract author.
     // ---------------------------------------------------------------------
     function testRegisterRevertsCleanlyWhenRegistryFails() external {
-        // Swap in a registry whose setMetadata always reverts.
+        // Build an adapter on a registry whose setMetadata always reverts. This used to swap the
+        // registry under the live adapter; the registry is fixed at construction since `0.0.17`.
         FailingMetadataRegistry badRegistry = new FailingMetadataRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(badRegistry));
+        Adapter8004 failing = Adapter8004(
+            address(
+                new ERC1967Proxy(
+                    address(new Adapter8004(address(badRegistry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                )
+            )
+        );
 
         token721.mint(address(this), 99);
         vm.expectRevert();
-        adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 99, "", _emptyMetadata());
+        failing.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 99, "", _emptyMetadata());
     }
 
     // ---------------------------------------------------------------------

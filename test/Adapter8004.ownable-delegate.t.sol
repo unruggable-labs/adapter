@@ -45,13 +45,9 @@ contract Adapter8004OwnableDelegateTest is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004();
+        Adapter8004 implementation = new Adapter8004(address(registry));
         adapter = Adapter8004(
-            address(
-                new ERC1967Proxy(
-                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
-                )
-            )
+            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
 
         MockDelegateRegistry mockImpl = new MockDelegateRegistry();

@@ -40,9 +40,8 @@ contract AdversarialAdapter8004Test is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004();
-        ERC1967Proxy proxy =
-            new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(registry), admin)));
+        Adapter8004 impl = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token1155 = new MockERC1155();
@@ -237,17 +236,22 @@ contract AdversarialAdapter8004Test is Test {
     /// break the adapter's own storage writes now that reverse lookup is gone.
     function testOverflowRegistryCanStillRegister() external {
         OverflowRegistry evilRegistry = new OverflowRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(evilRegistry));
+        Adapter8004 overflowing = Adapter8004(
+            address(
+                new ERC1967Proxy(
+                    address(new Adapter8004(address(evilRegistry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                )
+            )
+        );
 
         MaliciousERC721 mal = new MaliciousERC721();
         mal.setOwner(1, alice);
 
         vm.prank(alice);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
+            overflowing.register(IERCAgentBindings.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
 
-        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
+        IERCAgentBindings.Binding memory binding = overflowing.bindingOf(agentId);
         assertEq(binding.boundAddress, address(mal));
         assertEq(binding.tokenId, 1);
     }
@@ -256,43 +260,15 @@ contract AdversarialAdapter8004Test is Test {
     // F) Admin hostile paths
     // -----------------------------------------------------------------
 
-    /// After an admin swaps out the registry, old bindings remain but the
-    /// adapter now writes to the new registry. Verifying that no state
-    /// corruption occurs and that reads on the old binding still work.
-    function testRegistrySwapLeavesOldBindingsQueryable() external {
-        token1155.mint(alice, 1, 1);
-        vm.prank(alice);
-        uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), 1, "", _emptyMetadata());
-
-        MockIdentityRegistry newRegistry = new MockIdentityRegistry();
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(newRegistry));
-
-        IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
-        assertEq(b.boundAddress, address(token1155));
-        assertTrue(adapter.isController(agentId, alice));
-
-        // Writes now forward into the new registry, which doesn't know this
-        // agentId at all — so the call reverts in the registry's auth check.
-        vm.prank(alice);
-        vm.expectRevert();
-        adapter.setMetadata(agentId, "k", bytes("v"));
-    }
-
-    /// Owner renouncement is permissible per OwnableUpgradeable. After
-    /// renouncement, both `setIdentityRegistry` and `upgradeToAndCall`
-    /// become uncallable. Document the hazard with a regression test.
+    /// Owner renouncement is permissible per OwnableUpgradeable. After renouncement
+    /// `upgradeToAndCall` becomes uncallable, which since `0.0.17` is the only owner-gated
+    /// function left. Document the hazard with a regression test.
     function testOwnerRenouncementLocksAdminFunctions() external {
         vm.prank(admin);
         adapter.renounceOwnership();
         assertEq(adapter.owner(), address(0));
 
-        vm.prank(admin);
-        vm.expectRevert();
-        adapter.setIdentityRegistry(address(1));
-
-        Adapter8004 freshImpl = new Adapter8004();
+        Adapter8004 freshImpl = new Adapter8004(address(registry));
         vm.prank(admin);
         vm.expectRevert();
         adapter.upgradeToAndCall(address(freshImpl), "");

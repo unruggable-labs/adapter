@@ -28,7 +28,8 @@ interface IOwnableContract {
 }
 
 /// @notice Upgrade target for the active Adapter8004 proxies.
-/// @dev Regular storage ends at slot 3 and is append-only, so a live proxy upgrades with empty
+/// @dev Regular storage runs from slot 1 to slot 3 and is append-only, with slot 0 dead and reserved
+/// forever since `identityRegistry` became immutable, so a live proxy upgrades with empty
 /// `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
 /// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId))`, the
 /// adapter address plus exactly the stored `Binding`, and a different preimage from the one live
@@ -104,6 +105,10 @@ contract Adapter8004 is
     error WalletCounterfactualIDReserved(bytes32 registrationHash);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
+    /// @notice Thrown when an upgrade target was constructed with a different ERC-8004 registry than
+    /// the one this implementation carries. The registry is set once for the life of the proxy, so
+    /// an upgrade that would move it is refused rather than silently repointing every future write.
+    error RegistryMismatch();
 
     event AgentBound(
         uint256 indexed agentId,
@@ -113,16 +118,24 @@ contract Adapter8004 is
         address registeredBy
     );
 
-    event IdentityRegistryUpdated(
-        address indexed previousRegistry, address indexed newRegistry, address indexed updatedBy
-    );
-
     event AgentURISet(uint256 indexed agentId, string newURI, address indexed updatedBy);
     event MetadataSet(uint256 indexed agentId, string metadataKey, bytes metadataValue, address indexed updatedBy);
     event AgentWalletSet(uint256 indexed agentId, address indexed newWallet, address indexed updatedBy);
     event AgentWalletUnset(uint256 indexed agentId, address indexed updatedBy);
 
-    IERC8004IdentityRegistry public identityRegistry;
+    /// @notice The ERC-8004 registry every adapter write forwards into, fixed at construction.
+    /// @dev Immutable, so it lives in this implementation's own runtime code rather than in proxy
+    /// storage. That is what lets `_authorizeUpgrade` read the incoming implementation's value
+    /// directly and refuse an upgrade that would repoint the proxy. A storage variable could not be
+    /// checked that way, because the same call on an implementation address reads its own uninitialized slot.
+    IERC8004IdentityRegistry public immutable identityRegistry;
+
+    /// @dev **SLOT 0 IS DEAD AND MUST NEVER BE REUSED.** It held `identityRegistry` until `0.0.17`
+    /// and every live proxy has a real registry address written there. Making the field immutable
+    /// freed the slot but not the bytes, so anything declared into it would read that address as its
+    /// initial value. This placeholder exists solely to hold the slot down: regular storage begins
+    /// at slot 1. Never remove it, never repurpose it, and never declare state before it.
+    uint256 private __deadRegistrySlot;
 
     mapping(uint256 agentId => Binding binding) private _bindings;
 
@@ -132,52 +145,31 @@ contract Adapter8004 is
 
     /// @dev Reverse claims. These two mappings occupy regular slots 2 and 3, in the order declared
     /// here, and are append-only: never reorder, insert between them, or repurpose one. They begin
-    /// empty on a proxy upgraded from the deployed baseline, which holds slots 0 and 1 only. No slots
-    /// are reserved ahead of them.
+    /// empty on a proxy upgraded from the deployed baseline, which holds slots 0 and 1 only. Slot 0
+    /// is the only reserved slot and it sits behind them, not ahead.
     mapping(address account => uint256 complementAgentId) private _walletAgentID;
     mapping(address account => bytes32 complementRegistrationHash) private _walletCounterfactualID;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    /// @notice Bakes the ERC-8004 registry into this implementation and locks it there.
+    /// @dev Every implementation carries its own registry, so an upgrade that would move the proxy
+    /// to a different one is refusable, which is what `_authorizeUpgrade` does. Deploying an
+    /// implementation for an existing proxy therefore means passing that proxy's current registry.
+    /// @custom:oz-upgrades-unsafe-allow constructor state-variable-immutable
+    constructor(address identityRegistry_) {
+        if (identityRegistry_ == address(0)) {
+            revert InvalidBoundAddress();
+        }
+        identityRegistry = IERC8004IdentityRegistry(identityRegistry_);
         _disableInitializers();
     }
 
     /// @notice Initializes a newly deployed proxy.
-    /// @dev Do not call during an upgrade of an existing proxy. An active proxy already has slots 0
-    /// and 1 initialized, the two mappings at slots 2 and 3 are meant to begin empty, and there is no
-    /// reinitializer, so an upgrade carries empty `upgradeToAndCall` data instead of calling this.
-    function initialize(address identityRegistry_, address initialOwner) external initializer {
-        // 1. Reject an unusable registry target before any state is initialized.
-        if (identityRegistry_ == address(0)) {
-            revert InvalidBoundAddress();
-        }
-
-        // 2. Set the adapter admin who controls upgrades and registry repointing.
+    /// @dev Do not call during an upgrade of an existing proxy. The registry is no longer a
+    /// parameter here, because it is fixed at construction. An active proxy already has its owner
+    /// set and its bindings at slot 1, the two mappings at slots 2 and 3 are meant to begin empty,
+    /// and there is no reinitializer, so an upgrade carries empty `upgradeToAndCall` data.
+    function initialize(address initialOwner) external initializer {
         __Ownable_init(initialOwner);
-
-        // 3. Store the initial ERC-8004 registry the adapter will forward into.
-        identityRegistry = IERC8004IdentityRegistry(identityRegistry_);
-    }
-
-    /// @notice Repoint the ERC-8004 registry that every adapter write forwards into, owner only.
-    /// @dev The highest-impact administrative action on this contract. Existing bindings are
-    /// untouched but name agent ids that mean something only in the old registry, so pointing this at
-    /// a registry that does not hold them leaves those agents unreachable through the adapter. Emits
-    /// `IdentityRegistryUpdated`.
-    function setIdentityRegistry(address newIdentityRegistry) external onlyOwner nonReentrant {
-        // 1. Reject an unusable registry target.
-        if (newIdentityRegistry == address(0)) {
-            revert InvalidBoundAddress();
-        }
-
-        // 2. Capture the previous address for upgrade/migration observability.
-        address previousRegistry = address(identityRegistry);
-
-        // 3. Repoint future adapter calls to the new ERC-8004 registry.
-        identityRegistry = IERC8004IdentityRegistry(newIdentityRegistry);
-
-        // 4. Emit the registry change so indexers and operators can track migrations.
-        emit IdentityRegistryUpdated(previousRegistry, newIdentityRegistry, msg.sender);
     }
 
     function register(
@@ -874,10 +866,16 @@ contract Adapter8004 is
         return word <= type(uint160).max && address(uint160(word)) == expected;
     }
 
+    /// @dev `upgradeToAndCall` runs against the current implementation, so the outgoing one gets to
+    /// inspect the incoming one before the switch. Because the registry is immutable it is baked
+    /// into each implementation's runtime code, so calling the getter on the incoming address
+    /// returns its own value rather than a proxy slot. That is what makes repointing refusable here.
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        // 1. Restrict upgrades to the adapter owner.
-        // 2. Accept the implementation address through UUPS validation in the inherited logic.
-        newImplementation;
+        // 1. Restrict upgrades to the adapter owner, enforced by the modifier.
+        // 2. Refuse any implementation that would move the proxy to a different ERC-8004 registry.
+        if (Adapter8004(newImplementation).identityRegistry() != identityRegistry) {
+            revert RegistryMismatch();
+        }
     }
 
     /// @dev Validates the bound address. Runtime code is required under every standard except

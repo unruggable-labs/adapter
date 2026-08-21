@@ -26,9 +26,8 @@ contract FuzzAdapter8004Test is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004();
-        ERC1967Proxy proxy =
-            new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(registry), admin)));
+        Adapter8004 impl = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token721 = new MockERC721();
@@ -185,21 +184,23 @@ contract FuzzAdapter8004Test is Test {
     }
 
     // -----------------------------------------------------------------
-    // Invariant: only the owner can upgrade or swap the registry.
+    // Invariant: only the owner can upgrade, and nobody can swap the registry.
     // -----------------------------------------------------------------
 
-    function testFuzzNonOwnerCannotSwapRegistry(address attacker, address newRegistry) external {
-        vm.assume(attacker != admin && attacker != address(0));
-        vm.assume(newRegistry != address(0));
+    /// @dev Was "only the owner can swap the registry". Since `0.0.17` nobody can, so the fuzz now
+    /// asserts the stronger property across arbitrary callers and arbitrary targets.
+    function testFuzzNobodyCanSwapRegistry(address caller, address newRegistry) external {
+        vm.assume(caller != address(0));
 
-        vm.prank(attacker);
-        vm.expectRevert();
-        adapter.setIdentityRegistry(newRegistry);
+        vm.prank(caller);
+        (bool ok,) = address(adapter).call(abi.encodeWithSignature("setIdentityRegistry(address)", newRegistry));
+        assertFalse(ok, "no caller may repoint the registry");
+        assertEq(address(adapter.identityRegistry()), address(registry), "and it is unchanged");
     }
 
     function testFuzzNonOwnerCannotUpgrade(address attacker) external {
         vm.assume(attacker != admin && attacker != address(0));
-        Adapter8004 newImpl = new Adapter8004();
+        Adapter8004 newImpl = new Adapter8004(address(registry));
 
         vm.prank(attacker);
         vm.expectRevert();

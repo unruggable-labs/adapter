@@ -59,10 +59,12 @@ the sections record what changed, and `@custom:version` in
 [`src/Adapter8004.sol`](./src/Adapter8004.sol) records what the single resulting
 implementation is called. Read all four together when reviewing an upgrade.
 
-Adds no storage slot and keeps the `0.0.14` layout, so it upgrades from the same
-deployed baselines with empty `upgradeToAndCall` data. That holds for the
-attestation surface below as much as for the identifier change: the whole
-subsystem is emit-only, so it adds no slot at all.
+Adds no storage slot and upgrades from the same deployed baselines with empty
+`upgradeToAndCall` data. That holds for the attestation surface below as much as
+for the identifier change: the whole subsystem is emit-only, so it adds no slot
+at all. It does **free** one: `identityRegistry` became `immutable`, so slot 0
+is now dead and permanently reserved, and regular storage begins at slot 1.
+Recorded under Removed below.
 
 ### Added
 
@@ -312,6 +314,60 @@ subsystem is emit-only, so it adds no slot at all.
   `setAgentIDForWalletFor`.
 
 ### Removed
+
+- **`setIdentityRegistry` is gone, and `identityRegistry` is now `immutable`.**
+  The registry is fixed when an implementation is constructed and can never
+  change afterwards. It comes out of `initialize`, whose signature is now
+  `initialize(address initialOwner)`, and the zero-address rejection moves to
+  the constructor, which is strictly earlier: an implementation carrying a zero
+  registry cannot be deployed at all. The `IdentityRegistryUpdated` event is
+  removed with the setter, and `setIdentityRegistry(address)` no longer resolves.
+
+  **Why: audit finding G2-01, binding capture through registry repointing.** Agent
+  ids are only meaningful inside the registry that issued them. Repointing the
+  adapter at a different registry made previously issued ids resolve to different
+  agents, and `security-adapter` demonstrated actual capture of another user's
+  agent with two working proofs of concept. One needed no hostile registry at
+  all: a normal fresh registry restarts its id sequence, so ordinary
+  registrations afterwards overwrite the first agents' bindings at the
+  unconditional `_bindings` write. Removing the capability eliminates that at the
+  root rather than guarding the write.
+
+  **A future maintainer must not undo this reasoning.** The `_bindings[agentId]`
+  write is still unconditional, with no check that the id is unused. That is safe
+  only because the registry can never change, so the registry's own id sequence
+  never restarts and never reissues an id the adapter has already bound.
+  Reintroducing any way to repoint the registry, including an upgrade that swaps
+  it, reopens G2-01 immediately. If the write is ever wanted on a mutable
+  registry, it needs its own collision guard first.
+
+  **`_authorizeUpgrade` now enforces the same property across upgrades**, refusing
+  any implementation whose `identityRegistry()` differs from this one, with a new
+  `RegistryMismatch` error. This works because of the immutability rather than in
+  spite of it. `upgradeToAndCall` executes against the CURRENT implementation, so
+  the outgoing one calls `_authorizeUpgrade(newImplementation)` before the switch
+  and can read the incoming implementation directly. An immutable is compiled into
+  each implementation's own runtime code, so that read returns the incoming
+  implementation's baked value. A storage variable would return that
+  implementation's own slot 0, which is zero and never initialized, so the check
+  would be unwritable.
+
+  **The storage consequence, which is the risky part.** `identityRegistry`
+  occupied slot 0 on all three live proxies, each with a real address written.
+  Making it immutable frees the slot but not the bytes, so a `uint256 private
+  __deadRegistrySlot` placeholder now holds slot 0 down and **slot 0 must never be
+  reused.** Without the placeholder every mapping slides down one slot and
+  `_bindings` lands on top of the old registry address, which was verified with
+  `forge inspect` rather than reasoned about. Regular storage now runs from slot 1
+  to slot 3.
+
+  **Deploy scripts carry a second layer for the bootstrap hop.** The on-chain check
+  lives in the outgoing implementation, and the implementation currently deployed
+  is the storage-based one with no such check, so the first hop is unguarded on
+  chain by design. `DeployAdapterImplementation.s.sol` therefore reads the live
+  proxy's `identityRegistry()`, requires the configured value to match it, and
+  requires the freshly constructed implementation to report it back, refusing to
+  proceed otherwise. Every hop after the first is guarded by the contract.
 
 - **`cf-registration` is no longer a reserved metadata key**, and its
   `CF_REGISTRATION_KEY()` getter is gone with it, so that selector no longer

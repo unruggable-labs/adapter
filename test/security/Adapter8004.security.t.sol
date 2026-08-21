@@ -39,18 +39,13 @@ contract SecurityAdapter8004Test is Test {
         uint256 tokenId,
         address registeredBy
     );
-    event IdentityRegistryUpdated(
-        address indexed previousRegistry, address indexed newRegistry, address indexed updatedBy
-    );
 
     function setUp() external {
         registry = new MockIdentityRegistry();
         registry2 = new MockIdentityRegistry();
 
-        implementation = new Adapter8004();
-        ERC1967Proxy proxy = new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), admin))
-        );
+        implementation = new Adapter8004(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
         adapter = Adapter8004(address(proxy));
 
         token721 = new MockERC721();
@@ -69,43 +64,28 @@ contract SecurityAdapter8004Test is Test {
     // initializer
     // -----------------------------------------------------------------
 
-    function testInitializeRejectsZeroRegistry() external {
-        Adapter8004 impl = new Adapter8004();
+    /// @dev The registry is a constructor argument since `0.0.17`, so the zero check moved with it.
+    /// Rejecting at construction is strictly earlier than rejecting at initialize: an implementation
+    /// carrying a zero registry cannot be deployed at all, so no proxy can ever point at one.
+    function testConstructorRejectsZeroRegistry() external {
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(0), admin)));
+        new Adapter8004(address(0));
     }
 
     function testInitializeRejectsZeroOwner() external {
-        Adapter8004 impl = new Adapter8004();
+        Adapter8004 impl = new Adapter8004(address(registry));
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableInvalidOwner.selector, address(0)));
-        new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(registry), address(0))));
+        new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(0))));
     }
 
     function testCannotReinitializeProxy() external {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        adapter.initialize(address(registry2), eve);
+        adapter.initialize(eve);
     }
 
     function testImplementationInitializerIsDisabled() external {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        implementation.initialize(address(registry), admin);
-    }
-
-    // -----------------------------------------------------------------
-    // setIdentityRegistry
-    // -----------------------------------------------------------------
-
-    function testSetIdentityRegistryRejectsZero() external {
-        vm.prank(admin);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        adapter.setIdentityRegistry(address(0));
-    }
-
-    function testSetIdentityRegistryEmitsEvent() external {
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit IdentityRegistryUpdated(address(registry), address(registry2), admin);
-        vm.prank(admin);
-        adapter.setIdentityRegistry(address(registry2));
+        implementation.initialize(admin);
     }
 
     // -----------------------------------------------------------------

@@ -199,7 +199,7 @@ contract Adapter8004StorageV014Test is Test {
     }
 
     function _upgrade(Adapter8004LiveBaseline baseline) private returns (Adapter8004 adapter) {
-        Adapter8004 replacement = new Adapter8004();
+        Adapter8004 replacement = new Adapter8004(address(baseline.identityRegistry()));
         baseline.upgradeToAndCall(address(replacement), bytes(""));
         adapter = Adapter8004(address(baseline));
     }

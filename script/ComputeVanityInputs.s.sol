@@ -45,13 +45,15 @@ contract ComputeVanityInputs is Script {
     address constant OWNER = 0x03302Df40186D9B85faEA4fbb6cC5da028B23149;
 
     function run() external pure {
-        bytes32 implInitCodeHash = keccak256(type(Adapter8004).creationCode);
+        // The registry is a constructor argument since `0.0.17`, so it is part of the
+        // implementation init code and therefore part of the implementation's vanity address.
+        bytes32 implInitCodeHash = keccak256(abi.encodePacked(type(Adapter8004).creationCode, abi.encode(REGISTRY)));
         address impl = vm.computeCreate2Address(IMPL_SALT, implInitCodeHash, CREATE2_FACTORY);
 
         // Bake initialize() into the proxy constructor so deployment is atomic
         // (no front-run window) and the init code is identical on every chain that
         // shares REGISTRY + OWNER (Mainnet + Base) -> same vanity address there.
-        bytes memory initData = abi.encodeCall(Adapter8004.initialize, (REGISTRY, OWNER));
+        bytes memory initData = abi.encodeCall(Adapter8004.initialize, (OWNER));
         bytes memory proxyInitCode = abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(impl, initData));
         bytes32 proxyInitCodeHash = keccak256(proxyInitCode);
 

@@ -56,12 +56,11 @@ contract Adapter8004Erc7930FrozenTest is Test {
         adapter = Adapter8004(
             address(
                 new ERC1967ProxyShim(
-                    address(new Adapter8004()),
-                    abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
+                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (address(this)))
                 )
             )
         );
-        harness = new Adapter8004HashHarness();
+        harness = new Adapter8004HashHarness(address(registry));
     }
 
     // ----------------------------------------------------------------
@@ -503,7 +502,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     // ----------------------------------------------------------------
 
     function _etchAdapterAtVectorAddress() private {
-        vm.etch(VECTOR_ADAPTER, address(new Adapter8004()).code);
+        vm.etch(VECTOR_ADAPTER, address(new Adapter8004(address(adapter.identityRegistry()))).code);
     }
 
     /// @dev Builds a chain id whose shortest big-endian encoding is exactly `l` bytes.

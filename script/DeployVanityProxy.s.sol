@@ -49,11 +49,13 @@ contract DeployVanityProxy is Script {
         address registry = _registryForChain();
 
         // 1. Predict + (idempotently) deploy the implementation.
-        bytes32 implInitCodeHash = keccak256(type(Adapter8004).creationCode);
+        bytes32 implInitCodeHash = keccak256(abi.encodePacked(type(Adapter8004).creationCode, abi.encode(registry)));
         address predictedImpl = vm.computeCreate2Address(IMPL_SALT, implInitCodeHash, CREATE2_FACTORY);
 
-        // 2. Predict the proxy address from the baked init code.
-        bytes memory initData = abi.encodeCall(Adapter8004.initialize, (registry, OWNER));
+        // 2. Predict the proxy address from the baked init code. The registry is now a constructor
+        //    argument rather than an initializer one, so it moved from `initData` into the
+        //    implementation init code hash above.
+        bytes memory initData = abi.encodeCall(Adapter8004.initialize, (OWNER));
         bytes memory proxyInitCode =
             abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(predictedImpl, initData));
         address predictedProxy = vm.computeCreate2Address(proxySalt, keccak256(proxyInitCode), CREATE2_FACTORY);
@@ -69,7 +71,7 @@ contract DeployVanityProxy is Script {
 
         address impl = predictedImpl;
         if (predictedImpl.code.length == 0) {
-            impl = address(new Adapter8004{salt: IMPL_SALT}());
+            impl = address(new Adapter8004{salt: IMPL_SALT}(registry));
             require(impl == predictedImpl, "impl address mismatch");
             console2.log("deployed impl");
         } else {

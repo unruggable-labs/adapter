@@ -51,13 +51,9 @@ contract Adapter8004AttestationTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        implementation = new Adapter8004();
+        implementation = new Adapter8004(address(registry));
         adapter = Adapter8004(
-            address(
-                new ERC1967Proxy(
-                    address(implementation), abi.encodeCall(Adapter8004.initialize, (address(registry), address(this)))
-                )
-            )
+            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
         token = new MockERC721();
         token.mint(alice, 1);
