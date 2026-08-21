@@ -6,12 +6,15 @@
 >
 > **Field renamed since:** `tokenContract` is now `boundAddress`.
 >
-> **Partly superseded by the implementation.** `bindExisting` shipped, but the two pre-checks this
-> document proposes for agent ownership and adapter approval were later removed. Both re-derived, by
+> **Partly superseded by the implementation, before the removal above.** `bindExisting` did ship for
+> a time, and while it existed the two pre-checks this document proposes for agent ownership and
+> adapter approval were removed from it. Both re-derived, by
 > hand and from the registry itself, rules that `transferFrom` on the very next line already enforces.
 > The registry reverts `ERC721IncorrectOwner(from, tokenId, previousOwner)` and
 > `ERC721InsufficientApproval(operator, tokenId)`, which name more of the failing state than the
 > adapter errors proposed below, so `NotAgentOwner` and `AgentTransferNotApproved` no longer exist.
+> The function itself then went away entirely at `0.0.16`, per the first note. Nothing in this
+> document describes a callable entry point today.
 > Sections below are kept as the design record and are marked where they no longer describe the code.
 
 ## Summary

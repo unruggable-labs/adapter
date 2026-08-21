@@ -62,7 +62,7 @@ attestationId = keccak256(abi.encode(
 ))
 ```
 
-There is no domain constant, deliberately. Domain separation is a device for stopping a signature valid in one context replaying in another, and nothing here is signed; both this identifier and the CFID are derived values, already bound to this contract and chain by the interoperable address in their preimages. The two schemes cannot collide: for any one adapter, the CFID encoding is a fixed 224 bytes and this encoding is at least 320, so the preimages can never even be the same length.
+There is no domain constant, deliberately. Domain separation is a device for stopping a signature valid in one context replaying in another, and nothing here is signed; both this identifier and the CFID are derived values, already bound to this contract and chain by the interoperable address in their preimages. The two schemes cannot collide, because for any one adapter the identifier preimage is always the longer of the two. Both carry the same adapter interoperable address and so grow with it in step: writing `A` for that address padded up to a whole number of words and `D` for the payload padded the same way, the four-component CFID encoding is `160 + A` bytes and this encoding is `288 + A + D`, a gap of at least 128 bytes whatever the adapter address. For an EVM adapter the concrete figures are 192 bytes against 320. Stating the gap rather than two fixed sizes matters, because neither size is fixed; see [`adapter-attestation-ids.md`](../fixtures/adapter-attestation-ids.md).
 
 Rationale, recorded so the reasoning survives the decision:
 

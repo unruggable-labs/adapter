@@ -6,9 +6,27 @@ pre-ERC-7930 scheme straight to the `0.0.17` shape in a single step.
 
 Record the upgrade block, exact `chainIdentifier()` bytes, and sample adapter/token
 `interoperableAddress(address)` bytes per deployment. Before proposing an upgrade, verify the
-implementation slot/version and scan the full proxy history for legacy
-`WalletAgentIDSet`, `WalletAgentIDCleared`, and signed-audit topics. The required production result is
-zero; stop rollout if any target fails.
+implementation slot/version and scan the full proxy history for stranded wallet-id state.
+
+**Scan the legacy topics, not the new ones.** The state this gate exists to detect could only have
+been written by an intermediate implementation, and that implementation emitted the `Primary*`
+names. `WalletAgentIDSet` and `WalletAgentIDCleared` are the `0.0.17` renames, so a proxy carrying
+stranded state emits none of them and a scan of the new names returns zero for the wrong reason.
+Scan these four `topic0` values over full proxy history instead:
+
+| Legacy event | `topic0` |
+|---|---|
+| `PrimaryAgentSet(address,uint256,address)` | `0x107facd48c6f216eb14d89f6825fd2edb53bc0de9f1739ad5930bd8e7406074f` |
+| `PrimaryAgentCleared(address,address)` | `0xab6d48fb7b5d2183e12ec8f08a15cce507e5ab5147a4e919998616350f621907` |
+| `PrimaryAgentSetWithSig(address,uint256,address,uint256)` | `0xff2aaef2ca17274fb71a88b3b6b8c70a37352433005dd6c33f994dfd11f4d2c1` |
+| `PrimaryAgentClearedWithSig(address,address,uint256)` | `0x823fbecacc871fb9729292aa0b7c95f55a47ad02015577bb622c158c4f03328c` |
+
+The `WithSig` pair matters most: those writers also incremented `_primaryAgentNonces`, whose
+declaration was slot 4 and is removed rather than reserved at `0.0.17`, so a single historical
+occurrence means a future append at slot 4 could collide with a live hashed entry. The required
+production result is zero for all four; stop rollout if any target fails. Reading raw slot `0x04`
+is not a substitute and does not prove the mapping is empty, for the reason set out in
+[`adapter-v014-storage-layout.md`](./fixtures/adapter-v014-storage-layout.md).
 
 At the cutover block:
 

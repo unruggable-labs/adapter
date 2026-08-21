@@ -144,7 +144,7 @@ contract Adapter8004 is
 
     /// @notice Initializes a newly deployed proxy.
     /// @dev Do not call during an upgrade of an existing proxy. An active proxy already has slots 0
-    /// and 1 initialized, the mappings at slots 2 through 4 are meant to begin empty, and there is no
+    /// and 1 initialized, the two mappings at slots 2 and 3 are meant to begin empty, and there is no
     /// reinitializer, so an upgrade carries empty `upgradeToAndCall` data instead of calling this.
     function initialize(address identityRegistry_, address initialOwner) external initializer {
         // 1. Reject an unusable registry target before any state is initialized.
@@ -760,7 +760,7 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     //  ATTESTATIONS
     // -----------------------------------------------------------------
-    // Emit-only statements about counterfactual identities, so the layout still ends at slot 4. The
+    // Emit-only statements about counterfactual identities, so the layout still ends at slot 3. The
     // caller is always the attester, and a controller participates by causing the account itself to
     // call. These functions make no external call, so they carry no `nonReentrant`, and a test holds
     // them callable inside a guarded frame. `AttestationType` numbering is identity-critical because

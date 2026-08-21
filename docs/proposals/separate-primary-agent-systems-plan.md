@@ -4,6 +4,7 @@
 **Scope:** contracts, interfaces, fixtures, tests, release/deployment documentation  
 **Out of scope:** implementing this plan or changing the underlying full ERC-8004 registry
 **Superseded in part:** `registerAndSetPrimary`, referenced below, was removed in `0.0.16` before any deployment. This document is kept as the design record for the primary-agent split; see CHANGELOG.md for why the wrapper went away.  
+**Superseded in part, again, at `0.0.17`:** the whole signed primary-agent surface this document specifies is gone. `setPrimaryAgentWithSig`, `clearPrimaryAgentWithSig`, `primaryAgentNonces`, the `PrimaryAgentSetWithSig` / `PrimaryAgentClearedWithSig` events and the adapter EIP-712 domain were all removed, and the nonce mapping that occupied slot 4 was removed rather than reserved, so regular storage now ends at slot 3 with two mappings, not three. The unsigned surface was also renamed wholesale: `setPrimaryAgent*` / `primaryAgentOf` / `PRIMARY_AGENT_UNSET` and their counterfactual counterparts are now `setWalletAgentID*` / `walletAgentIDOf` / `WALLET_AGENT_ID_UNSET` and the `WalletCounterfactualID*` family, and every affected selector and `topic0` changed. Do not implement the signed flow or the three-mapping layout from this document; see CHANGELOG.md `0.0.17`.  
 **Field renamed since:** what this document calls `tokenContract` is now `boundAddress` in the contract and interfaces, because the field also holds a plain account under `ACCOUNT`. Kept as a dated design record rather than rewritten.  
 
 ## Decision summary

@@ -4,6 +4,7 @@
 **Repo:** `/Users/nxt3d/projects/adapter`  
 **Touches:** `Adapter8004` counterfactual surface (`IERC8004AdapterCounterfactual`, `src/Adapter8004.sol`)  
 **Preserves:** existing controller-gated unsigned CF register and update family  
+**Superseded in part:** `bindExisting`, named below as a surviving on-chain path, was removed in `0.0.16` before any deployment. Read every mention of it here as historical. Full on-chain `register` does remain. See CHANGELOG.md.  
 **Field renamed since:** what this document calls `tokenContract` is now `boundAddress` in the contract and interfaces, because the field also holds a plain account under `ACCOUNT`. Kept as a dated design record rather than rewritten.  
 **Superseded in part:** `bindExisting`, referenced below, was removed in `0.0.16` before any deployment. Only `register` remains for collections wanting a real ERC-8004 agent NFT.  
 

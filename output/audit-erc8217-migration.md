@@ -2,6 +2,12 @@
 
 Date: 2026-04-30
 
+> **Superseded in part.** This is a dated audit record and is not updated. The owner-only
+> `rewriteBindingMetadata(uint256)` helper described below, and the upgrade/migration scripts that
+> accompanied it, have since been removed from the contract and the repository. Do not plan a
+> metadata rewrite from this document; the entry point it names does not resolve. The `agent-binding`
+> format findings and the live-state readings remain accurate as of their date.
+
 ## Executive Summary
 
 The working tree now aligns `Adapter8004` with ERC-8217's simplified `agent-binding` metadata format: the registry stores only the 20-byte binding contract address, while the canonical token binding remains in `bindingOf(agentId)`. The contract now also exposes an owner-only `rewriteBindingMetadata(uint256)` helper for post-upgrade repair of legacy rows and includes upgrade/migration scripts for UUPS rollout.

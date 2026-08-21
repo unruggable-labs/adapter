@@ -5,6 +5,11 @@
 **Change:** delegate.xyz v2 ERC-721 delegate authorization for `Adapter8004.sol` (UUPS upgrade)
 **Verdict:** GO — safe to commit and proceed toward the UUPS upgrade. 0 Critical, 0 High.
 
+> **Superseded in part.** This review records what was verified on 2026-05-16 and is not updated.
+> One item below, `rewriteBindingMetadata` correctly remains `onlyOwner`, refers to a function that
+> has since been removed from the contract, so it no longer names anything checkable. The delegate.xyz
+> findings and verdict stand for the surface that remains.
+
 ## Verification performed (all clean)
 
 - `forge build` — clean (cosmetic lint warnings only).

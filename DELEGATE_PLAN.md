@@ -2,6 +2,11 @@
 
 Task: `adapter-delegate-plan`
 
+> **Superseded in part.** `rewriteBindingMetadata`, named below as an owner-only function that must
+> not accept delegation, no longer exists; it was removed along with `script/MigrateBindingMetadata.s.sol`.
+> The delegation rule stated for it is therefore moot rather than wrong. Everything else in this
+> document still describes the shipped delegate.xyz behaviour. Kept as the dated design record.
+
 ## Sources verified
 
 - `src/Adapter8004.sol`: control is centralized in `_requireController`, `_requireBindingControl`, and `_hasBindingControl`.
