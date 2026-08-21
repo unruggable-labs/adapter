@@ -156,17 +156,35 @@ contract Adapter8004AttestationTest is Test {
     }
 
     /// @dev The counterfactual hash and the attestation identifier are derived by the same contract
-    /// from overlapping material, so the claim that they cannot collide is worth pinning. Their
-    /// preimages differ in length by construction: the five-component cfid encoding is a fixed 224
-    /// bytes and this one is at least 320.
-    function testTheTwoDerivationSchemesCannotCollide() external view {
+    /// from overlapping material, so the claim that they cannot collide is worth pinning. Each
+    /// preimage below is first held against what the contract actually derives, so neither side can
+    /// drift into describing a formula production does not compute. Neither length is fixed, since
+    /// both carry the adapter address and grow with it in step, so the gap is the real property.
+    function testTheTwoDerivationSchemesCannotCollide() external {
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
-        bytes memory cfidPreimage =
-            abi.encode(adapterAddress, IERCAgentBindings.TokenStandard.ERC721, address(token), uint256(42), bytes32(0));
-        bytes memory idPreimage = abi.encode(adapterAddress, alice, cfid, tConfirm, block.number, bytes32(0), bytes(""));
 
-        assertEq(cfidPreimage.length, 224, "cfid preimage is a fixed 224 bytes");
-        assertGe(idPreimage.length, 320, "identifier preimage is at least 320 bytes");
+        // The cfid side, pinned by hashing it against the published view.
+        bytes memory cfidPreimage =
+            abi.encode(adapterAddress, IERCAgentBindings.TokenStandard.ERC721, address(token), uint256(42));
+        assertEq(
+            keccak256(cfidPreimage),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 42),
+            "premise: this is the preimage the contract hashes for a cfid"
+        );
+
+        // The identifier side, pinned against an identifier the contract actually emitted.
+        bytes memory idPreimage = abi.encode(adapterAddress, alice, cfid, tConfirm, block.number, bytes32(0), bytes(""));
+        vm.recordLogs();
+        vm.prank(alice);
+        adapter.confirmAdditionalAccount(cfid);
+        (bytes32 emittedId,,) = abi.decode(vm.getRecordedLogs()[0].data, (bytes32, bytes32, bytes));
+        assertEq(keccak256(idPreimage), emittedId, "premise: this is the preimage the contract hashes for an id");
+
+        // The property: the identifier preimage is always the longer of the two, by at least the
+        // four extra head words and the payload's own length word.
+        assertGe(idPreimage.length, cfidPreimage.length + 128, "identifier preimage is at least 128 bytes longer");
+        assertEq(cfidPreimage.length, 192, "concrete cfid length for this EVM adapter");
+        assertEq(idPreimage.length, 320, "concrete identifier length for this EVM adapter, empty payload");
     }
 
     // ----------------------------------------------------------------
@@ -293,7 +311,7 @@ contract Adapter8004AttestationTest is Test {
 
     /// @dev The layout claim as an assertion rather than a comment. `vm.record` captures every
     /// SSTORE the call performs; all three functions must perform none, so the layout still ends at
-    /// slot 4 and the upgrade needs no new slot.
+    /// slot 3 and the upgrade needs no new slot.
     function testNoFunctionWritesAnyStorageSlot() external {
         vm.record();
 

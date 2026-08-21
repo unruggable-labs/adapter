@@ -89,13 +89,18 @@ contract Adapter8004InterfacesTest is Test {
     /// resolves is the failure mode worth a test, so each removed entry point is probed directly:
     /// the call must fail because the function is absent, not because its arguments were wrong.
     function testRemovedSignedPrimaryAgentSelectorsDoNotResolve() external {
-        string[3] memory removed = [
-            "setPrimaryAgentWithSig(address,uint256,uint256,bytes)",
-            "clearPrimaryAgentWithSig(address,uint256,bytes)",
-            "primaryAgentNonces(address)"
+        // Each call is encoded at its own arity. A shared argument tuple would make every probe
+        // fail in the ABI decoder instead of the dispatcher, so `assertFalse` would pass whether or
+        // not the function was still there.
+        bytes[3] memory removed = [
+            abi.encodeWithSignature(
+                "setPrimaryAgentWithSig(address,uint256,uint256,bytes)", alice, uint256(7), block.timestamp, bytes("")
+            ),
+            abi.encodeWithSignature("clearPrimaryAgentWithSig(address,uint256,bytes)", alice, block.timestamp, bytes("")),
+            abi.encodeWithSignature("primaryAgentNonces(address)", alice)
         ];
         for (uint256 i; i < removed.length; ++i) {
-            (bool resolved,) = address(adapter).call(abi.encodeWithSignature(removed[i], alice, uint256(0), bytes("")));
+            (bool resolved,) = address(adapter).call(removed[i]);
             assertFalse(resolved, "a removed signed-surface selector still resolves");
         }
 
