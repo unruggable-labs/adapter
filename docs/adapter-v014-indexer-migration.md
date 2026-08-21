@@ -45,7 +45,7 @@ At the cutover block:
 Counterfactual event topic0 values change as well as their indexed hash values. Every counterfactual
 event gained a non-indexed `bytes32 extraData` at `0.0.15`; at `0.0.17` the five update events and
 `WalletCounterfactualIDSet` each gained a non-indexed `uint8 standard`, and then `extraData` was
-dropped from all eight. Every counterfactual topic0 therefore differs from `0.0.15`, including
+dropped from all seven. Every counterfactual topic0 therefore differs from `0.0.15`, including
 `CounterfactualAgentRegistered`, so subscriptions must be rewritten rather than reused. The current
 values are tabulated in
 [`adapter-counterfactual-hashes.md`](./fixtures/adapter-counterfactual-hashes.md). Never silently

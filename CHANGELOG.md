@@ -549,6 +549,32 @@ size, not gas.
   `testOpenZeppelinEncodingIsFrozen`, exists solely to fail on an upstream
   encoding change and says in its own comment that editing it is never the fix.
 
+  **The submodule is pinned to the `v5.6.1` release tag**, commit `5fd1781b`,
+  rather than to `9cfdccd3`, an untagged development commit from 2026-03-27 that
+  sat 1,146 commits past `v4.8.0`. Unreleased upstream code has no business
+  sitting under every identity this contract issues, and the CSO graded that a
+  ceremony blocker.
+
+  The bump changes no encoding, which was verified rather than assumed.
+  `contracts/utils/draft-InteroperableAddress.sol` is byte-identical across the
+  two commits: the same git blob `10b4e426`, the same SHA-256, the same 10,788
+  bytes. Its one differing dependency, `Bytes.sol`, differs only in the line
+  wrapping of `reverseBytes16`, which the encoder never calls. Every published
+  fixture vector then passed unchanged, checked against both fixture documents
+  and against values derived from the contract itself: the three chain
+  Interoperable Addresses, the four counterfactual hashes, the four per-standard
+  hashes, and all five attestation identifiers. Not one moved, and no fixture
+  document was edited.
+
+  **Expect a different `EXTCODEHASH` anyway, and do not read it as a different
+  contract.** Solidity appends a CBOR metadata trailer whose IPFS hash covers the
+  source paths and compiler settings, so it moves when the import resolves
+  through a different submodule commit even with identical source. Measured: the
+  runtime is 18,112 bytes on both pins and the first 18,059 bytes, meaning all of
+  the executable code, are byte-identical; only the 51-byte trailer differs. The
+  runtime code hash goes from `0x40612f2d…b49c88b6` to `0xfe6119b9…e6d0f70d`.
+  The solc version marker in the trailer is `0.8.30` on both.
+
   **Correction to the gas rationale.** This change was taken on a measurement that
   did not survive being made again in the assembled contract. Benchmarked in
   isolation, OpenZeppelin was cheaper than the word-aligned encoder by 21 gas on
@@ -689,14 +715,19 @@ size, not gas.
   fields, with no lookup of the claim that created the identity.
   `CounterfactualAgentRegistered` already carried the standard. Every
   counterfactual `topic0` moves in this version, so indexers resubscribe to all
-  eight; the current values are tabulated in
+  seven; the current values are tabulated in
   [`adapter-counterfactual-hashes.md`](./docs/fixtures/adapter-counterfactual-hashes.md).
 
 - **The reserved `extraData` discriminator is removed**, from the
   `registrationHash` preimage and from every counterfactual event. The preimage
-  loses its trailing `bytes32` and the eight events lose their `bytes32 extraData`
+  loses its trailing `bytes32` and seven events lose their `bytes32 extraData`
   field, so every counterfactual hash and every counterfactual `topic0` moves
-  again within this version.
+  again within this version. The seven are the six on
+  `IERC8004AdapterCounterfactual`, `CounterfactualMetadataBatchSet` included,
+  plus the event this version renamed to `WalletCounterfactualIDSet`. Earlier
+  revisions of this entry said eight, which counted emit sites rather than
+  events, since `WalletCounterfactualIDSet` is emitted from more than one
+  function.
 
   **Why.** The field preserved no optionality. It was a compile-time constant no
   caller could reach, so every on-chain path derived with zero, and an identity

@@ -140,20 +140,17 @@ contract SecurityAdapter8004InvariantsTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // Register atomicity (task brief § security-testing B gap #1):
-    // when the registry side fails mid-register, _bindings must not be
-    // left populated. Uses a reverting registry that accepts register()
-    // but reverts on the follow-up setMetadata. Because _bindings[id] is
-    // written BEFORE setMetadata in the current source (step 5 vs step 6),
-    // this test is expected to FAIL currently and thereby documents a real
-    // atomicity gap. It is written in the assert-that-atomicity-holds
-    // direction on purpose; if the team reorders writes, this test turns
-    // green.
+    // Register atomicity: when the registry side fails mid-register,
+    // `_bindings` must not be left populated. The registry accepts the
+    // two-argument register() and reverts on the follow-up setMetadata, so
+    // the adapter has written _bindings[id] by the time the failure lands.
     //
-    // To keep the test suite passing today, the assertion below checks
-    // only that the adapter reverts cleanly and that bindingOf reverts
-    // with UnknownAgent — the stronger atomicity claim is expressed as a
-    // comment for the contract author.
+    // The write order does not matter here and there is no atomicity gap to
+    // document: the adapter does not catch the registry's revert, so the
+    // whole call reverts and every state change it made is discarded with
+    // it. This test asserts exactly that, rather than only that the call
+    // reverted, which is what an earlier revision of this comment claimed
+    // it checked and did not.
     // ---------------------------------------------------------------------
     function testRegisterRevertsCleanlyWhenRegistryFails() external {
         // Build an adapter on a registry whose setMetadata always reverts. This used to swap the
@@ -168,8 +165,20 @@ contract SecurityAdapter8004InvariantsTest is Test {
         );
 
         token721.mint(address(this), 99);
-        vm.expectRevert();
-        failing.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 99, "", _emptyMetadata());
+
+        // Non-empty metadata on purpose. Empty metadata routes to the single-argument
+        // `register(string)` overload, which this mock refuses outright, so the call would revert
+        // before reaching the binding write and this test would prove nothing about rollback.
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
+        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
+
+        vm.expectRevert(bytes("metadata write disabled"));
+        failing.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 99, "", metadata);
+
+        // Nothing persisted. The registry issued id 0 and the adapter wrote `_bindings[0]` before
+        // the failure arrived, so this is the assertion that the revert rolled that write back.
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
+        failing.bindingOf(0);
     }
 
     // ---------------------------------------------------------------------
