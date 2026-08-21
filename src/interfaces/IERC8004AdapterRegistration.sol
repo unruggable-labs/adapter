@@ -15,8 +15,8 @@ interface IERC8004AdapterRegistration {
     /// external token. The caller must hold authority over that token under the rules above. The
     /// binding is immutable once set, so a token pair and standard identify the same agent for the
     /// life of the identity, and control follows the token rather than the registering address. The
-    /// adapter writes its own `agent-binding` record, so `metadata` may not contain that key or
-    /// `cf-registration`, and a caller-supplied entry for either reverts `ReservedMetadataKey`.
+    /// adapter writes its own `agent-binding` record, so `metadata` may not contain that key and a
+    /// caller-supplied entry for it reverts `ReservedMetadataKey`. Every other key is accepted.
     /// Emits `AgentBound` and returns the new `agentId`.
     function register(
         IERCAgentBindings.TokenStandard standard,

@@ -312,6 +312,38 @@ subsystem is emit-only, so it adds no slot at all.
 
 ### Removed
 
+- **`cf-registration` is no longer a reserved metadata key**, and its
+  `CF_REGISTRATION_KEY()` getter is gone with it, so that selector no longer
+  resolves. `agent-binding` stays reserved and its behaviour is unchanged.
+
+  `agent-binding` is reserved because the adapter writes it, so an unreserved key
+  would let a caller forge a record the adapter itself authors. `cf-registration`
+  was written by no path, so there was no authoritative record to forge and the
+  reservation protected a name rather than data. A name is not defensible: a
+  caller out to mislead an indexer can write `cfid`, `counterfactual-id` or any
+  other suggestive spelling, so reserving exactly one gave false comfort.
+
+  The real defence is `registrationHashOf(agentId)`, added earlier in this
+  version. It derives an agent's identifier rather than storing it, so it cannot
+  be spoofed, and it is the authoritative source. That also settles the earlier
+  proposal to write `cf-registration` on every `register`, which was declined
+  because the value is derivable and the write would have cost an external call
+  and a cold `SSTORE` on the most-used function.
+
+  Verified before removing the guard: no path in `src/` writes the key. The
+  adapter makes exactly three `setMetadata` calls, one writing `agent-binding`
+  and two forwarding caller-supplied keys, so removing the check cannot let a
+  caller overwrite anything the contract authored. Why it is *not* reserved is
+  recorded on `BINDING_METADATA_KEY`, where an editor noticing the asymmetry will
+  see it, so it does not get re-added as a consistency fix.
+
+  Removing one of the two comparisons on the metadata path is measurably cheaper:
+  `setMetadata` 56,532 to 56,415, `counterfactualSetMetadata` 22,569 to 22,450,
+  and roughly 145 gas per entry on both batch paths. The internal helper is
+  renamed `_requireNoReservedBindingKey`, since it now guards one key.
+
+### Removed
+
 - **The signed primary-agent surface.** `setPrimaryAgentWithSig`,
   `clearPrimaryAgentWithSig` and `primaryAgentNonces` are gone, along with the
   `PrimaryAgentSetWithSig` and `PrimaryAgentClearedWithSig` events, the adapter's
@@ -619,7 +651,7 @@ size, not gas.
 
 | Contract | Runtime (B) | Initcode (B) | Runtime margin (B) |
 | --- | ---: | ---: | ---: |
-| `Adapter8004` | 17,688 | 17,973 | 6,888 |
+| `Adapter8004` | 17,808 | 18,093 | 6,768 |
 
 Against the 24,576-byte cap, built up from `0.0.16`:
 
@@ -633,10 +665,14 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | − the in-house encoder, + OpenZeppelin's | 19,449 | 5,127 |
 | − the signed primary-agent surface | 17,688 | 6,888 |
 | + the two combined wallet-id setters | 18,123 | 6,453 |
+| + the hash return on the combined setter | 18,125 | 6,451 |
+| + the hash return on the five updaters | 18,152 | 6,424 |
+| + `registrationHashOf`, − a duplicated unknown-agent check | 18,146 | 6,430 |
+| − the `cf-registration` reservation | 17,808 | 6,768 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated
-at, and the enum handed 342 of them back by deleting five public getters. The
-removing the signed primary-agent surface gave back 1,761, far more than its three
+at, and the enum handed 342 of them back by deleting five public getters. Removing
+the signed primary-agent surface gave back 1,761, far more than its three
 functions suggest, because the ECDSA and ERC-1271 verification machinery went with
 them. The encoder rewrite cost 127, and handing the encoding to OpenZeppelin gave 43 back —
 the library's `Math`, `SafeCast` and `Bytes` dependencies did not bloat the
@@ -650,7 +686,8 @@ shift arithmetic is added on top. It came in well under the +267 upper bound the
 investigation gave, but it is a cost, not a saving. A test fails the suite if the margin ever falls below 2,000 bytes; if it
 does, the fix is the extraction the upgrade docs describe, not a lower floor.
 Extraction would re-key every attestation identifier, because the identifier
-binds the emitting address, so it is a one-way door.
+binds the emitting address, so it is a one-way door. Dropping the `cf-registration` reservation gave back 338: two public
+constants, their getter, and one of the two comparisons on every metadata write.
 
 ## [0.0.16] - Unreleased
 

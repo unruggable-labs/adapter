@@ -51,15 +51,15 @@ contract Adapter8004 is
     IERC8004AdapterWalletCounterfactualID,
     IERC8004AdapterAttestation
 {
+    /// @notice The one reserved metadata key, rejected on every write path that accepts caller
+    /// metadata, because this contract writes it itself and an unreserved key would let a caller
+    /// forge a record the adapter authors.
+    /// @dev `cf-registration` was reserved here until `0.0.17` and deliberately is not any more: no
+    /// path writes it so there is no authored record to forge, `registrationHashOf` derives an
+    /// agent's identifier rather than storing it so it cannot be spoofed, and reserving one spelling
+    /// stops nobody who can write `cfid` instead. Do not re-add it as a consistency fix.
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
-
-    /// @notice Reserved metadata key, unwritten by this contract and rejected on every write path
-    /// that accepts caller metadata. It is held for a possible future flow recording which
-    /// counterfactual claim an on-chain registration was promoted from. Reserving it now means that
-    /// if that flow is ever built, no caller has already written a false provenance claim under it.
-    string public constant CF_REGISTRATION_KEY = "cf-registration";
-    bytes32 private constant CF_REGISTRATION_KEY_HASH = keccak256(bytes(CF_REGISTRATION_KEY));
 
     /// @notice Canonical immutable delegate.xyz v2 registry, identical on Ethereum, Base, and Sepolia.
     /// A delegated hot wallet authorized here can drive single-owner ERC-721/ERC-1155F/ERC-6909F
@@ -220,9 +220,9 @@ contract Adapter8004 is
         //    calling single-owner collection while the id has no current owner.
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
-        // 3. Reject user-supplied metadata entries that target reserved keys: the canonical
-        //    binding record (agent-binding) and cf-registration, which no register path writes.
-        _requireNoReservedCounterfactualKeys(metadata);
+        // 3. Reject user-supplied entries targeting the canonical binding record, which only this
+        //    contract writes.
+        _requireNoReservedBindingKey(metadata);
 
         // 4. Register the ERC-8004 identity so the adapter becomes the registry owner.
         //    Skip the metadata-array overload when there is nothing to write, which saves the
@@ -280,11 +280,9 @@ contract Adapter8004 is
         // 1. Confirm the caller currently controls the bound token.
         _requireController(agentId, msg.sender);
 
-        // 2. Prevent callers from writing reserved metadata: the canonical binding record
-        //    (agent-binding), which only this contract writes, and cf-registration, which
-        //    nothing writes today. Neither is a valid controller write.
-        bytes32 keyHash = keccak256(bytes(metadataKey));
-        if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
+        // 2. Prevent callers from writing the canonical binding record, which only this contract
+        //    writes, so a controller cannot forge it.
+        if (keccak256(bytes(metadataKey)) == BINDING_METADATA_KEY_HASH) {
             revert ReservedMetadataKey(metadataKey);
         }
 
@@ -296,8 +294,7 @@ contract Adapter8004 is
     }
 
     /// @notice Write several metadata entries for one agent, in the order given. The caller must
-    /// control the bound token, and no entry may target the reserved `agent-binding` or
-    /// `cf-registration` keys.
+    /// control the bound token, and no entry may target the reserved `agent-binding` key.
     /// @dev Each entry emits its own `MetadataSet`. There is no batch event, so a batch is
     /// indistinguishable from a run of individual writes.
     function setMetadataBatch(uint256 agentId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
@@ -307,8 +304,8 @@ contract Adapter8004 is
         // 1. Confirm the caller currently controls the bound token.
         _requireController(agentId, msg.sender);
 
-        // 2. Prevent callers from writing reserved metadata (agent-binding and cf-registration).
-        _requireNoReservedCounterfactualKeys(metadata);
+        // 2. Prevent callers from forging the canonical binding record.
+        _requireNoReservedBindingKey(metadata);
 
         // 3. Replay each write through the ERC-8004 registry. The emit sits inside the loop rather
         //    than after it so each adapter event lands next to the registry write it describes,
@@ -486,7 +483,7 @@ contract Adapter8004 is
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
-        _requireNoReservedCounterfactualKeys(metadata);
+        _requireNoReservedBindingKey(metadata);
 
         // 4. Compute the deterministic registration hash used as the indexer key for this claim.
         computedHash = _registrationHash(standard, boundAddress, tokenId);
@@ -542,10 +539,7 @@ contract Adapter8004 is
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
-        //    Cache the key hash once: `metadataKey` is `calldata` but recomputing the hash twice in
-        //    a hot path still spends a few hundred gas for no benefit.
-        bytes32 keyHash = keccak256(bytes(metadataKey));
-        if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
+        if (keccak256(bytes(metadataKey)) == BINDING_METADATA_KEY_HASH) {
             revert ReservedMetadataKey(metadataKey);
         }
 
@@ -584,7 +578,7 @@ contract Adapter8004 is
         _requireTokenAuthority(standard, boundAddress, tokenId, msg.sender);
 
         // 3. Prevent callers from claiming reserved metadata slots in counterfactual events.
-        _requireNoReservedCounterfactualKeys(metadata);
+        _requireNoReservedBindingKey(metadata);
 
         // 4. Emit the batch, which is the only on-chain record this function produces, and hand the
         //    identity back so the caller need not recompute it. Every entry lands on this one
@@ -1151,18 +1145,14 @@ contract Adapter8004 is
         );
     }
 
-    /// @dev Rejects any metadata entry targeting a reserved key, either the canonical binding record
-    /// (`agent-binding`, which only this contract writes) or `cf-registration` (which nothing writes
-    /// today). Used on every adapter write path that accepts a metadata array, meaning `register` and
-    /// the counterfactual surface, so a caller cannot forge a binding record or a provenance claim.
-    function _requireNoReservedCounterfactualKeys(IERC8004IdentityRegistry.MetadataEntry[] memory metadata)
-        internal
-        pure
-    {
+    /// @dev Rejects any metadata entry targeting `agent-binding`, the canonical binding record that
+    /// only this contract writes. Used on every adapter write path that accepts a metadata array,
+    /// meaning `register`, `setMetadataBatch` and the counterfactual surface, so a caller cannot forge
+    /// a record the adapter authors.
+    function _requireNoReservedBindingKey(IERC8004IdentityRegistry.MetadataEntry[] memory metadata) internal pure {
         uint256 length = metadata.length;
         for (uint256 i; i < length; ++i) {
-            bytes32 keyHash = keccak256(bytes(metadata[i].metadataKey));
-            if (keyHash == BINDING_METADATA_KEY_HASH || keyHash == CF_REGISTRATION_KEY_HASH) {
+            if (keccak256(bytes(metadata[i].metadataKey)) == BINDING_METADATA_KEY_HASH) {
                 revert ReservedMetadataKey(metadata[i].metadataKey);
             }
         }

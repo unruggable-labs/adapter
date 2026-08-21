@@ -344,41 +344,38 @@ contract Adapter8004Test is Test {
         adapter.setMetadataBatch(agentId, metadata);
     }
 
-    // --- Audit fixes: cf-registration reserved on the canonical surface (L-1) ---
+    // --- `cf-registration` is an ordinary key since `0.0.17`, so every path accepts it ---
+    //  Inverted from asserting a revert. Only `agent-binding` is reserved, because only it is a
+    //  record this contract writes; `registrationHashOf` is the authoritative identifier source.
 
-    function testRegisterRejectsCfRegistrationKey() external {
+    function testRegisterAcceptsCfRegistrationKey() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
-        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
-            metadataKey: adapter.CF_REGISTRATION_KEY(),
-            metadataValue: bytes("bad")
-        });
+        metadata[0] =
+            IERC8004IdentityRegistry.MetadataEntry({metadataKey: "cf-registration", metadataValue: bytes("ok")});
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.CF_REGISTRATION_KEY()));
         vm.prank(alice);
-        adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", metadata);
+        uint256 agentId = adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", metadata);
+        assertEq(registry.getMetadata(agentId, "cf-registration"), bytes("ok"));
     }
 
-    function testSetMetadataRejectsCfRegistrationKey() external {
+    function testSetMetadataAcceptsCfRegistrationKey() external {
         uint256 agentId = _register721(alice, 1);
-        string memory key = adapter.CF_REGISTRATION_KEY();
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, key));
         vm.prank(alice);
-        adapter.setMetadata(agentId, key, bytes("bad"));
+        adapter.setMetadata(agentId, "cf-registration", bytes("ok"));
+        assertEq(registry.getMetadata(agentId, "cf-registration"), bytes("ok"));
     }
 
-    function testSetMetadataBatchRejectsCfRegistrationKey() external {
+    function testSetMetadataBatchAcceptsCfRegistrationKey() external {
         uint256 agentId = _register721(alice, 1);
 
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
-        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
-            metadataKey: adapter.CF_REGISTRATION_KEY(),
-            metadataValue: bytes("bad")
-        });
+        metadata[0] =
+            IERC8004IdentityRegistry.MetadataEntry({metadataKey: "cf-registration", metadataValue: bytes("ok")});
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.CF_REGISTRATION_KEY()));
         vm.prank(alice);
         adapter.setMetadataBatch(agentId, metadata);
+        assertEq(registry.getMetadata(agentId, "cf-registration"), bytes("ok"));
     }
 
     // --- Audit fixes: I-5 test gaps ---
@@ -623,18 +620,17 @@ contract Adapter8004Test is Test {
         );
     }
 
-    function testCounterfactualRegisterRejectsCfRegistrationKey() external {
+    function testCounterfactualRegisterAcceptsCfRegistrationKey() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
-        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
-            metadataKey: adapter.CF_REGISTRATION_KEY(),
-            metadataValue: bytes("bad")
-        });
+        metadata[0] =
+            IERC8004IdentityRegistry.MetadataEntry({metadataKey: "cf-registration", metadataValue: bytes("ok")});
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.CF_REGISTRATION_KEY()));
+        vm.recordLogs();
         vm.prank(alice);
         adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata
         );
+        assertEq(vm.getRecordedLogs().length, 1, "the claim is emitted rather than reverted");
     }
 
     function testCounterfactualSetAgentURIEmits() external {
@@ -726,14 +722,13 @@ contract Adapter8004Test is Test {
         );
     }
 
-    function testCounterfactualSetMetadataRejectsCfRegistrationKey() external {
-        string memory key = adapter.CF_REGISTRATION_KEY();
-
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, key));
+    function testCounterfactualSetMetadataAcceptsCfRegistrationKey() external {
+        vm.recordLogs();
         vm.prank(alice);
         adapter.counterfactualSetMetadata(
-            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, key, bytes("bad")
+            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "cf-registration", bytes("ok")
         );
+        assertEq(vm.getRecordedLogs().length, 1, "the entry is emitted rather than reverted");
     }
 
     function testCounterfactualSetMetadataBatchEmits() external {
@@ -788,16 +783,15 @@ contract Adapter8004Test is Test {
         adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, metadata);
     }
 
-    function testCounterfactualSetMetadataBatchRejectsCfRegistrationKey() external {
+    function testCounterfactualSetMetadataBatchAcceptsCfRegistrationKey() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
-        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({
-            metadataKey: adapter.CF_REGISTRATION_KEY(),
-            metadataValue: bytes("bad")
-        });
+        metadata[0] =
+            IERC8004IdentityRegistry.MetadataEntry({metadataKey: "cf-registration", metadataValue: bytes("ok")});
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.CF_REGISTRATION_KEY()));
+        vm.recordLogs();
         vm.prank(alice);
         adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, metadata);
+        assertEq(vm.getRecordedLogs().length, 1, "the batch is emitted rather than reverted");
     }
 
     function testCounterfactualSetAgentWalletEmits() external {

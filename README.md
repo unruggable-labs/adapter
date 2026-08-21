@@ -354,7 +354,7 @@ Token standard enum values:
 
 The enum is append-only: `ACCOUNT` remains `0x05`, `CONTRACT_OWNABLE` is appended as `0x06`, `CONTRACT_ADMIN` as `0x07`, and values `0x00`-`0x04` keep their meaning, so existing stored bindings and indexed history are unaffected. `0x05` also keeps its position; only its name and its code test changed, and neither is persisted.
 
-The adapter reserves the `agent-binding` key and rejects user attempts to set or batch-set it through the adapter. The `cf-registration` (canonical-promotion) key is reserved on both surfaces: every counterfactual write rejects it, and the canonical writes (`register`, `setMetadata`, `setMetadataBatch`) reject it too, so a controller cannot fabricate a promotion back-link on either surface before a genuine on-chain mint.
+The adapter reserves exactly one metadata key, `agent-binding`, and rejects caller attempts to set or batch-set it on either surface. It is reserved because the adapter writes that record itself, so an unreserved key would let a caller forge something the adapter authors. `cf-registration` was reserved until `0.0.17` and is now an ordinary key: nothing writes it, so there is no authored record to forge, and `registrationHashOf(agentId)` derives an agent's identifier rather than storing it, so it cannot be spoofed and is the authoritative source. Reserving one spelling would not have helped anyway, since a caller out to mislead an indexer can write `cfid` or any other suggestive name.
 
 Note:
 
@@ -528,7 +528,7 @@ Indexer rules:
 
 Every counterfactual function that derives an identity returns it as `bytes32`, so a caller never recomputes the hash or reads it back out of the log. The value is the same one `registrationHash` returns and the same one the emitted event carries.
 
-Reserved keys on the counterfactual write surface: `agent-binding` and `cf-registration`.
+Reserved key on the counterfactual write surface: `agent-binding`, and nothing else.
 
 > BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
 
