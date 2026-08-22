@@ -215,6 +215,30 @@ contract Adapter8004InterfacesTest is Test {
         );
     }
 
+    /// @dev ERC-8217 requires `registrationHashOf` on `IERCAgentBindings`, the interface that
+    /// standard defines. It is also kept on `IERC8004AdapterCounterfactual` for consumers written
+    /// against the earlier layout. Both casts must compile and must answer identically, which is the
+    /// whole point of the two-base override; deleting either declaration fails this test.
+    function testRegistrationHashOfIsReachableThroughBothInterfaces() external {
+        uint256 agentId = _register721(alice, 1, "ipfs://a");
+
+        bytes32 viaBindings = IERCAgentBindings(address(adapter)).registrationHashOf(agentId);
+        bytes32 viaCounterfactual = IERC8004AdapterCounterfactual(address(adapter)).registrationHashOf(agentId);
+
+        assertEq(viaBindings, adapter.registrationHashOf(agentId), "ERC-8217 interface answers the same");
+        assertEq(viaCounterfactual, viaBindings, "and so does the retained declaration");
+
+        // One function, so one selector, whichever interface a caller compiled against.
+        assertEq(IERCAgentBindings.registrationHashOf.selector, bytes4(keccak256("registrationHashOf(uint256)")));
+        assertEq(
+            IERC8004AdapterCounterfactual.registrationHashOf.selector, IERCAgentBindings.registrationHashOf.selector
+        );
+
+        // The ERC-8217 revert behaviour is reachable through the standard's own interface too.
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(4242)));
+        IERCAgentBindings(address(adapter)).registrationHashOf(4242);
+    }
+
     function testPrimaryEventTopicsAreSystemSpecific() external pure {
         assertEq(
             IERC8004AdapterWalletAgentID.WalletAgentIDSet.selector,

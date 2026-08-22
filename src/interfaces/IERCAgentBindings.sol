@@ -56,4 +56,17 @@ interface IERCAgentBindings {
     }
 
     function bindingOf(uint256 agentId) external view returns (Binding memory);
+
+    /// @notice The Universal Binding Binary Identifier of an agent registered through this contract,
+    /// derived from its stored `Binding` as
+    /// `keccak256(abi.encode(bindingContractInteroperableAddress, standard, boundAddress, tokenId))`
+    /// with `abi.encode` and never packed. Reverts `UnknownAgent` for an id that was never
+    /// registered, matching `bindingOf` rather than returning zero.
+    /// @dev **ERC-8217 mandates this function on this interface**, which is why it is declared here
+    /// rather than only on `IERC8004AdapterCounterfactual`. That second declaration is kept so
+    /// consumers written against the earlier layout still compile; both name the same signature and
+    /// the same selector `0xda1b4b75`, and `Adapter8004` satisfies them with one implementation.
+    /// Bindings are immutable, so the answer never changes for a given agent, token transfers
+    /// included.
+    function registrationHashOf(uint256 agentId) external view returns (bytes32);
 }

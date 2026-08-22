@@ -135,8 +135,13 @@ interface IERC8004AdapterCounterfactual {
     /// derived from its stored binding, so one call replaces `bindingOf` followed by
     /// `registrationHash`. Reverts `UnknownAgent` for an id that was never registered, matching
     /// `bindingOf` rather than returning zero.
-    /// @dev Bindings are immutable, so the answer never changes for a given agent, token transfers
-    /// included.
+    /// @dev **Declared twice on purpose, and the standard mandates the other one.** ERC-8217
+    /// requires this function on `IERCAgentBindings`, the interface that standard defines, so that
+    /// is where conformance is owed and where the authoritative NatSpec lives. It is retained here
+    /// for consumers written against the earlier layout, which declared it only on this interface.
+    /// Both declarations carry the same signature and the same selector `0xda1b4b75`, and
+    /// `Adapter8004` implements them once with an explicit two-base `override`. Bindings are
+    /// immutable, so the answer never changes for a given agent, token transfers included.
     function registrationHashOf(uint256 agentId) external view returns (bytes32);
 
     /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
