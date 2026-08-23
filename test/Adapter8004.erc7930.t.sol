@@ -93,7 +93,7 @@ library WordAlignedErc7930 {
 /// was built from; deleting either one collapses a three-way agreement into a two-way one, and
 /// deleting both leaves the dependency checked only against itself, which proves nothing.
 ///
-/// This encoding is the preimage of every counterfactual `registrationHash` and every
+/// This encoding is the preimage of every UBI and every
 /// `attestationId`. A one-byte divergence would silently re-key identities rather than revert. If
 /// this ever disagrees with production, the question is which one moved, and every existing identity
 /// depends on the answer.
@@ -141,13 +141,13 @@ contract Adapter8004HashHarness is Adapter8004 {
         return _interoperableAddressFor(chainId, account);
     }
 
-    function registrationHashFor(
+    function ubiFrom(
         bytes memory adapterInteroperableAddress,
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId
     ) external pure returns (bytes32) {
-        return _registrationHashFor(adapterInteroperableAddress, standard, boundAddress, tokenId);
+        return _ubiFrom(adapterInteroperableAddress, standard, boundAddress, tokenId);
     }
 
     /// @dev Paints a sentinel into the free memory the encoder must not reach, runs the encoder in
@@ -285,8 +285,7 @@ contract Adapter8004ERC7930Test is Test {
         assertEq(schemeC, 0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b, "frozen scheme C vector");
 
         for (uint8 s; s <= uint8(type(IERCAgentBindings.TokenStandard).max); ++s) {
-            bytes32 current =
-                harness.registrationHashFor(mainnetAdapter, IERCAgentBindings.TokenStandard(s), VECTOR_TOKEN, 42);
+            bytes32 current = harness.ubiFrom(mainnetAdapter, IERCAgentBindings.TokenStandard(s), VECTOR_TOKEN, 42);
             assertTrue(current != schemeA, "must not collide with the live pre-ERC-7930 scheme");
             assertTrue(current != schemeB, "must not collide with the standard-less ERC-7930 scheme");
             assertTrue(current != schemeC, "must not collide with the extraData scheme");
@@ -304,7 +303,7 @@ contract Adapter8004ERC7930Test is Test {
         bytes32[] memory seen = new bytes32[](uint256(max) + 1);
 
         for (uint8 i; i <= max; ++i) {
-            seen[i] = harness.registrationHash(IERCAgentBindings.TokenStandard(i), VECTOR_TOKEN, 0);
+            seen[i] = harness.ubiFor(IERCAgentBindings.TokenStandard(i), VECTOR_TOKEN, 0);
             for (uint8 j; j < i; ++j) {
                 assertTrue(seen[i] != seen[j], "two standards must never alias onto one identity");
             }
@@ -321,8 +320,8 @@ contract Adapter8004ERC7930Test is Test {
         vm.assume(a != b);
 
         assertTrue(
-            harness.registrationHash(IERCAgentBindings.TokenStandard(a), boundAddress, tokenId)
-                != harness.registrationHash(IERCAgentBindings.TokenStandard(b), boundAddress, tokenId)
+            harness.ubiFor(IERCAgentBindings.TokenStandard(a), boundAddress, tokenId)
+                != harness.ubiFor(IERCAgentBindings.TokenStandard(b), boundAddress, tokenId)
         );
     }
 
@@ -524,7 +523,7 @@ contract Adapter8004ERC7930Test is Test {
         bytes memory identifier = adapter.chainIdentifier();
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
         bytes memory tokenAddress = adapter.interoperableAddress(token);
-        bytes32 actual = adapter.registrationHash(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, token, tokenId);
+        bytes32 actual = adapter.ubiFor(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, token, tokenId);
 
         assertEq(actual, keccak256(abi.encode(adapterAddress, standard, token, tokenId)), "canonical");
         // The four components are exactly the adapter envelope plus the stored binding. Appending a
@@ -551,23 +550,20 @@ contract Adapter8004ERC7930Test is Test {
         bytes memory otherReferenceAdapter = hex"000100000102141111111111111111111111111111111111111111";
         bytes memory otherAdapter = hex"000100000101143333333333333333333333333333333333333333";
         IERCAgentBindings.TokenStandard s = IERCAgentBindings.TokenStandard.ERC721;
-        bytes32 base = harness.registrationHashFor(adapterAddress, s, VECTOR_TOKEN, 42);
-        assertTrue(base != harness.registrationHashFor(otherTypeAdapter, s, VECTOR_TOKEN, 42));
-        assertTrue(base != harness.registrationHashFor(otherReferenceAdapter, s, VECTOR_TOKEN, 42));
-        assertTrue(base != harness.registrationHashFor(otherAdapter, s, VECTOR_TOKEN, 42));
-        assertTrue(base != harness.registrationHashFor(adapterAddress, s, address(0x4444), 42));
-        assertTrue(base != harness.registrationHashFor(adapterAddress, s, VECTOR_TOKEN, 43));
-        assertTrue(
-            base
-                != harness.registrationHashFor(adapterAddress, IERCAgentBindings.TokenStandard.ERC1155, VECTOR_TOKEN, 42)
-        );
+        bytes32 base = harness.ubiFrom(adapterAddress, s, VECTOR_TOKEN, 42);
+        assertTrue(base != harness.ubiFrom(otherTypeAdapter, s, VECTOR_TOKEN, 42));
+        assertTrue(base != harness.ubiFrom(otherReferenceAdapter, s, VECTOR_TOKEN, 42));
+        assertTrue(base != harness.ubiFrom(otherAdapter, s, VECTOR_TOKEN, 42));
+        assertTrue(base != harness.ubiFrom(adapterAddress, s, address(0x4444), 42));
+        assertTrue(base != harness.ubiFrom(adapterAddress, s, VECTOR_TOKEN, 43));
+        assertTrue(base != harness.ubiFrom(adapterAddress, IERCAgentBindings.TokenStandard.ERC1155, VECTOR_TOKEN, 42));
     }
 
     function _assertVector(bytes memory adapterAddress, IERCAgentBindings.TokenStandard standard, bytes32 expected)
         internal
         view
     {
-        assertEq(harness.registrationHashFor(adapterAddress, standard, VECTOR_TOKEN, 42), expected);
+        assertEq(harness.ubiFrom(adapterAddress, standard, VECTOR_TOKEN, 42), expected);
     }
 
     // ----------------------------------------------------------------

@@ -21,21 +21,21 @@ Anything that fails this test — data that is merely convenient, mutable by nat
 Three external functions, all emit-only. The adapter stores nothing and reads nothing about the target. The caller is always the attester or revoker; there is no path where one party acts for another, so consent can never be manufactured from outside the account, and a controller participates by causing the account itself to make the call.
 
 ```
-attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes data)
-confirmAdditionalAccount(bytes32 cfid)
+attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes data)
+confirmAdditionalAccount(bytes32 ubi)
 revoke(bytes32 attestationId)
 ```
 
-- **Targets.** `cfid` is an opaque `bytes32`; by convention it is an Adapter8004 counterfactual registration hash, derived as `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))` with the standard as the enum's `uint8`. The standard in the identity records that the claimer passed that standard's authority probe at claim time, not that the contract conforms to the ERC. The contract cannot check any of this at attest time — counterfactual registration writes no storage, so no set of "real" hashes exists to check against — and does not try. A `cfid` that matches no claim or binding is **unresolved**: it acquires meaning if and when a counterfactual claim or on-chain binding gives it one. Attesting to a target before its first counterfactual claim is emitted is explicitly allowed; that is what counterfactual means.
+- **Targets.** `ubi` is an opaque `bytes32`; by convention it is an Adapter8004 UBI, derived as `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))` with the standard as the enum's `uint8`. The standard in the identity records that the claimer passed that standard's authority probe at claim time, not that the contract conforms to the ERC. The contract cannot check any of this at attest time — counterfactual registration writes no storage, so no set of "real" hashes exists to check against — and does not try. A UBI that matches no claim or binding is **unresolved**: it acquires meaning if and when a counterfactual claim or on-chain binding gives it one. Attesting to a target before its first counterfactual claim is emitted is explicitly allowed; that is what counterfactual means.
 - **The caller-is-attester rule** has a stated cost: an account that cannot make arbitrary outbound calls, such as a minimal vault or payment splitter with no executor, cannot confirm anything. That is a chosen limitation, not a gap. Ordinary wallets, multisigs, smart wallets with executors, timelocks, and EIP-7702-delegated accounts can all consent.
-- **`confirmAdditionalAccount(cfid)`** is the plain-English entry point ordinary integrators call, equivalent to `attest(CONFIRM_ACCOUNT, cfid, 0, "")`.
+- **`confirmAdditionalAccount(ubi)`** is the plain-English entry point ordinary integrators call, equivalent to `attest(CONFIRM_ACCOUNT, ubi, 0, "")`.
 - **`variant`** is caller-supplied and caller-interpreted: a counter, a random value, or anything else the attester finds useful. The protocol uses it for exactly one thing — distinguishing otherwise byte-identical attestations within a single block. Zero means no distinction is needed. It pairs with `block.number` in the identifier (§4): cross-block distinction is automatic; within-block distinction is opt-in via `variant`.
 
 ## 3. What the contract enforces, and what it deliberately does not
 
 Enforced on-chain:
 
-- `attestationType != UNSPECIFIED` and `cfid != 0` on `attest` and `confirmAdditionalAccount`, reverting `AttestationTypeZero` and `AttestationTargetZero`. This is a fail-closed sentinel rule against default-initialized calldata, not target validation — a nonzero garbage `cfid` passes.
+- `attestationType != UNSPECIFIED` and `ubi != 0` on `attest` and `confirmAdditionalAccount`, reverting `AttestationTypeZero` and `AttestationTargetZero`. This is a fail-closed sentinel rule against default-initialized calldata, not target validation — a nonzero garbage `ubi` passes.
 - Type **range** validity, but not by any code in the contract: `attestationType` is a Solidity enum, so the ABI decoder reverts on a value above the last member before the function body runs. An out-of-range type can never reach the log, and no guard was written to achieve that.
 - `revoke` checks nothing, deliberately, including a zero identifier. Revoking a statement that was never made is a recorded no-op under §5 rule 3, and a sentinel check would guard against nothing: an unset identifier field revokes nothing, harming nothing, where an unset type or target field would mint a statement in the wrong namespace.
 
@@ -52,9 +52,9 @@ Every attestation has a deterministic id, **emitted by the contract** so integra
 
 ```
 attestationId = keccak256(abi.encode(
-    _interoperableAddress(address(this)), // ERC-7930: chain + adapter, exactly as registrationHash binds
+    _interoperableAddress(address(this)), // ERC-7930: chain + adapter, exactly as the UBI binds
     attester,                             // the caller
-    cfid,
+    ubi,
     attestationType,                      // the enum's uint8, right-aligned in a word
     block.number,
     variant,
@@ -62,20 +62,20 @@ attestationId = keccak256(abi.encode(
 ))
 ```
 
-There is no domain constant, deliberately. Domain separation is a device for stopping a signature valid in one context replaying in another, and nothing here is signed; both this identifier and the CFID are derived values, already bound to this contract and chain by the interoperable address in their preimages. The two schemes cannot collide, because for any one adapter the identifier preimage is always the longer of the two. Both carry the same adapter interoperable address and so grow with it in step: writing `A` for that address padded up to a whole number of words and `D` for the payload padded the same way, the four-component CFID encoding is `160 + A` bytes and this encoding is `288 + A + D`, a gap of at least 128 bytes whatever the adapter address. For an EVM adapter the concrete figures are 192 bytes against 320. Stating the gap rather than two fixed sizes matters, because neither size is fixed; see [`adapter-attestation-ids.md`](../fixtures/adapter-attestation-ids.md).
+There is no domain constant, deliberately. Domain separation is a device for stopping a signature valid in one context replaying in another, and nothing here is signed; both this identifier and the UBI are derived values, already bound to this contract and chain by the interoperable address in their preimages. The two schemes cannot collide, because for any one adapter the identifier preimage is always the longer of the two. Both carry the same adapter interoperable address and so grow with it in step: writing `A` for that address padded up to a whole number of words and `D` for the payload padded the same way, the four-component CFID encoding is `160 + A` bytes and this encoding is `288 + A + D`, a gap of at least 128 bytes whatever the adapter address. For an EVM adapter the concrete figures are 192 bytes against 320. Stating the gap rather than two fixed sizes matters, because neither size is fixed; see [`adapter-attestation-ids.md`](../fixtures/adapter-attestation-ids.md).
 
 Rationale, recorded so the reasoning survives the decision:
 
 - **`block.number` bounds a revocation's blast radius to one block.** Without it, an attester emitting byte-identical statements over time — a monitor issuing `isLive`-style pings — would collapse its entire history into a single id, and one revocation would erase all of it.
 - **`variant`** is the within-block counterpart (§2): `block.number` distinguishes across blocks automatically; `variant` distinguishes within a block on demand. The name is deliberate: `salt` was rejected as jargon.
-- The **ERC-7930 interoperable address** binds the id to this adapter on this chain, mirroring `registrationHash`'s own domain binding. Consequence for cross-chain users: an attestation emitted on chain B — about a `cfid` derived anywhere — has a chain-B id, and its revocation must be sent to the same adapter on chain B.
+- The **ERC-7930 interoperable address** binds the id to this adapter on this chain, mirroring the UBI's own domain binding. Consequence for cross-chain users: an attestation emitted on chain B — about a `ubi` derived anywhere — has a chain-B id, and its revocation must be sent to the same adapter on chain B.
 - The **caller** in the preimage means the same statement from two different accounts is two different statements with two different ids.
 
 ## 5. Interpretation rules
 
 Indexers apply events in log order.
 
-1. **Collapse.** Byte-identical content — same attester, cfid, type, variant, data, and block — is one statement with one id, however many times it is emitted.
+1. **Collapse.** Byte-identical content — same attester, ubi, type, variant, data, and block — is one statement with one id, however many times it is emitted.
 2. **Revocation withdraws the statement,** not one copy of it. `AttestationRevoked` for an id kills that id.
 3. **Re-attestation reactivates.** Attest → revoke → attest leaves the statement active: a later block yields a fresh id, and within one block the identical id simply reactivates in log order. Revoking an id never attested, the zero identifier included, is recorded and does nothing.
 4. **Revocation authorship is verified in projection.** A revocation affects state **only if** its caller equals the attester of the attestation bearing that id. All other revocations are inert noise; the contract stores nothing that would let it check this itself.
@@ -85,7 +85,7 @@ Indexers apply events in log order.
 
 Every registered type declares exactly one class; the class is part of the published schema, not a consumer choice.
 
-- **state** — the type expresses a current position. Projection: per `(attester, cfid, type)`, the latest un-revoked attestation is the value; none live means no position.
+- **state** — the type expresses a current position. Projection: per `(attester, ubi, type)`, the latest un-revoked attestation is the value; none live means no position.
 - **stream** — the type expresses a history. Projection: all un-revoked attestations accumulate; each is individually meaningful and individually revocable by id.
 
 Revocation is orthogonal to both classes; rule 5 in §5 shows the interaction.
@@ -119,7 +119,7 @@ The numbering is **identity-critical**, exactly as `TokenStandard`'s is: the `ui
 
 ### `CONFIRM_ACCOUNT`
 
-The attester states: *I am an additional account of the agent this cfid identifies.* It is the reciprocal half of the ERC-8048 forward metadata key `account[<chain-id>][<index>]`.
+The attester states: *I am an additional account of the agent this ubi identifies.* It is the reciprocal half of the ERC-8048 forward metadata key `account[<chain-id>][<index>]`.
 
 **Verification.** A confirmation counts only while the agent's forward `account` metadata lists the attester. The check is live: it reflects current metadata and its result changes when the metadata changes. Verification is **indexer-mediated**: ERC-8048 `account` entries are on-chain metadata, and although a stateless on-chain reader cannot enumerate metadata keys, the required `MetadataSet` event carries the full key string on every write. An indexer's historical log scan therefore yields the finite set of candidate `account[...]` keys as of its sync height, and current values are then read directly. An earlier draft of this system carried the forward index inside the confirmation payload on the assumption that verification had to construct the exact key without enumeration; the event-log route makes that unnecessary in an indexer-mediated system, and the payload is empty.
 
@@ -142,14 +142,14 @@ Free-text reputation, on-chain as an immutable event record per §1 — a delibe
 A record of one dealing with the agent. Payload layout, total length ≥ 33 bytes:
 
 - byte 0 — `score`, `uint8`, `0`–`100`; values above `100` invalid at read time
-- bytes 1–32 — `reference`, identifying the dealing, typically a transaction hash; `bytes32(0)` when absent. It is NOT the cfid, which is already the target.
+- bytes 1–32 — `reference`, identifying the dealing, typically a transaction hash; `bytes32(0)` when absent. It is NOT the ubi, which is already the target.
 - bytes 33+ — `text`, optional UTF-8, may be empty
 
 `abi.encodePacked` is safe here because only the final field is dynamic, and it saves roughly 95 bytes of ABI overhead per attestation versus `abi.encode`.
 
 ## 8. ERC-8004 mapping
 
-This system is the counterfactual counterpart of ERC-8004's Reputation Registry: ERC-8004 targets a registered `agentId`; this system targets a `cfid`. For any adapter-registered agent the two histories join automatically — `bindingOf(agentId)` yields the standard, bound address, and token id from which its counterfactual-era `registrationHash` derives, so the merge is a projection join requiring no transaction and no link assertion. A registration joins only the counterfactual history claimed under its own standard, so one coordinate can carry separate histories per standard. The `TokenStandard` numbering is identity-critical for the same reason: new standards append, and renumbering is forbidden forever. `registrationHashOf(agentId)` performs that derivation on chain, so a consumer holding a registered `agentId` gets the counterfactual identifier in one call. An earlier draft of this document described a reserved `cf-registration` metadata key held for a future promotion flow; that reservation was removed at `0.0.17`, because the value is derivable and a stored copy would be both redundant and spoofable.
+This system is the counterfactual counterpart of ERC-8004's Reputation Registry: ERC-8004 targets a registered `agentId`; this system targets a `ubi`. For any adapter-registered agent the two histories join automatically — `bindingOf(agentId)` yields the standard, bound address, and token id from which its counterfactual-era the UBI derives, so the merge is a projection join requiring no transaction and no link assertion. A registration joins only the counterfactual history claimed under its own standard, so one coordinate can carry separate histories per standard. The `TokenStandard` numbering is identity-critical for the same reason: new standards append, and renumbering is forbidden forever. `ubiOf(agentId)` performs that derivation on chain, so a consumer holding a registered `agentId` gets the counterfactual identifier in one call. An earlier draft of this document described a reserved `cf-registration` metadata key held for a future promotion flow; that reservation was removed at `0.0.17`, because the value is derivable and a stored copy would be both redundant and spoofable.
 
 **This system → ERC-8004:**
 
@@ -179,7 +179,7 @@ This system is the counterfactual counterpart of ERC-8004's Reputation Registry:
 
 ## 10. Events
 
-- `Attested(address indexed attester, AttestationType indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)`, whose ABI signature is `Attested(address,uint8,bytes32,bytes32,bytes32,bytes)`
+- `Attested(address indexed attester, AttestationType indexed attestationType, bytes32 indexed ubi, bytes32 attestationId, bytes32 variant, bytes data)`, whose ABI signature is `Attested(address,uint8,bytes32,bytes32,bytes32,bytes)`
 - `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`
 
-Topic allocation follows three canonical query axes on attestation: reverse by `attester`, forward by `cfid`, and filter by `attestationType`. The `attestationId` is recomputable from the event fields plus its log context, including block number, and is therefore non-indexed on `Attested`. On `AttestationRevoked` the id is the join key and is indexed. `attester` and `revoker` are the actual `msg.sender` in every event; there is no separate submitter field because there is nothing left to distinguish.
+Topic allocation follows three canonical query axes on attestation: reverse by `attester`, forward by `ubi`, and filter by `attestationType`. The `attestationId` is recomputable from the event fields plus its log context, including block number, and is therefore non-indexed on `Attested`. On `AttestationRevoked` the id is the join key and is indexed. `attester` and `revoker` are the actual `msg.sender` in every event; there is no separate submitter field because there is nothing left to distinguish.

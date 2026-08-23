@@ -58,9 +58,9 @@ contract Adapter8004 is
     /// metadata, because this contract writes it itself and an unreserved key would let a caller
     /// forge a record the adapter authors.
     /// @dev `cf-registration` was reserved here until `0.0.17` and deliberately is not any more: no
-    /// path writes it so there is no authored record to forge, `registrationHashOf` derives an
+    /// path writes it so there is no authored record to forge, `ubiOf` derives an
     /// agent's identifier rather than storing it so it cannot be spoofed, and reserving one spelling
-    /// stops nobody who can write `cfid` instead. Do not re-add it as a consistency fix.
+    /// stops nobody who can write `ubi` instead. Do not re-add it as a consistency fix.
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
@@ -91,7 +91,7 @@ contract Adapter8004 is
     /// alike, since all of them pass through the same authority choke points. An account-level binding names the address
     /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
     /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
-    /// its `registrationHash`, and any pointer derived from it can never disagree with the id the
+    /// its UBI, and any pointer derived from it can never disagree with the id the
     /// caller submitted.
     error NonZeroTokenIdForAccount(address boundAddress, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
@@ -104,7 +104,7 @@ contract Adapter8004 is
     /// value is reserved as the "unset" sentinel: it complements to zero in storage and would be
     /// indistinguishable from a never-written entry. Clear via `clearWalletAgentID[For]` instead.
     error WalletAgentIDReserved(uint256 agentId);
-    error WalletCounterfactualIDReserved(bytes32 registrationHash);
+    error WalletCounterfactualIDReserved(bytes32 ubi);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
     /// @notice Thrown when an upgrade target was constructed with a different ERC-8004 registry than
@@ -401,21 +401,17 @@ contract Adapter8004 is
     // Emit-only mirrors of the on-chain register surface, writing no adapter storage and making no
     // ERC-8004 registry calls, so a later event supersedes a claim rather than withdrawing it.
     // Authority matches the on-chain surface plus the ownerless-collection route documented below.
-    // `IERC8004AdapterCounterfactual` states that consumers key on `registrationHash`.
+    // `IERC8004AdapterCounterfactual` states that consumers key on the UBI.
     // -----------------------------------------------------------------
 
-    function registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)
-        external
-        view
-        returns (bytes32)
-    {
-        return _registrationHash(standard, boundAddress, tokenId);
+    function ubiFor(TokenStandard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {
+        return _ubi(standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERCAgentBindings
-    function registrationHashOf(uint256 agentId) external view returns (bytes32) {
+    function ubiOf(uint256 agentId) external view returns (bytes32) {
         Binding memory binding = _knownBinding(agentId);
-        return _registrationHash(binding.standard, binding.boundAddress, binding.tokenId);
+        return _ubi(binding.standard, binding.boundAddress, binding.tokenId);
     }
 
     /// @inheritdoc IInteroperableAddressView
@@ -469,8 +465,8 @@ contract Adapter8004 is
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
         _requireNoReservedBindingKey(metadata);
 
-        // 4. Compute the deterministic registration hash used as the indexer key for this claim.
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        // 4. Compute the deterministic UBI used as the indexer key for this claim.
+        computedHash = _ubi(standard, boundAddress, tokenId);
 
         // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
         emit CounterfactualAgentRegistered(
@@ -494,7 +490,7 @@ contract Adapter8004 is
 
         // 3. Emit the URI update, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        computedHash = _ubi(standard, boundAddress, tokenId);
         emit CounterfactualAgentURISet(computedHash, boundAddress, tokenId, standard, newURI, msg.sender);
     }
 
@@ -520,7 +516,7 @@ contract Adapter8004 is
 
         // 4. Emit the metadata write, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        computedHash = _ubi(standard, boundAddress, tokenId);
         emit CounterfactualMetadataSet(
             computedHash, boundAddress, tokenId, standard, metadataKey, metadataValue, msg.sender
         );
@@ -546,7 +542,7 @@ contract Adapter8004 is
         // 4. Emit the batch, which is the only on-chain record this function produces, and hand the
         //    identity back so the caller need not recompute it. Every entry lands on this one
         //    identity, so one hash covers the whole batch.
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        computedHash = _ubi(standard, boundAddress, tokenId);
         emit CounterfactualMetadataBatchSet(computedHash, boundAddress, tokenId, standard, metadata, msg.sender);
     }
 
@@ -566,7 +562,7 @@ contract Adapter8004 is
 
         // 3. Emit the wallet assignment, which is the only on-chain record this function produces,
         //    and hand the identity back so the caller need not recompute it.
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        computedHash = _ubi(standard, boundAddress, tokenId);
         emit CounterfactualAgentWalletSet(computedHash, boundAddress, tokenId, standard, newWallet, msg.sender);
     }
 
@@ -585,7 +581,7 @@ contract Adapter8004 is
 
         // 3. Emit the wallet assignment, matching `counterfactualSetAgentWallet` exactly.
         emit CounterfactualAgentWalletSet(
-            _registrationHash(standard, boundAddress, tokenId), boundAddress, tokenId, standard, msg.sender, msg.sender
+            _ubi(standard, boundAddress, tokenId), boundAddress, tokenId, standard, msg.sender, msg.sender
         );
 
         // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
@@ -609,7 +605,7 @@ contract Adapter8004 is
 
         // 3. Emit the wallet clear, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        computedHash = _ubi(standard, boundAddress, tokenId);
         emit CounterfactualAgentWalletUnset(computedHash, boundAddress, tokenId, standard, msg.sender);
     }
 
@@ -669,7 +665,7 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
-    //  Wallet counterfactual id (reverse resolution: wallet -> registration hash)
+    //  Wallet counterfactual id (reverse resolution: wallet -> UBI)
     // -----------------------------------------------------------------
 
     function setWalletCounterfactualID(TokenStandard standard, address boundAddress, uint256 tokenId)
@@ -715,7 +711,7 @@ contract Adapter8004 is
         _requireValidBoundAddress(standard, boundAddress);
         _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
-        computedHash = _registrationHash(standard, boundAddress, tokenId);
+        computedHash = _ubi(standard, boundAddress, tokenId);
         if (computedHash == bytes32(type(uint256).max)) {
             revert WalletCounterfactualIDReserved(computedHash);
         }
@@ -741,15 +737,15 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
 
     /// @inheritdoc IERC8004AdapterAttestation
-    function attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) external {
-        _attest(attestationType, cfid, variant, data);
+    function attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes calldata data) external {
+        _attest(attestationType, ubi, variant, data);
     }
 
     /// @inheritdoc IERC8004AdapterAttestation
-    function confirmAdditionalAccount(bytes32 cfid) external {
+    function confirmAdditionalAccount(bytes32 ubi) external {
         // `msg.data[0:0]` is the empty `bytes calldata`. It keeps `_attest` on calldata for the
         // generic path, where a REVIEW payload would otherwise be copied to memory for no reason.
-        _attest(AttestationType.CONFIRM_ACCOUNT, cfid, bytes32(0), msg.data[0:0]);
+        _attest(AttestationType.CONFIRM_ACCOUNT, ubi, bytes32(0), msg.data[0:0]);
     }
 
     /// @inheritdoc IERC8004AdapterAttestation
@@ -758,30 +754,30 @@ contract Adapter8004 is
     }
 
     /// @dev The single attest path, so both guards live in exactly one place. Both are sentinel
-    /// rules against default-initialized calldata, not validation: a nonzero garbage `cfid` passes on
+    /// rules against default-initialized calldata, not validation: a nonzero garbage `ubi` passes on
     /// purpose, because attesting to an identity before its first counterfactual claim is emitted is
     /// a supported use and no set of "real" hashes exists to check against. Type validity needs no
     /// check at all now that the type is an enum, because the decoder enforces the range.
-    function _attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes calldata data) private {
+    function _attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes calldata data) private {
         // 1. Reject the two uninitialized-input sentinels, so a forgotten field fails loudly rather
         //    than recording a statement of no stated type or against the zero identity.
         if (attestationType == AttestationType.UNSPECIFIED) revert AttestationTypeZero();
-        if (cfid == bytes32(0)) revert AttestationTargetZero();
+        if (ubi == bytes32(0)) revert AttestationTargetZero();
 
         // 2. Derive the identifier. `block.number` keeps identical statements in different blocks
         //    distinct, so revoking one of a monitor's repeated pings erases that ping and leaves the
         //    rest of its history, and `variant` is the caller's opt-in within-block counterpart. The
         //    interoperable address binds the identifier to this adapter on this chain, exactly as
-        //    `registrationHash` binds.
+        //    the UBI binds.
         bytes32 attestationId = keccak256(
             abi.encode(
-                _interoperableAddress(address(this)), msg.sender, cfid, attestationType, block.number, variant, data
+                _interoperableAddress(address(this)), msg.sender, ubi, attestationType, block.number, variant, data
             )
         );
 
         // 3. Emit, which is the only record this function produces. The identifier is carried so
         //    integrators never have to recompute it, and is derived rather than stored.
-        emit Attested(msg.sender, attestationType, cfid, attestationId, variant, data);
+        emit Attested(msg.sender, attestationType, ubi, attestationId, variant, data);
     }
 
     /// @dev The single revoke path. It checks nothing, the zero identifier included, and that is a
@@ -919,7 +915,7 @@ contract Adapter8004 is
     /// so each has exactly one canonical coordinate, `tokenId == 0`. Enforced in
     /// `_requireTokenAuthority`, which every write passes through, and again in
     /// `_requireBindingControl` so a future direct caller stays covered. A nonzero id reverts rather
-    /// than being coerced, since coercion would hand the caller a binding and a `registrationHash`
+    /// than being coerced, since coercion would hand the caller a binding and a UBI
     /// that do not match the id they submitted.
     function _requireCanonicalTokenId(TokenStandard standard, address boundAddress, uint256 tokenId) internal pure {
         if (_isAccountStandard(standard) && tokenId != 0) {
@@ -1110,13 +1106,13 @@ contract Adapter8004 is
         }
     }
 
-    function _registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function _ubi(TokenStandard standard, address boundAddress, uint256 tokenId)
         internal
         view
         virtual
         returns (bytes32)
     {
-        return _registrationHashFor(_interoperableAddress(address(this)), standard, boundAddress, tokenId);
+        return _ubiFrom(_interoperableAddress(address(this)), standard, boundAddress, tokenId);
     }
 
     /// @dev ERC-7930 v1 Chain Identifier using the CAIP-350 `eip155` profile:
@@ -1163,12 +1159,12 @@ contract Adapter8004 is
             : InteroperableAddress.formatEvmV1(chainId);
     }
 
-    /// @dev The canonical counterfactual identity is
+    /// @dev The canonical UBI is
     /// `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))`, with
     /// `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
     /// `abi.encodePacked`: the interoperable address is dynamic, and packing it would let a different
     /// (address, standard) pair produce the same preimage bytes.
-    function _registrationHashFor(
+    function _ubiFrom(
         bytes memory adapterInteroperableAddress,
         TokenStandard standard,
         address boundAddress,

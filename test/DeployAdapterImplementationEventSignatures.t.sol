@@ -86,8 +86,8 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, address(adapter));
 
         assertEq(
-            _sampleRegistrationHash(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
+            _sampleUbi(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
             "sample preimage must match the contract's"
         );
     }

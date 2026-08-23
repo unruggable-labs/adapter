@@ -1,4 +1,4 @@
-# Adapter8004 — ERC-7930 counterfactual hash fixture
+# Adapter8004 — ERC-7930 UBI fixture
 
 Canonical formula:
 
@@ -14,17 +14,17 @@ keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenI
 > are retained at the end of this document so that a reimplementer can tell which one their output
 > matches. `standard` is a caller-supplied argument, because it selects the identity.
 
-**Identity.** The identity is the `registrationHash`, which is the adapter address plus exactly
+**Identity.** The identity is the UBI, the Universal Binding Identifier, which is the adapter address plus exactly
 `(standard, boundAddress, tokenId)`. One coordinate under one standard is one identity, and the same
-coordinate under two standards is two. Key on the `registrationHash`; never collapse rows by
+coordinate under two standards is two. Key on the UBI; never collapse rows by
 `(boundAddress, tokenId)`, which does not name a standard.
 
 **What the standard means here.** It records that the claimer passed *that standard's* authority
 probe at claim time. It is not an assertion that the bound contract conforms to the ERC; the adapter
 probes authority, never `supportsInterface`.
 
-**Attestations key on these hashes.** The attestation identifier scheme in
-[`adapter-attestation-ids.md`](./adapter-attestation-ids.md) takes a `cfid` from this document as an
+**Attestations key on these UBIs.** The attestation identifier scheme in
+[`adapter-attestation-ids.md`](./adapter-attestation-ids.md) takes a UBI from this document as an
 opaque target. The two schemes are derived by the same contract from overlapping material and cannot
 collide, because for any one adapter the identifier preimage is always longer than this one. Both
 carry the same adapter Interoperable Address, so both grow with it in step: writing `A` for the
@@ -78,7 +78,7 @@ would move if the enum were ever renumbered:
 
 ```ts
 import { encodeAbiParameters, keccak256 } from 'viem'
-export function registrationHash(
+export function ubiFor(
   adapterInteroperableAddress: `0x${string}`,
   standard: number,
   boundAddress: `0x${string}`,

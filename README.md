@@ -138,7 +138,7 @@ ERC-1155F and ERC-6909F reuse the delegate.xyz `checkDelegateForERC721` path bec
 
 Values `0`-`4` name a token *within* a contract, so their binding coordinate is `(boundAddress, tokenId)`. Values `5`, `6` and `7` name an address itself rather than a token within it, so there is no token to identify:
 
-- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and `registrationHash` always match the id submitted. The check runs at both authority choke points, covering `register` and every unsigned counterfactual writer.
+- `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and the UBI always match the id submitted. The check runs at both authority choke points, covering `register` and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `boundAddress` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
 - Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setWalletAgentIDFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's wallet agent id while being unable to manage an identity bound to it.
@@ -357,7 +357,7 @@ Token standard enum values:
 
 The enum is append-only: `ACCOUNT` remains `0x05`, `CONTRACT_OWNABLE` is appended as `0x06`, `CONTRACT_ADMIN` as `0x07`, and values `0x00`-`0x04` keep their meaning, so existing stored bindings and indexed history are unaffected. `0x05` also keeps its position; only its name and its code test changed, and neither is persisted.
 
-The adapter reserves exactly one metadata key, `agent-binding`, and rejects caller attempts to set or batch-set it on either surface. It is reserved because the adapter writes that record itself, so an unreserved key would let a caller forge something the adapter authors. `cf-registration` was reserved until `0.0.17` and is now an ordinary key: nothing writes it, so there is no authored record to forge, and `registrationHashOf(agentId)` derives an agent's identifier rather than storing it, so it cannot be spoofed and is the authoritative source. Reserving one spelling would not have helped anyway, since a caller out to mislead an indexer can write `cfid` or any other suggestive name.
+The adapter reserves exactly one metadata key, `agent-binding`, and rejects caller attempts to set or batch-set it on either surface. It is reserved because the adapter writes that record itself, so an unreserved key would let a caller forge something the adapter authors. `cf-registration` was reserved until `0.0.17` and is now an ordinary key: nothing writes it, so there is no authored record to forge, and `ubiOf(agentId)` derives an agent's identifier rather than storing it, so it cannot be spoofed and is the authoritative source. Reserving one spelling would not have helped anyway, since a caller out to mislead an indexer can write `ubi` or any other suggestive name.
 
 Note:
 
@@ -463,7 +463,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 }
 ```
 
-The collection must be the direct adapter caller and pass its own deployed address as `boundAddress`; a router, forwarded sender, `delegatecall`, or call from the collection constructor does not establish this authority. Register first and mint second. After `ownerOf` returns a nonzero owner, the collection has no special privilege and calls revert unless it separately qualifies under the normal owner/delegate controller model. The buyer or an authorized delegate can then overwrite the collection payload, and latest log order wins. Multiple emissions are allowed while no owner exists and share the same `registrationHash`.
+The collection must be the direct adapter caller and pass its own deployed address as `boundAddress`; a router, forwarded sender, `delegatecall`, or call from the collection constructor does not establish this authority. Register first and mint second. After `ownerOf` returns a nonzero owner, the collection has no special privilege and calls revert unless it separately qualifies under the normal owner/delegate controller model. The buyer or an authorized delegate can then overwrite the collection payload, and latest log order wins. Multiple emissions are allowed while no owner exists and share the same the UBI.
 
 `ACCOUNT` uses the same unsigned functions but a different authority: the bound address is the permanent sole controller at `tokenId 0`, so its counterfactual calls never stop working and never depend on an ownership probe. `CONTRACT_OWNABLE` also fixes `tokenId` at `0`, but accepts only the current canonical nonzero `owner()` and its delegates, not the bound contract; ownership transfers therefore change who may emit updates for existing claims. A failed or malformed `owner()` probe grants nobody authority, and there is no contract-self fallback. `CONTRACT_ADMIN` behaves the same way with `DEFAULT_ADMIN_ROLE` in place of `owner()`, so granting or revoking the role changes who may emit. There is no way to delete a counterfactual claim. A later authorized event supersedes an earlier one under the usual last-event-wins rule, and `counterfactualUnsetAgentWallet` clears only the wallet field, not the claim.
 
@@ -477,8 +477,8 @@ Functions:
 - `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries) -> bytes32`
 - `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet) -> bytes32` (no signature because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId) -> bytes32`
-- `registrationHash(standard, boundAddress, tokenId)` (view)
-- `registrationHashOf(agentId)` (view) returns the same identity for an agent registered through this
+- `ubiFor(standard, boundAddress, tokenId)` (view)
+- `ubiOf(agentId)` (view) returns the same identity for an agent registered through this
   adapter, derived from its stored binding, and reverts `UnknownAgent` for an id that was never
   registered
 - `interoperableAddress(account)` (view)
@@ -487,8 +487,8 @@ Functions:
 Indexer rules:
 
 - each event carries the `uint8 standard` as its first non-indexed field. Carrying the standard on every event is what makes a single log line verifiable against the hash it names, with no lookup. There is no in-payload schema version and no reserved discriminator: `topic0` is the keccak of the full event signature, so it already discriminates schema on its own
-- the three indexed topics are fixed across every event: `(registrationHash, boundAddress, tokenId)`
-- the `registrationHash` is
+- the three indexed topics are fixed across every event: `(ubi, boundAddress, tokenId)`
+- the the UBI is
   `keccak256(abi.encode(interoperableAddress(adapterProxy), standard, boundAddress, tokenId))`,
   using standard `(bytes,uint8,address,uint256)` ABI encoding (not packed); the adapter proxy
   carries the full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, and
@@ -500,7 +500,7 @@ Indexer rules:
   `InteroperableAddress.formatEvmV1`. The values are unchanged — every published vector still holds
   byte for byte — but anyone forking this contract, or bumping the OpenZeppelin submodule, should
   know that the library's file is `draft-` prefixed and therefore carries no encoding stability
-  guarantee across releases. Since this encoding is the preimage of every `registrationHash` and
+  guarantee across releases. Since this encoding is the preimage of every the UBI and
   every `attestationId`, a change to it would re-key every identity silently. `test/Adapter8004.erc7930-frozen.t.sol`
   exists to turn that into an immediate test failure; the two former in-house encoders are kept
   frozen there as independent oracles and must not be deleted
@@ -508,14 +508,14 @@ Indexer rules:
   useful chain diagnostic but is not one of the canonical hash fields
 - chain binding comes from the adapter proxy's Interoperable Address alone; do not encode
   `boundAddress` as an Interoperable Address
-- indexers MUST treat the latest event per `registrationHash` as authoritative, latest meaning
+- indexers MUST treat the latest event per the UBI as authoritative, latest meaning
   highest block number, then highest log index
 - a later full registration replaces the earlier full payload and later setters update individual
   fields
 - ownerless collection events carry `emitter == boundAddress`; this records the authorizing caller,
   but is not a permanent proof that the token was pre-mint because the collection may later be a
   normal owner or delegate
-- the token standard is **part of** `registrationHash`, so two standards claiming the same
+- the token standard is **part of** the UBI, so two standards claiming the same
   `(boundAddress, tokenId)` are two identities and never alias. The worked example is a contract at
   `(X, 0)` that claims as ERC-721 token `#0`, `ACCOUNT`, and `CONTRACT_OWNABLE`: three coordinates,
   three distinct hashes, three separate histories. Last-event-wins therefore resolves within one
@@ -527,10 +527,10 @@ Indexer rules:
 - because the enum's `uint8` is in the preimage, `TokenStandard` numbering is identity-critical.
   Append only: never renumber, never reorder, never remove a member
 - the standard is a non-indexed body field on every counterfactual event, so it cannot be filtered by
-  topic — filter by `registrationHash` instead, which already distinguishes standards. The on-chain
+  topic — filter by the UBI instead, which already distinguishes standards. The on-chain
   `AgentBound.standard` is indexed and unchanged
 
-Every counterfactual function that derives an identity returns it as `bytes32`, so a caller never recomputes the hash or reads it back out of the log. The value is the same one `registrationHash` returns and the same one the emitted event carries.
+Every counterfactual function that derives an identity returns it as `bytes32`, so a caller never recomputes the hash or reads it back out of the log. The value is the same one the UBI returns and the same one the emitted event carries.
 
 Reserved key on the counterfactual write surface: `agent-binding`, and nothing else.
 
@@ -538,7 +538,7 @@ Reserved key on the counterfactual write surface: `agent-binding`, and nothing e
 
 ### Independent wallet-id systems
 
-A wallet picks one agent id and one counterfactual identity to speak for it. Both are needed because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. These two mappings are how the wallet chooses. The adapter keeps them structurally separate. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 registrationHash`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
+A wallet picks one agent id and one counterfactual identity to speak for it. Both are needed because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. These two mappings are how the wallet chooses. The adapter keeps them structurally separate. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 ubi`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
 
 Full ERC-8004:
 
@@ -570,18 +570,18 @@ This is a hard cutover from unreleased source behavior, not a production storage
 
 Counterfactual identities cost nothing to create, but until now nothing could say anything about one. ERC-8004's reputation registry only accepts feedback on registered agents, so an agent's whole pre-registration track record was unrecordable, and ERC-8048's additional-account list is one-directional, so a listed account could neither confirm nor refuse the listing. This surface closes both.
 
-An attestation is a public statement about a `cfid`, recorded in the event log. Its meaning rests entirely on who made it, and **who made it is always the caller**.
+An attestation is a public statement about a `ubi`, recorded in the event log. Its meaning rests entirely on who made it, and **who made it is always the caller**.
 
-- `attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes data)`
-- `confirmAdditionalAccount(bytes32 cfid)` — exactly `attest(AttestationType.CONFIRM_ACCOUNT, cfid, 0, "")`
+- `attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes data)`
+- `confirmAdditionalAccount(bytes32 ubi)` — exactly `attest(AttestationType.CONFIRM_ACCOUNT, ubi, 0, "")`
 - `revoke(bytes32 attestationId)`
 
-Events: `Attested(address indexed attester, AttestationType indexed attestationType, bytes32 indexed cfid, bytes32 attestationId, bytes32 variant, bytes data)` and `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`. The three indexed slots on `Attested` are the three canonical query axes: reverse by attester, forward by target, filter by type.
+Events: `Attested(address indexed attester, AttestationType indexed attestationType, bytes32 indexed ubi, bytes32 attestationId, bytes32 variant, bytes data)` and `AttestationRevoked(bytes32 indexed attestationId, address indexed revoker)`. The three indexed slots on `Attested` are the three canonical query axes: reverse by attester, forward by target, filter by type.
 
 The identifier, emitted so nobody has to recompute it:
 
 ```text
-keccak256(abi.encode(adapterInteroperableAddress, attester, cfid, attestationType, block.number, variant, data))
+keccak256(abi.encode(adapterInteroperableAddress, attester, ubi, attestationType, block.number, variant, data))
 ```
 
 `attestationType` enters as the enum's `uint8`, right-aligned in a word, which is what `abi.encode` of a Solidity enum produces.
@@ -609,7 +609,7 @@ The numbering is identity-critical, exactly as the `TokenStandard` numbering is:
 
 One thing the enum buys: the ABI decoder rejects a value above the last member before any contract code runs, so a garbage type is refused for free rather than by a check.
 
-**What the contract enforces is exactly two things**: `attestationType != UNSPECIFIED` and `cfid != 0` on the two attest paths. Both are sentinel rules against default-initialized calldata, not validation. A nonzero garbage `cfid` passes on purpose — counterfactual registration writes no storage, so no set of real hashes exists to check against, and attesting ahead of an identity's first claim is the supported case. `revoke` checks nothing at all, the zero identifier included, because revoking a statement never made is a recorded no-op for readers.
+**What the contract enforces is exactly two things**: `attestationType != UNSPECIFIED` and `ubi != 0` on the two attest paths. Both are sentinel rules against default-initialized calldata, not validation. A nonzero garbage `ubi` passes on purpose — counterfactual registration writes no storage, so no set of real hashes exists to check against, and attesting ahead of an identity's first claim is the supported case. `revoke` checks nothing at all, the zero identifier included, because revoking a statement never made is a recorded no-op for readers.
 
 Everything else is the reader's: target resolution, payload well-formedness, whether a revocation counts at all (only from the original attester, which an emit-only contract cannot check), and reviewer independence from the subject. The projection rules, payload encodings, and full type registry are normative in [the type-registry specification](./docs/specs/attestation-type-registry-v1.md), with identifier vectors in [the attestation fixture](./docs/fixtures/adapter-attestation-ids.md).
 
@@ -617,7 +617,7 @@ Everything else is the reader's: target resolution, payload well-formedness, whe
 
 Execution gas measured in the assembled contract, excluding the fixed 21,000 per transaction: `attest` with a small payload 7,581, `confirmAdditionalAccount` 6,916, `revoke` 1,889, plus roughly 9 gas per payload byte. `revoke` is much the cheapest because it derives no identifier at all. The other two are dominated by the ERC-7930 envelope every identity derivation builds, which every counterfactual write pays too, since they share the helper.
 
-**Joining to a registration.** For any adapter-registered agent the two histories merge with no transaction and no link assertion: `bindingOf(agentId)` yields the standard, bound address and token id from which the agent's counterfactual-era `registrationHash` derives. A registration joins only the counterfactual history claimed under its own standard, which is one of the reasons the standard is in the identifier.
+**Joining to a registration.** For any adapter-registered agent the two histories merge with no transaction and no link assertion: `bindingOf(agentId)` yields the standard, bound address and token id from which the agent's counterfactual-era the UBI derives. A registration joins only the counterfactual history claimed under its own standard, which is one of the reasons the standard is in the identifier.
 
 ## ERC Alignment
 
@@ -671,8 +671,8 @@ User-facing functions:
 
 Attestation (emit-only) functions:
 
-- `attest(AttestationType attestationType, bytes32 cfid, bytes32 variant, bytes data)`
-- `confirmAdditionalAccount(bytes32 cfid)`
+- `attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes data)`
+- `confirmAdditionalAccount(bytes32 ubi)`
 - `revoke(bytes32 attestationId)`
 
 Counterfactual (emit-only) functions:
@@ -684,8 +684,8 @@ Counterfactual (emit-only) functions:
 - `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata) -> bytes32`
 - `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet) -> bytes32`
 - `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId) -> bytes32`
-- `registrationHash(TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `registrationHashOf(uint256 agentId)`
+- `ubiFor(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `ubiOf(uint256 agentId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
 - `setWalletAgentID(uint256 agentId)`
@@ -798,7 +798,7 @@ The Foundry suite currently covers:
   `ReferenceErc7930` and `WordAlignedErc7930`, exact bytes for twelve chain ids on both shapes, and
   the ERC-7930 spec's own reference examples. Three-way agreement is fuzzed across all 32 reference
   lengths on both shapes, round-tripped through `parseEvmV1`, and asserted end to end through
-  `registrationHash`, the attestation identifier and a real counterfactual emission. Because the
+  the UBI, the attestation identifier and a real counterfactual emission. Because the
   library is `draft-` prefixed and owes no encoding stability, one test exists solely to fail loudly
   if a submodule bump changes the output
 - the attestation surface: the identifier pinned against precomputed vectors rather than round trips,

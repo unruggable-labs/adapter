@@ -202,15 +202,15 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(logs.length, 2, "the plain set and clear events still fire");
     }
 
-    /// @dev The coordinate-form `registrationHash` stays on the counterfactual interface, because a
+    /// @dev The coordinate-form `ubi` stays on the counterfactual interface, because a
     /// counterfactual identity has no agent id and the coordinates are its only derivation. The
     /// ERC-7930 encoding moved to `IInteroperableAddressView`, which carries no identity meaning and
     /// is depended on by the counterfactual and attestation surfaces alike.
     function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(
-            cf.registrationHash(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
+            cf.ubiFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
         );
 
         IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
@@ -243,7 +243,7 @@ contract Adapter8004InterfacesTest is Test {
     /// implemented, and both must name the same identity for the same coordinates.
     function testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
-        bytes32 expected = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expected = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
 
         vm.prank(alice);
         bytes32 withoutMetadata =
@@ -260,29 +260,29 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(withMetadata, expected, "five-argument overload");
     }
 
-    /// @dev ERC-8217 requires `registrationHashOf` on `IERCAgentBindings`, the interface that
-    /// standard defines, and that is the only interface declaring it. The function takes an agent
-    /// id, which exists only for a registered agent, so it belongs with the bindings surface rather
-    /// than with any counterfactual one. Deleting the declaration fails this test at compile time.
-    function testRegistrationHashOfIsReachableThroughTheBindingsInterface() external {
+    /// @dev ERC-8217 requires `ubiOf` on `IERCAgentBindings`, the interface that standard defines,
+    /// and that is the only interface declaring it. It takes an agent id, which exists only for a
+    /// registered agent, so it belongs with the bindings surface; `ubiFor` is the coordinate form of
+    /// the same value. Deleting the declaration fails this test at compile time.
+    function testUbiOfIsReachableThroughTheBindingsInterface() external {
         uint256 agentId = _register721(alice, 1, "ipfs://a");
 
         IERCAgentBindings bindings = IERCAgentBindings(address(adapter));
-        assertEq(bindings.registrationHashOf(agentId), adapter.registrationHashOf(agentId), "same answer");
+        assertEq(bindings.ubiOf(agentId), adapter.ubiOf(agentId), "same answer");
         assertEq(
-            bindings.registrationHashOf(agentId),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            bindings.ubiOf(agentId),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
             "and it is the coordinate form of the stored binding"
         );
 
         // The selector ERC-8217 pins.
-        assertEq(IERCAgentBindings.registrationHashOf.selector, bytes4(0xda1b4b75));
-        assertEq(IERCAgentBindings.registrationHashOf.selector, bytes4(keccak256("registrationHashOf(uint256)")));
+        assertEq(IERCAgentBindings.ubiOf.selector, bytes4(0x509e06dd));
+        assertEq(IERCAgentBindings.ubiOf.selector, bytes4(keccak256("ubiOf(uint256)")));
 
         // The revert behaviour is reachable through the standard's own interface, not only through
         // the concrete contract type.
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(4242)));
-        bindings.registrationHashOf(4242);
+        bindings.ubiOf(4242);
     }
 
     function testPrimaryEventTopicsAreSystemSpecific() external pure {

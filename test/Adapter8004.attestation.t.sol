@@ -47,7 +47,7 @@ contract Adapter8004AttestationTest is Test {
 
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
-    bytes32 internal cfid = keccak256("target counterfactual identity");
+    bytes32 internal ubi = keccak256("target counterfactual identity");
 
     function setUp() external {
         registry = new MockIdentityRegistry();
@@ -72,16 +72,16 @@ contract Adapter8004AttestationTest is Test {
 
         vm.recordLogs();
         vm.prank(alice);
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(ubi);
         (bytes32 emittedId,,) = _lastAttested();
 
         assertEq(
             emittedId,
-            _expectedId(address(adapter), alice, cfid, tConfirm, block.number, bytes32(0), ""),
+            _expectedId(address(adapter), alice, ubi, tConfirm, block.number, bytes32(0), ""),
             "identifier binds the proxy"
         );
         assertTrue(
-            emittedId != _expectedId(address(implementation), alice, cfid, tConfirm, block.number, bytes32(0), ""),
+            emittedId != _expectedId(address(implementation), alice, ubi, tConfirm, block.number, bytes32(0), ""),
             "identifier must not bind the implementation"
         );
     }
@@ -91,13 +91,13 @@ contract Adapter8004AttestationTest is Test {
     function testEmittedAttesterIsAlwaysTheCaller() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.attest(tRating, cfid, bytes32(0), hex"32");
+        adapter.attest(tRating, ubi, bytes32(0), hex"32");
         (bytes32 aliceId, address aliceAttester,) = _lastAttested();
         assertEq(aliceAttester, alice);
 
         vm.recordLogs();
         vm.prank(bob);
-        adapter.attest(tRating, cfid, bytes32(0), hex"32");
+        adapter.attest(tRating, ubi, bytes32(0), hex"32");
         (bytes32 bobId, address bobAttester,) = _lastAttested();
         assertEq(bobAttester, bob);
 
@@ -112,41 +112,41 @@ contract Adapter8004AttestationTest is Test {
 
         vm.recordLogs();
         vm.prank(alice);
-        adapter.attest(tReview, cfid, variant, data);
+        adapter.attest(tReview, ubi, variant, data);
         (bytes32 actual,,) = _lastAttested();
 
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
         uint256 blockNum = block.number;
 
         assertEq(
-            actual, keccak256(abi.encode(adapterAddress, alice, cfid, tReview, blockNum, variant, data)), "canonical"
+            actual, keccak256(abi.encode(adapterAddress, alice, ubi, tReview, blockNum, variant, data)), "canonical"
         );
         assertTrue(
-            actual != keccak256(abi.encodePacked(adapterAddress, alice, cfid, tReview, blockNum, variant, data)),
+            actual != keccak256(abi.encodePacked(adapterAddress, alice, ubi, tReview, blockNum, variant, data)),
             "packed encoding"
         );
         assertTrue(
             actual
-                != keccak256(abi.encode(keccak256("domain"), adapterAddress, alice, cfid, tReview, blockNum, variant, data)),
+                != keccak256(abi.encode(keccak256("domain"), adapterAddress, alice, ubi, tReview, blockNum, variant, data)),
             "leading domain constant"
         );
         assertTrue(
-            actual != keccak256(abi.encode(adapterAddress, alice, tReview, cfid, blockNum, variant, data)),
+            actual != keccak256(abi.encode(adapterAddress, alice, tReview, ubi, blockNum, variant, data)),
             "type and target transposed"
         );
         assertTrue(
-            actual != keccak256(abi.encode(address(adapter), alice, cfid, tReview, blockNum, variant, data)),
+            actual != keccak256(abi.encode(address(adapter), alice, ubi, tReview, blockNum, variant, data)),
             "naked adapter address"
         );
         assertTrue(
-            actual != keccak256(abi.encode(adapterAddress, alice, cfid, tReview, blockNum, variant)), "payload dropped"
+            actual != keccak256(abi.encode(adapterAddress, alice, ubi, tReview, blockNum, variant)), "payload dropped"
         );
         assertTrue(
-            actual != keccak256(abi.encode(adapterAddress, alice, cfid, tReview, blockNum, bytes32(0), data)),
+            actual != keccak256(abi.encode(adapterAddress, alice, ubi, tReview, blockNum, bytes32(0), data)),
             "variant dropped to zero"
         );
         assertTrue(
-            actual != keccak256(abi.encode(adapterAddress, alice, cfid, tReview, blockNum + 1, variant, data)),
+            actual != keccak256(abi.encode(adapterAddress, alice, ubi, tReview, blockNum + 1, variant, data)),
             "different block"
         );
     }
@@ -159,27 +159,27 @@ contract Adapter8004AttestationTest is Test {
     function testTheTwoDerivationSchemesCannotCollide() external {
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
 
-        // The cfid side, pinned by hashing it against the published view.
-        bytes memory cfidPreimage =
+        // The ubi side, pinned by hashing it against the published view.
+        bytes memory ubiPreimage =
             abi.encode(adapterAddress, IERCAgentBindings.TokenStandard.ERC721, address(token), uint256(42));
         assertEq(
-            keccak256(cfidPreimage),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 42),
-            "premise: this is the preimage the contract hashes for a cfid"
+            keccak256(ubiPreimage),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 42),
+            "premise: this is the preimage the contract hashes for a ubi"
         );
 
         // The identifier side, pinned against an identifier the contract actually emitted.
-        bytes memory idPreimage = abi.encode(adapterAddress, alice, cfid, tConfirm, block.number, bytes32(0), bytes(""));
+        bytes memory idPreimage = abi.encode(adapterAddress, alice, ubi, tConfirm, block.number, bytes32(0), bytes(""));
         vm.recordLogs();
         vm.prank(alice);
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(ubi);
         (bytes32 emittedId,,) = abi.decode(vm.getRecordedLogs()[0].data, (bytes32, bytes32, bytes));
         assertEq(keccak256(idPreimage), emittedId, "premise: this is the preimage the contract hashes for an id");
 
         // The property: the identifier preimage is always the longer of the two, by at least the
         // four extra head words and the payload's own length word.
-        assertGe(idPreimage.length, cfidPreimage.length + 128, "identifier preimage is at least 128 bytes longer");
-        assertEq(cfidPreimage.length, 192, "concrete cfid length for this EVM adapter");
+        assertGe(idPreimage.length, ubiPreimage.length + 128, "identifier preimage is at least 128 bytes longer");
+        assertEq(ubiPreimage.length, 192, "concrete ubi length for this EVM adapter");
         assertEq(idPreimage.length, 320, "concrete identifier length for this EVM adapter, empty payload");
     }
 
@@ -193,8 +193,8 @@ contract Adapter8004AttestationTest is Test {
     function testConfirmAndAttestProduceByteIdenticalEvents() external {
         vm.recordLogs();
         vm.startPrank(alice);
-        adapter.confirmAdditionalAccount(cfid);
-        adapter.attest(tConfirm, cfid, bytes32(0), "");
+        adapter.confirmAdditionalAccount(ubi);
+        adapter.attest(tConfirm, ubi, bytes32(0), "");
         vm.stopPrank();
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -212,7 +212,7 @@ contract Adapter8004AttestationTest is Test {
     function testConfirmUsesTheConfirmAccountType() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(ubi);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         assertEq(
@@ -229,7 +229,7 @@ contract Adapter8004AttestationTest is Test {
     function testAttestRejectsUnspecifiedType() external {
         vm.expectRevert(IERC8004AdapterAttestation.AttestationTypeZero.selector);
         vm.prank(alice);
-        adapter.attest(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED, cfid, bytes32(0), "");
+        adapter.attest(IERC8004AdapterAttestation.AttestationType.UNSPECIFIED, ubi, bytes32(0), "");
     }
 
     /// @dev What the enum buys over the previous open `bytes32` space: a value past the last member
@@ -239,7 +239,7 @@ contract Adapter8004AttestationTest is Test {
     function testOutOfRangeTypeIsRejectedByTheDecoder() external {
         vm.prank(alice);
         (bool ok,) = address(adapter).call(
-            abi.encodeWithSignature("attest(uint8,bytes32,bytes32,bytes)", uint8(6), cfid, bytes32(0), "")
+            abi.encodeWithSignature("attest(uint8,bytes32,bytes32,bytes)", uint8(6), ubi, bytes32(0), "")
         );
         assertFalse(ok, "out-of-range type refused by the decoder");
 
@@ -251,7 +251,7 @@ contract Adapter8004AttestationTest is Test {
             abi.encodeWithSignature(
                 "attest(uint8,bytes32,bytes32,bytes)",
                 uint8(IERC8004AdapterAttestation.AttestationType.INTERACTION),
-                cfid,
+                ubi,
                 bytes32(0),
                 new bytes(33)
             )
@@ -312,8 +312,8 @@ contract Adapter8004AttestationTest is Test {
         vm.record();
 
         vm.startPrank(alice);
-        adapter.attest(tReview, cfid, bytes32(uint256(3)), bytes("a review long enough to span words"));
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.attest(tReview, ubi, bytes32(uint256(3)), bytes("a review long enough to span words"));
+        adapter.confirmAdditionalAccount(ubi);
         adapter.revoke(keccak256("some id"));
         vm.stopPrank();
 
@@ -325,8 +325,8 @@ contract Adapter8004AttestationTest is Test {
     /// declared layout stay zero. Slot 4 is the last declared one, so 5 onward must never appear.
     function testSlotsAfterTheDeclaredLayoutStayZero() external {
         vm.startPrank(alice);
-        adapter.attest(tRating, cfid, bytes32(0), hex"32");
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.attest(tRating, ubi, bytes32(0), hex"32");
+        adapter.confirmAdditionalAccount(ubi);
         adapter.revoke(keccak256("some id"));
         vm.stopPrank();
 
@@ -350,8 +350,8 @@ contract Adapter8004AttestationTest is Test {
 
         vm.recordLogs();
         vm.startPrank(alice);
-        adapter.attest(tRating, cfid, bytes32(0), hex"32");
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.attest(tRating, ubi, bytes32(0), hex"32");
+        adapter.confirmAdditionalAccount(ubi);
         adapter.revoke(keccak256("some id"));
         vm.stopPrank();
 
@@ -380,7 +380,7 @@ contract Adapter8004AttestationTest is Test {
         // The adapter answers the interface cast, so an integrator can hold only the interface.
         IERC8004AdapterAttestation cast = IERC8004AdapterAttestation(address(adapter));
         vm.prank(alice);
-        cast.confirmAdditionalAccount(cfid);
+        cast.confirmAdditionalAccount(ubi);
     }
 
     /// @dev The enum numbering is identity-critical: the `uint8` is in the identifier preimage, so
@@ -431,14 +431,14 @@ contract Adapter8004AttestationTest is Test {
         vm.startPrank(alice, alice);
         // Warm the proxy, the implementation, and the memory the encoder grows into. Without this
         // the first measurement carries roughly 13,000 gas of one-off cold-access cost.
-        adapter.attest(tRating, cfid, bytes32(uint256(99)), hex"32");
+        adapter.attest(tRating, ubi, bytes32(uint256(99)), hex"32");
 
         uint256 before = gasleft();
-        adapter.attest(tRating, cfid, bytes32(0), hex"32");
+        adapter.attest(tRating, ubi, bytes32(0), hex"32");
         uint256 attestSmall = before - gasleft();
 
         before = gasleft();
-        adapter.confirmAdditionalAccount(cfid);
+        adapter.confirmAdditionalAccount(ubi);
         uint256 confirm = before - gasleft();
 
         before = gasleft();
@@ -462,14 +462,14 @@ contract Adapter8004AttestationTest is Test {
     /// memory already grown, while four kilobytes gives a clean per-byte figure.
     function testPayloadBytesAreThePayersCost() external {
         vm.startPrank(alice, alice);
-        adapter.attest(tReview, cfid, bytes32(uint256(99)), new bytes(32));
+        adapter.attest(tReview, ubi, bytes32(uint256(99)), new bytes(32));
 
         uint256 before = gasleft();
-        adapter.attest(tReview, cfid, bytes32(0), new bytes(32));
+        adapter.attest(tReview, ubi, bytes32(0), new bytes(32));
         uint256 small = before - gasleft();
 
         before = gasleft();
-        adapter.attest(tReview, cfid, bytes32(uint256(1)), new bytes(4096));
+        adapter.attest(tReview, ubi, bytes32(uint256(1)), new bytes(4096));
         uint256 large = before - gasleft();
         vm.stopPrank();
 

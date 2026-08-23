@@ -128,7 +128,7 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(uint256(vm.load(proxy, _mappingSlot(account, 2))), ~uint256(9));
         assertEq(
             vm.load(proxy, _mappingSlot(account, 3)),
-            ~adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token), 41)
+            ~adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 41)
         );
 
         // Slot 4 is past the declared layout now that the signed surface is gone, so it must stay

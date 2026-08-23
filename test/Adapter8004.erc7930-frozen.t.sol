@@ -19,7 +19,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// This contract used to carry its own ERC-7930 encoder. At `0.0.17` it adopted OpenZeppelin's
 /// `InteroperableAddress`. That swap is safe only for as long as OpenZeppelin's output stays
 /// byte-identical to what the old encoders produced, because this encoding is the preimage of every
-/// counterfactual `registrationHash` and every `attestationId` this contract has ever issued.
+/// UBI and every `attestationId` this contract has ever issued.
 ///
 /// The exposure is real and specific. The library's file is `draft-` prefixed, so OpenZeppelin owes
 /// no encoding stability across releases, and the dependency is a git submodule that somebody will
@@ -30,7 +30,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// So this file's job is to make that failure loud, immediately, and unmistakable. It pins the
 /// encoding three ways: against exact bytes derived from the ERC-7930 layout, against both former
 /// in-house encoders kept frozen as references, and against the published fixture vectors end to
-/// end through `registrationHash` and the attestation identifier.
+/// end through `ubiFor` and the attestation identifier.
 contract Adapter8004Erc7930FrozenTest is Test {
     address internal constant VECTOR_ADAPTER = 0x1111111111111111111111111111111111111111;
     address internal constant VECTOR_TOKEN = 0x2222222222222222222222222222222222222222;
@@ -38,11 +38,9 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
     /// @dev The published ERC-721 counterfactual identity for `(VECTOR_TOKEN, 42)` on Ethereum, from
     /// `docs/fixtures/adapter-counterfactual-hashes.md`.
-    bytes32 internal constant PUBLISHED_CFID_MAINNET =
-        0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
-    bytes32 internal constant PUBLISHED_CFID_BASE = 0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3;
-    bytes32 internal constant PUBLISHED_CFID_SEPOLIA =
-        0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
+    bytes32 internal constant PUBLISHED_UBI_MAINNET = 0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
+    bytes32 internal constant PUBLISHED_UBI_BASE = 0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3;
+    bytes32 internal constant PUBLISHED_UBI_SEPOLIA = 0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
 
     /// @dev Vector 1 from `docs/fixtures/adapter-attestation-ids.md`.
     bytes32 internal constant PUBLISHED_ATTESTATION_ID =
@@ -161,7 +159,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     /// The library is `draft-` prefixed, so OpenZeppelin does not owe us encoding stability, and a
     /// routine dependency bump is the realistic way this breaks.
     ///
-    /// The values below are the encoding every counterfactual `registrationHash` and every
+    /// The values below are the encoding every UBI and every
     /// `attestationId` this contract has ever issued was derived from. If the new library produces
     /// anything else, then adopting it would re-key every one of those identities silently — no
     /// revert, nothing visibly wrong, just a different agent named by the same inputs from that
@@ -440,21 +438,21 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.chainId(1);
         assertEq(
-            fx.registrationHash(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_CFID_MAINNET,
-            "published Ethereum cfid"
+            fx.ubiFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            PUBLISHED_UBI_MAINNET,
+            "published Ethereum ubi"
         );
         vm.chainId(8453);
         assertEq(
-            fx.registrationHash(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_CFID_BASE,
-            "published Base cfid"
+            fx.ubiFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            PUBLISHED_UBI_BASE,
+            "published Base ubi"
         );
         vm.chainId(11155111);
         assertEq(
-            fx.registrationHash(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_CFID_SEPOLIA,
-            "published Sepolia cfid"
+            fx.ubiFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            PUBLISHED_UBI_SEPOLIA,
+            "published Sepolia ubi"
         );
     }
 
@@ -466,7 +464,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.recordLogs();
         vm.prank(ALICE);
-        IERC8004AdapterAttestation(VECTOR_ADAPTER).confirmAdditionalAccount(PUBLISHED_CFID_MAINNET);
+        IERC8004AdapterAttestation(VECTOR_ADAPTER).confirmAdditionalAccount(PUBLISHED_UBI_MAINNET);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(logs.length, 1);
@@ -493,8 +491,8 @@ contract Adapter8004Erc7930FrozenTest is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(logs.length, 1);
         assertEq(logs[0].topics[0], IERC8004AdapterCounterfactual.CounterfactualAgentRegistered.selector);
-        assertEq(logs[0].topics[1], PUBLISHED_CFID_MAINNET, "the indexed identity is the published one");
-        assertEq(returned, PUBLISHED_CFID_MAINNET, "and so is the returned value");
+        assertEq(logs[0].topics[1], PUBLISHED_UBI_MAINNET, "the indexed identity is the published one");
+        assertEq(returned, PUBLISHED_UBI_MAINNET, "and so is the returned value");
     }
 
     // ----------------------------------------------------------------

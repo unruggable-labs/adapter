@@ -19,7 +19,7 @@ contract ConstructorAccountBinder {
     Adapter8004 private immutable ADAPTER;
 
     uint256 public agentId;
-    bytes32 public registrationHash;
+    bytes32 public ubi;
     uint256 public codeLengthDuringConstruction;
 
     constructor(Adapter8004 adapter, bool useCounterfactual) {
@@ -27,7 +27,7 @@ contract ConstructorAccountBinder {
         codeLengthDuringConstruction = address(this).code.length;
 
         if (useCounterfactual) {
-            registrationHash = adapter.counterfactualRegister(
+            ubi = adapter.counterfactualRegister(
                 IERCAgentBindings.TokenStandard.ACCOUNT, address(this), 0, "ipfs://ctor-cf"
             );
         } else {
@@ -85,20 +85,16 @@ contract Adapter8004AccountTest is Test {
 
     function testAccountCounterfactualRegisterFromCodelessAddress() external {
         vm.prank(eoa);
-        bytes32 registrationHash =
-            adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://cf");
+        bytes32 ubi = adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://cf");
         assertEq(
-            registrationHash,
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0),
+            ubi,
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0),
             "hash is the ACCOUNT identity for this pair"
         );
         // Inverted from the pre-`0.0.17` assertion, which required this to equal the hash for any
         // other standard at the same pair. The standard is in the preimage now, so `(eoa, 0)` claimed
         // as `ACCOUNT` and the same pair claimed as `ERC721` are two identities, not one.
-        assertTrue(
-            registrationHash != adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, eoa, 0),
-            "hash is standard-specific"
-        );
+        assertTrue(ubi != adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, eoa, 0), "hash is standard-specific");
     }
 
     /// @dev The motivating defect. Before this change the code test was the only gate, so whether an
@@ -217,8 +213,8 @@ contract Adapter8004AccountTest is Test {
 
         assertEq(binder.codeLengthDuringConstruction(), 0, "premise: no runtime code during construction");
         assertEq(
-            binder.registrationHash(),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
+            binder.ubi(),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
             "hash matches the pair under the standard it claimed"
         );
     }

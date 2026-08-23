@@ -77,7 +77,7 @@ Recorded under Removed below.
   revoke(bytes32 attestationId)
   ```
 
-  An attestation is a public statement about a counterfactual registration hash.
+  An attestation is a public statement about a UBI.
   Its meaning rests entirely on who made it, and who made it is always the caller.
   The contract records the statement, derives its identifier, and judges nothing
   else: not the target's existence, not the payload's shape, not the attester's
@@ -107,7 +107,7 @@ Recorded under Removed below.
   into one identifier that a single revocation erases. `variant` is the caller's
   opt-in within-block counterpart. There is deliberately **no domain constant**:
   nothing here is signed, and the interoperable address already binds the
-  preimage to this adapter on this chain, exactly as `registrationHash` binds.
+  preimage to this adapter on this chain, exactly as `ubiFor` binds.
   The two schemes cannot collide, because for one adapter the counterfactual
   preimage is a fixed 224 bytes and this one is at least 320.
 
@@ -206,15 +206,15 @@ Recorded under Removed below.
   there the registry verifies a deadline-bounded EIP-712 signature scoped to that
   agent and wallet, so naming a wallet other than the caller is the point.
 
-- **`registrationHashOf(uint256 agentId)`**, a view returning the counterfactual
+- **`ubiOf(uint256 agentId)`**, a view returning the counterfactual
   identity of an agent already registered through this adapter. It loads the
   stored binding and derives the identifier from those coordinates, so one call
-  replaces `bindingOf` followed by `registrationHash` and the answer is the same
+  replaces `bindingOf` followed by `ubiFor` and the answer is the same
   value. Unknown agents revert `UnknownAgent` rather than returning zero, sharing
   one definition of unknown with `bindingOf` through a new private
   `_knownBinding` helper that both use, and which `_requireController` now uses
   too. No storage is added and no new copy of the formula exists; the derivation
-  is the same internal helper `registrationHash` calls.
+  is the same internal helper `ubiFor` calls.
 
   It exists because attestations target counterfactual identifiers, and an
   integrator holding a registered `agentId` had to make two calls to find the one
@@ -313,6 +313,41 @@ Recorded under Removed below.
   sense of `For` into the name, and its delegated variant would have had to be
   `setAgentIDForWalletFor`.
 
+### Changed
+
+- **The counterfactual registration hash and the UBI are one concept with one
+  name.** They were always the same value computed by the same formula, and the
+  two names hid that. The identifier is determined by the coordinates alone, so it
+  exists whether or not an agent is ever registered; registering adds an agent id
+  alongside the UBI rather than creating it. The documentation now reads as one
+  concept throughout rather than as one concept under two names.
+
+  Two views are renamed, so **both selectors change**:
+
+  | Before | After | Selector |
+  |---|---|---|
+  | `registrationHashOf(uint256)` | `ubiOf(uint256)` | `0xda1b4b75` → `0x509e06dd` |
+  | `registrationHash(uint8,address,uint256)` | `ubiFor(uint8,address,uint256)` | `0xdb667f67` → `0x266224ca` |
+
+  `ubiOf` takes an agent id and answers for a registered agent; `ubiFor` takes raw
+  coordinates and answers for anything, registered or not. They return the same
+  value for the same binding, which is the point. The name `ubiFor` rather than a
+  bare `ubi` avoids a parameter named `ubi` shadowing a function of the same name
+  inside `attest` and `confirmAdditionalAccount`, and reads as one family with
+  `ubiOf`. The internal helpers moved with them, to `_ubi` and `_ubiFrom`.
+
+  The `bytes32 cfid` parameter on `attest` and `confirmAdditionalAccount` is now
+  `bytes32 ubi`, and the indexed `registrationHash` field on the counterfactual and
+  `WalletCounterfactualIDSet` events is now `ubi`. Neither costs anything: parameter
+  names are in no selector and no event `topic0`, so **every event topic is
+  unchanged** and the total selector count stays 53.
+
+  **Not renamed, deliberately.** The pre-ERC-7930 scheme every live proxy still
+  computes is a genuinely different value, not a UBI, so it keeps the words
+  registration hash wherever it is described, here and in the fixture. Superseded
+  fixture tables keep the terminology of the scheme they document, because renaming
+  them would misdescribe history rather than clarify it.
+
 ### Removed
 
 - **`setIdentityRegistry` is gone, and `identityRegistry` is now `immutable`.**
@@ -380,7 +415,7 @@ Recorded under Removed below.
   caller out to mislead an indexer can write `cfid`, `counterfactual-id` or any
   other suggestive spelling, so reserving exactly one gave false comfort.
 
-  The real defence is `registrationHashOf(agentId)`, added earlier in this
+  The real defence is `ubiOf(agentId)`, added earlier in this
   version. It derives an agent's identifier rather than storing it, so it cannot
   be spoofed, and it is the authoritative source. That also settles the earlier
   proposal to write `cf-registration` on every `register`, which was declined
@@ -449,7 +484,7 @@ Recorded under Removed below.
   counterfactual function reverts in that state, and requires all three
   attestation functions to go through; adding the modifier fails that test.
 
-- **No target validation.** A nonzero `cfid` that matches no claim passes on
+- **No target validation.** A nonzero `ubi` that matches no claim passes on
   purpose. Counterfactual registration writes no storage, so no set of "real"
   hashes exists to check against, and attesting ahead of an identity's first
   claim is the supported case rather than an edge one.
@@ -472,7 +507,7 @@ cost depends on the chain reference length:
 | --- | ---: | ---: | ---: |
 | `attest`, small payload | 7,581 | 7,581 | 7,581 |
 | `confirmAdditionalAccount` | 6,916 | 6,916 | 6,916 |
-| `registrationHash` | 5,749 | 5,749 | 5,749 |
+| `ubiFor` | 5,749 | 5,749 | 5,749 |
 | `revoke` | 1,889 | 1,889 | 1,889 |
 
 Flat across chains, which is itself the effect of the OpenZeppelin adoption: its
@@ -544,7 +579,7 @@ size, not gas.
   `test/Adapter8004.erc7930-frozen.t.sol` exists to make that loud: 26 tests
   pinning exact bytes for twelve chain ids on both shapes, three-way agreement
   across all 32 reference lengths, round trips through `parseEvmV1`, and the
-  published identities asserted end to end through `registrationHash`, the
+  published identities asserted end to end through `ubiFor`, the
   attestation identifier and a real counterfactual emission. One test,
   `testOpenZeppelinEncodingIsFrozen`, exists solely to fail on an upstream
   encoding change and says in its own comment that editing it is never the fix.
@@ -608,7 +643,7 @@ size, not gas.
   existence is far inside both.
 
   **Every identity this contract derives comes through this helper** — every
-  counterfactual `registrationHash`, every `attestationId`, and the EIP-712
+  UBI, every `attestationId`, and the EIP-712
   surface — and a one-byte divergence would silently re-key identities rather than
   revert. So byte-identity is the safety argument, not a nicety. The pre-rewrite
   encoder is kept verbatim as `ReferenceErc7930` in
@@ -626,7 +661,7 @@ size, not gas.
   | --- | ---: | ---: | ---: |
   | `attest`, small payload | 13,387 | 6,385 | −7,002 |
   | `confirmAdditionalAccount` | 12,904 | 5,902 | −7,002 |
-  | `registrationHash` | 9,647 | 2,645 | −7,002 |
+  | `ubiFor` | 9,647 | 2,645 | −7,002 |
   | `revoke` | 1,889 | 1,889 | 0 |
 
   Exactly one derivation's worth in each case.
@@ -655,7 +690,7 @@ size, not gas.
   changes no deployment property at all.
 
 - **The counterfactual identity gains the token standard.** The
-  `registrationHash` preimage becomes four components:
+  UBI preimage becomes four components:
 
   ```
   keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
@@ -696,10 +731,12 @@ size, not gas.
   never reorder, never remove a member.** The constraint is recorded on the enum
   in [`IERCAgentBindings.sol`](./src/interfaces/IERCAgentBindings.sol).
 
-- **`registrationHash(address,uint256)` is removed and replaced by
-  `registrationHash(TokenStandard,address,uint256)`.** The old selector is gone
-  rather than kept as an overload, deliberately: a stale caller reverts cleanly
-  instead of silently computing a hash that no longer identifies anything.
+- **`registrationHash(address,uint256)` is removed and replaced by the
+  coordinate-form view that is now called `ubiFor(TokenStandard,address,uint256)`.**
+  It carried the name `registrationHash` for most of this version and was renamed
+  with the rest of the terminology, recorded below. The old selector is gone rather
+  than kept as an overload, deliberately: a stale caller reverts cleanly instead of
+  silently computing a hash that no longer identifies anything.
 
 - **`setWalletCounterfactualID` and `setWalletCounterfactualIDFor` each
   gain a `TokenStandard` parameter**, immediately before `boundAddress`. Both old
@@ -711,7 +748,7 @@ size, not gas.
   `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
   `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
   `CounterfactualAgentWalletUnset`. This makes a log line verifiable on its own: a
-  reader recomputes the `registrationHash` the event names from the event's own
+  reader recomputes the UBI the event names from the event's own
   fields, with no lookup of the claim that created the identity.
   `CounterfactualAgentRegistered` already carried the standard. Every
   counterfactual `topic0` moves in this version, so indexers resubscribe to all
@@ -719,7 +756,7 @@ size, not gas.
   [`adapter-counterfactual-hashes.md`](./docs/fixtures/adapter-counterfactual-hashes.md).
 
 - **The reserved `extraData` discriminator is removed**, from the
-  `registrationHash` preimage and from every counterfactual event. The preimage
+  UBI preimage and from every counterfactual event. The preimage
   loses its trailing `bytes32` and seven events lose their `bytes32 extraData`
   field, so every counterfactual hash and every counterfactual `topic0` moves
   again within this version. The seven are the six on
@@ -780,7 +817,7 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | + the two combined wallet-id setters | 18,123 | 6,453 |
 | + the hash return on the combined setter | 18,125 | 6,451 |
 | + the hash return on the five updaters | 18,152 | 6,424 |
-| + `registrationHashOf`, − a duplicated unknown-agent check | 18,146 | 6,430 |
+| + `ubiOf`, − a duplicated unknown-agent check | 18,146 | 6,430 |
 | − the `cf-registration` reservation | 17,808 | 6,768 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated

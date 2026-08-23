@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 interface IERCAgentBindings {
     /// @dev **APPEND ONLY. NEVER RENUMBER, NEVER REORDER, NEVER REMOVE A MEMBER.** These numbers are
     /// identity-critical, not merely descriptive. The `uint8` of this enum sits in the preimage of
-    /// every counterfactual `registrationHash`, so renumbering a member silently re-keys every
+    /// every UBI, so renumbering a member silently re-keys every
     /// counterfactual identity claimed under it and every attestation and reverse pointer that names
     /// one. That is unrecoverable: nothing on chain records the old value, and the identities do not
     /// move with it. The numbers are also persisted inside each stored `Binding` and emitted in
@@ -64,5 +64,5 @@ interface IERCAgentBindings {
     /// Because a binding is immutable, an agent's UBI holds unchanged for the life of the identity.
     /// Querying an id that carries no binding reverts `UnknownAgent`.
     /// @dev ERC-8217 mandates this function on this interface.
-    function registrationHashOf(uint256 agentId) external view returns (bytes32);
+    function ubiOf(uint256 agentId) external view returns (bytes32);
 }

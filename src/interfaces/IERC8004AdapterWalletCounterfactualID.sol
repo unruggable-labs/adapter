@@ -5,18 +5,18 @@ import {IERCAgentBindings} from "./IERCAgentBindings.sol";
 
 /// @notice The counterfactual identity a wallet picks for itself, the counterfactual counterpart of
 /// `IERC8004AdapterWalletAgentID`. Values are always derived by the adapter from the standard and
-/// token coordinates using its canonical ERC-7930 registration hash. These assertions stay separate
+/// token coordinates using its canonical ERC-7930 UBI. These assertions stay separate
 /// from wallet agent ids and require reciprocal wallet-event
 /// verification.
 interface IERC8004AdapterWalletCounterfactualID {
     function WALLET_COUNTERFACTUAL_ID_UNSET() external pure returns (bytes32);
 
-    /// @notice `standard` is the `TokenStandard` folded into `registrationHash`. It is carried here
+    /// @notice `standard` is the `TokenStandard` folded into the UBI. It is carried here
     /// because `(boundAddress, tokenId)` alone does not name an identity, so a reader can recompute
     /// the hash from this one log line. See `IERC8004AdapterCounterfactual`.
     event WalletCounterfactualIDSet(
         address indexed account,
-        bytes32 indexed registrationHash,
+        bytes32 indexed ubi,
         address boundAddress,
         uint256 tokenId,
         IERCAgentBindings.TokenStandard standard,
@@ -25,7 +25,7 @@ interface IERC8004AdapterWalletCounterfactualID {
     event WalletCounterfactualIDCleared(address indexed account, address indexed clearedBy);
 
     /// @notice Record the caller's own wallet counterfactual id, named by standard and token
-    /// coordinates. The adapter derives the `registrationHash` itself, so a caller cannot assert a
+    /// coordinates. The adapter derives the UBI itself, so a caller cannot assert a
     /// hash it did not compute from a real triple. `standard` selects which identity is named: the
     /// same `(boundAddress, tokenId)` under two standards resolves to two different hashes. This is a
     /// self-assertion and is not proof: nothing here checks that the caller holds the token or would
@@ -33,7 +33,7 @@ interface IERC8004AdapterWalletCounterfactualID {
     /// treating it as identity. Emits `WalletCounterfactualIDSet` and returns the derived hash.
     function setWalletCounterfactualID(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
         external
-        returns (bytes32 registrationHash);
+        returns (bytes32 ubi);
 
     /// @notice Record `account`'s wallet counterfactual id on its behalf. Authorized when the
     /// caller is the account itself, its `owner()` or `getOwner()`, or a holder of its
@@ -44,7 +44,7 @@ interface IERC8004AdapterWalletCounterfactualID {
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId
-    ) external returns (bytes32 registrationHash);
+    ) external returns (bytes32 ubi);
 
     /// @notice Clear the caller's own wallet counterfactual id. Idempotent, and clearing an
     /// account that never set one still emits `WalletCounterfactualIDCleared`.
@@ -54,11 +54,11 @@ interface IERC8004AdapterWalletCounterfactualID {
     /// `setWalletCounterfactualIDFor`.
     function clearWalletCounterfactualIDFor(address account) external;
 
-    /// @notice Reverse-resolve an address to the registration hash it claims. Returns
+    /// @notice Reverse-resolve an address to the UBI it claims. Returns
     /// `WALLET_COUNTERFACTUAL_ID_UNSET` when the account has never set one or has cleared it.
     /// @dev Anyone reading the mapping directly rather than through this getter needs two facts. The
     /// stored word is the bitwise complement of the hash, not the hash, so that an unwritten slot and
     /// a real value can never be confused. An all-ones hash is rejected on write for the same reason,
     /// since its complement is zero.
-    function walletCounterfactualIDOf(address account) external view returns (bytes32 registrationHash);
+    function walletCounterfactualIDOf(address account) external view returns (bytes32 ubi);
 }

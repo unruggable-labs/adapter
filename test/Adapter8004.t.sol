@@ -344,7 +344,7 @@ contract Adapter8004Test is Test {
 
     // --- `cf-registration` is an ordinary key since `0.0.17`, so every path accepts it ---
     //  Inverted from asserting a revert. Only `agent-binding` is reserved, because only it is a
-    //  record this contract writes; `registrationHashOf` is the authoritative identifier source.
+    //  record this contract writes; `ubiOf` is the authoritative identifier source.
 
     function testRegisterAcceptsCfRegistrationKey() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
@@ -533,15 +533,15 @@ contract Adapter8004Test is Test {
             metadata,
             alice
         );
-        bytes32 registrationHash = adapter.counterfactualRegister(
+        bytes32 ubi = adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata
         );
 
-        assertEq(registrationHash, expectedHash);
+        assertEq(ubi, expectedHash);
     }
 
     function testRegistrationHashViewMatchesEncodingAndCounterfactualEventTopic() external {
-        bytes32 viewHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 viewHash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
         bytes32 expectedHash = keccak256(
             abi.encode(
                 adapter.interoperableAddress(address(adapter)),
@@ -575,11 +575,11 @@ contract Adapter8004Test is Test {
         );
 
         vm.prank(alice);
-        bytes32 registrationHash = adapter.counterfactualRegister(
+        bytes32 ubi = adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/cf"
         );
 
-        assertEq(registrationHash, expectedHash);
+        assertEq(ubi, expectedHash);
     }
 
     function testCounterfactualRegisterRejectsZeroTokenContract() external {
@@ -873,9 +873,9 @@ contract Adapter8004Test is Test {
     }
 
     function testCounterfactualRegistrationHashChangesWithChainId() external {
-        bytes32 atDefaultChain = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 atDefaultChain = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
         vm.chainId(424242);
-        bytes32 atOtherChain = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 atOtherChain = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
         assertTrue(atDefaultChain != atOtherChain);
         vm.prank(alice);
         bytes32 onAltChain =
@@ -888,13 +888,13 @@ contract Adapter8004Test is Test {
         // standard is both a preimage field and a parameter, so one token resolves to one hash *per
         // standard*, not to one hash overall. The hybrid-contract test covers the claim path.
         assertEq(
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
             "same standard, same pair, same identity"
         );
         assertTrue(
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1)
-                != adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155, address(token721), 1),
+            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1)
+                != adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC1155, address(token721), 1),
             "different standard, same pair, different identity"
         );
     }
@@ -902,14 +902,14 @@ contract Adapter8004Test is Test {
     function testHybridTokenContractHashIsStandardSpecific() external {
         // Inverted at `0.0.17`. A hybrid contract exposes token 77 under BOTH ERC-721 and ERC-1155.
         // Because the standard is part of the identity, the two claims resolve to DIFFERENT
-        // registration hashes: two identities, each with its own history, and neither supersedes the
+        // UBIs: two identities, each with its own history, and neither supersedes the
         // other. Before this version they collapsed to one hash and the later claim won.
         HybridERC721ERC1155 hybrid = new HybridERC721ERC1155();
         hybrid.mint721(alice, 77);
         hybrid.mint1155(alice, 77, 1);
 
-        bytes32 h721 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 77);
-        bytes32 h1155 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC1155, address(hybrid), 77);
+        bytes32 h721 = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 77);
+        bytes32 h1155 = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC1155, address(hybrid), 77);
 
         vm.startPrank(alice);
         bytes32 cf721 =

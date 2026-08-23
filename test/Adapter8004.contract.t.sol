@@ -32,7 +32,7 @@ contract ProbeTrapBinder is MockERC20 {
 /// @dev One contract that can claim under three standards at the same coordinate: an ERC-721-shaped
 /// collection whose ids are all unminted, so the temporary single-owner window is open for id 0, an
 /// account binding of itself, and an ownable-contract binding of itself. Used to pin the separation:
-/// `registrationHash` is computed from `(adapter, standard, boundAddress, tokenId)`, so the three
+/// `ubi` is computed from `(adapter, standard, boundAddress, tokenId)`, so the three
 /// claims land on three counterfactual identities and last-event-wins resolves within each one
 /// separately. Nothing about this depends on the fixture being a token; it inherits `MockERC20` only
 /// because that is a convenient concrete binder.
@@ -435,7 +435,7 @@ contract Adapter8004ContractBindingTest is Test {
     // -----------------------------------------------------------------
 
     function testEveryUnsignedCounterfactualWriterAcceptsTheBoundContract() external {
-        bytes32 expectedHash = adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
+        bytes32 expectedHash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
@@ -687,21 +687,20 @@ contract Adapter8004ContractBindingTest is Test {
     }
 
     // -----------------------------------------------------------------
-    //  Separation (the standard is part of registrationHash)
+    //  Separation (the standard is part of ubi)
     // -----------------------------------------------------------------
 
     /// @dev Inverted at `0.0.17`. This test previously asserted that the three claims below aliased
-    /// onto one `registrationHash` and were resolved by last-event-wins across standards. They no
+    /// onto one `ubi` and were resolved by last-event-wins across standards. They no
     /// longer do. The standard is in the preimage, so the contract that is also an ERC-721 collection
     /// claiming `(hybrid, 0)` three ways holds three separate identities, and no claimant's history
     /// can be superseded by, or attributed to, a claimant who reached the same pair through a
     /// different authority route.
     function testHybridContractGetsOneIdentityPerStandardRatherThanOneShared() external {
         HybridERC721Contract hybrid = new HybridERC721Contract(adapter);
-        bytes32 hash721 = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 0);
-        bytes32 hashAccount = adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(hybrid), 0);
-        bytes32 hashOwnable =
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(hybrid), 0);
+        bytes32 hash721 = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 0);
+        bytes32 hashAccount = adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(hybrid), 0);
+        bytes32 hashOwnable = adapter.ubiFor(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(hybrid), 0);
 
         assertTrue(hash721 != hashAccount, "ERC721 and ACCOUNT are different identities");
         assertTrue(hash721 != hashOwnable, "ERC721 and CONTRACT_OWNABLE are different identities");
@@ -775,8 +774,7 @@ contract Adapter8004ContractBindingTest is Test {
 
         // The permanent authority can re-emit a counterfactual claim at any later time...
         assertEq(
-            token.counterfactualRegister(0),
-            adapter.registrationHash(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0)
+            token.counterfactualRegister(0), adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0)
         );
 
         // ...and mint further, distinct ERC-8004 identities for the same contract, here through the
