@@ -99,8 +99,8 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         assertEq(adapter.counterfactualSetMetadataBatch(STD, address(token), 1, empty), published, "setMetadataBatch");
         assertEq(adapter.counterfactualSetAgentWallet(STD, address(token), 1, wallet), published, "setAgentWallet");
         assertEq(adapter.counterfactualUnsetAgentWallet(STD, address(token), 1), published, "unsetAgentWallet");
-        assertEq(adapter.counterfactualSetAgentWalletAndID(STD, address(token), 1), published, "setAgentWalletAndID");
-        assertEq(adapter.setWalletCounterfactualID(STD, address(token), 1), published, "setWalletCounterfactualID");
+        assertEq(adapter.counterfactualSetAgentWalletAndUBI(STD, address(token), 1), published, "setAgentWalletAndID");
+        assertEq(adapter.setWalletUBI(STD, address(token), 1), published, "setWalletUBI");
         uint256 agentId = adapter.register(STD, address(token), 1, "ipfs://agent");
         vm.stopPrank();
 

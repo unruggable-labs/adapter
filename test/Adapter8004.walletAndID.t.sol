@@ -65,74 +65,73 @@ contract Adapter8004WalletAndIDTest is Test {
     /// to skip coordinate validation too. That let a wallet name an identity no forward claim could
     /// ever match, which an indexer following the interface's own recompute-from-the-triple rule
     /// would then index as an identity that cannot exist.
-    function testWalletCounterfactualIDRejectsCoordinatesNoClaimCanMatch() external {
+    function testWalletUBIRejectsCoordinatesNoClaimCanMatch() external {
         // `ACCOUNT` with a nonzero id: rejected by both claim paths, so it must be rejected here.
         vm.expectRevert(
             abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
         );
         vm.prank(alice);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1);
 
         // The zero address is the unbound sentinel under every standard.
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         vm.prank(alice);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
 
         // A code-less address under a code-requiring standard.
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         vm.prank(alice);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, bob, 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, bob, 1);
 
         // The registry itself, which would resolve control to the adapter once bound.
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.BoundAddressIsRegistry.selector));
         vm.prank(alice);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(registry), 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(registry), 1);
 
         // Nothing was written by any of the four rejected calls.
-        assertEq(adapter.walletCounterfactualIDOf(alice), adapter.WALLET_COUNTERFACTUAL_ID_UNSET(), "no write");
+        assertEq(adapter.walletUBIOf(alice), adapter.WALLET_UBI_UNSET(), "no write");
     }
 
     /// @dev The `For` variant reaches the same private writer, so it must reject identically rather
     /// than becoming the way around the guard.
-    function testWalletCounterfactualIDForRejectsTheSameCoordinates() external {
+    function testWalletUBIForRejectsTheSameCoordinates() external {
         vm.expectRevert(
             abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
         );
         vm.prank(alice);
-        adapter.setWalletCounterfactualIDFor(alice, IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1);
+        adapter.setWalletUBIFor(alice, IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 1);
 
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         vm.prank(alice);
-        adapter.setWalletCounterfactualIDFor(alice, IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
+        adapter.setWalletUBIFor(alice, IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
     }
 
     /// @dev The guard must reject only what the claim paths already reject, so it cannot cost anyone
     /// a designation they could legitimately want. Each coordinate is put through
     /// `counterfactualRegister` first to establish that it is claimable, then designated.
-    function testWalletCounterfactualIDStillAcceptsEveryClaimableCoordinate() external {
+    function testWalletUBIStillAcceptsEveryClaimableCoordinate() external {
         // A token in a real collection, unowned by the designator and not yet registered.
         vm.prank(alice);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token), 1, "ipfs://a");
         vm.prank(bob);
-        bytes32 erc721 = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        bytes32 erc721 = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         assertEq(erc721, adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1));
 
         // `ACCOUNT` at its canonical id, against a code-less address, which the claim path allows.
         vm.prank(bob);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0, "ipfs://b");
         vm.prank(bob);
-        bytes32 account = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0);
+        bytes32 account = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0);
         assertEq(account, adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0));
-        assertEq(adapter.walletCounterfactualIDOf(bob), account, "the last designation stands");
+        assertEq(adapter.walletUBIOf(bob), account, "the last designation stands");
     }
 
     /// @dev A token that does not exist yet in a collection that does is still designatable, which is
     /// the counterfactual case the guard must not break. Only the collection needs code.
-    function testWalletCounterfactualIDStillAcceptsAnUnmintedTokenId() external {
+    function testWalletUBIStillAcceptsAnUnmintedTokenId() external {
         uint256 unminted = 999;
         vm.prank(bob);
-        bytes32 designated =
-            adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted);
+        bytes32 designated = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted);
         assertEq(designated, adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted));
     }
 
@@ -247,21 +246,21 @@ contract Adapter8004WalletAndIDTest is Test {
     function testCounterfactualCombinedMatchesTwoSeparateCalls() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory combined = vm.getRecordedLogs();
-        bytes32 combinedPointer = adapter.walletCounterfactualIDOf(alice);
+        bytes32 combinedPointer = adapter.walletUBIOf(alice);
 
         vm.prank(alice);
-        adapter.clearWalletCounterfactualID();
+        adapter.clearWalletUBI();
 
         vm.recordLogs();
         vm.startPrank(alice);
         adapter.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(token), 1, alice);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         vm.stopPrank();
         Vm.Log[] memory separate = vm.getRecordedLogs();
 
-        assertEq(adapter.walletCounterfactualIDOf(alice), combinedPointer, "same reverse record");
+        assertEq(adapter.walletUBIOf(alice), combinedPointer, "same reverse record");
         assertEq(combined.length, separate.length, "same number of events");
         for (uint256 i; i < combined.length; ++i) {
             assertEq(combined[i].emitter, separate[i].emitter, "same emitter");
@@ -277,21 +276,19 @@ contract Adapter8004WalletAndIDTest is Test {
     /// caller and for nobody else, so there is no way to designate an address that did not act.
     function testCounterfactualCombinedWritesTheReversePointerForTheCallerOnly() external {
         vm.prank(alice);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
 
         bytes32 identity = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
-        assertEq(adapter.walletCounterfactualIDOf(alice), identity, "the caller is the wallet");
-        assertEq(adapter.walletCounterfactualIDOf(bob), adapter.WALLET_COUNTERFACTUAL_ID_UNSET(), "and nobody else");
+        assertEq(adapter.walletUBIOf(alice), identity, "the caller is the wallet");
+        assertEq(adapter.walletUBIOf(bob), adapter.WALLET_UBI_UNSET(), "and nobody else");
         assertEq(
-            adapter.walletCounterfactualIDOf(address(wallet)),
-            adapter.WALLET_COUNTERFACTUAL_ID_UNSET(),
-            "not even a wallet the caller controls"
+            adapter.walletUBIOf(address(wallet)), adapter.WALLET_UBI_UNSET(), "not even a wallet the caller controls"
         );
 
         // The forward record names the caller too, so the two halves are about one actor.
         vm.recordLogs();
         vm.prank(alice);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory logs = vm.getRecordedLogs();
         (, address newWallet, address emitter) = abi.decode(logs[0].data, (uint8, address, address));
         assertEq(newWallet, alice, "forward: the wallet named is the caller");
@@ -306,7 +303,7 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.recordLogs();
         vm.prank(alice);
         bytes32 returned =
-            adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+            adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         assertEq(
@@ -315,42 +312,38 @@ contract Adapter8004WalletAndIDTest is Test {
             "matches the published derivation"
         );
         assertEq(logs[0].topics[1], returned, "matches the CounterfactualAgentWalletSet identity");
-        assertEq(logs[1].topics[2], returned, "matches the WalletCounterfactualIDSet identity");
-        assertEq(adapter.walletCounterfactualIDOf(alice), returned, "and the reverse pointer it wrote");
+        assertEq(logs[1].topics[2], returned, "matches the WalletUBISet identity");
+        assertEq(adapter.walletUBIOf(alice), returned, "and the reverse pointer it wrote");
 
         // The sibling it now matches returns the same value for the same coordinates.
         vm.prank(bob);
-        bytes32 sibling = adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
-        assertEq(sibling, returned, "same value as setWalletCounterfactualID");
+        bytes32 sibling = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        assertEq(sibling, returned, "same value as setWalletUBI");
     }
 
     function testCounterfactualCombinedRequiresTokenAuthority() external {
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, type(uint256).max));
         vm.prank(bob);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
     }
 
     /// @dev The forward guard runs first, so a rejected bound address leaves no reverse pointer.
     function testCounterfactualForwardFailureLeavesNoReversePointer() external {
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         vm.prank(alice);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
-        assertEq(
-            adapter.walletCounterfactualIDOf(alice),
-            adapter.WALLET_COUNTERFACTUAL_ID_UNSET(),
-            "no orphan reverse pointer"
-        );
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
+        assertEq(adapter.walletUBIOf(alice), adapter.WALLET_UBI_UNSET(), "no orphan reverse pointer");
     }
 
     function testCounterfactualCombinedOverwritesAnExistingDesignation() external {
         vm.startPrank(alice);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
-        bytes32 first = adapter.walletCounterfactualIDOf(alice);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        bytes32 first = adapter.walletUBIOf(alice);
 
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 2);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 2);
         vm.stopPrank();
 
-        bytes32 second = adapter.walletCounterfactualIDOf(alice);
+        bytes32 second = adapter.walletUBIOf(alice);
         assertTrue(first != second, "the pointer moved");
         assertEq(second, adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 2));
     }
@@ -361,12 +354,12 @@ contract Adapter8004WalletAndIDTest is Test {
     function testCounterfactualLoopVerifiesAfterTheCombinedCall() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.counterfactualSetAgentWalletAndID(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 expected = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         assertEq(logs[0].topics[1], expected, "forward: the wallet event names this identity");
-        assertEq(adapter.walletCounterfactualIDOf(alice), expected, "reverse: the caller names the identity");
+        assertEq(adapter.walletUBIOf(alice), expected, "reverse: the caller names the identity");
     }
 
     // ----------------------------------------------------------------

@@ -14,7 +14,7 @@ import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
 import {IInteroperableAddressView} from "./interfaces/IInteroperableAddressView.sol";
-import {IERC8004AdapterWalletCounterfactualID} from "./interfaces/IERC8004AdapterWalletCounterfactualID.sol";
+import {IERC8004AdapterWalletUBI} from "./interfaces/IERC8004AdapterWalletUBI.sol";
 import {IERC8004AdapterWalletAgentID} from "./interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistration.sol";
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
@@ -51,7 +51,7 @@ contract Adapter8004 is
     IERC8004AdapterCounterfactual,
     IInteroperableAddressView,
     IERC8004AdapterWalletAgentID,
-    IERC8004AdapterWalletCounterfactualID,
+    IERC8004AdapterWalletUBI,
     IERC8004AdapterAttestation
 {
     /// @notice The one reserved metadata key, rejected on every write path that accepts caller
@@ -104,7 +104,7 @@ contract Adapter8004 is
     /// value is reserved as the "unset" sentinel: it complements to zero in storage and would be
     /// indistinguishable from a never-written entry. Clear via `clearWalletAgentID[For]` instead.
     error WalletAgentIDReserved(uint256 agentId);
-    error WalletCounterfactualIDReserved(bytes32 ubi);
+    error WalletUBIReserved(bytes32 ubi);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
     /// @notice Thrown when an upgrade target was constructed with a different ERC-8004 registry than
@@ -143,14 +143,14 @@ contract Adapter8004 is
 
     /// @notice Full-system unset sentinel. Agent id zero remains representable.
     uint256 public constant WALLET_AGENT_ID_UNSET = type(uint256).max;
-    bytes32 public constant WALLET_COUNTERFACTUAL_ID_UNSET = bytes32(type(uint256).max);
+    bytes32 public constant WALLET_UBI_UNSET = bytes32(type(uint256).max);
 
     /// @dev Reverse claims. These two mappings occupy regular slots 2 and 3, in the order declared
     /// here, and are append-only: never reorder, insert between them, or repurpose one. They begin
     /// empty on a proxy upgraded from the deployed baseline, which holds slots 0 and 1 only. Slot 0
     /// is the only reserved slot and it sits behind them, not ahead.
     mapping(address account => uint256 complementAgentId) private _walletAgentID;
-    mapping(address account => bytes32 complementRegistrationHash) private _walletCounterfactualID;
+    mapping(address account => bytes32 complementRegistrationHash) private _walletUBI;
 
     /// @notice Bakes the ERC-8004 registry into this implementation and locks it there.
     /// @dev Every implementation carries its own registry, so an upgrade that would move the proxy
@@ -322,10 +322,12 @@ contract Adapter8004 is
     /// a loop that otherwise takes two transactions by two parties. Authorization is exactly
     /// `setAgentWallet`'s: the caller proves control of the agent, and nothing is asked of the
     /// wallet, which already consented through the EIP-712 signature the registry verifies.
-    /// @dev Verification is a read-time check that the forward and reverse records agree, so a
-    /// reverse pointer written to an unwilling wallet produces no false positive and that wallet
-    /// overwrites it with `setWalletAgentID`. Emits `AgentWalletSet` then `WalletAgentIDSet`, the
-    /// same pair the separate calls emit, and overwrites any existing designation on `newWallet`.
+    /// @dev The `ID` suffix is the `uint256` agent id, where `counterfactualSetAgentWalletAndUBI`
+    /// sets a `bytes32` UBI, so the two suffixes name the two kinds of identifier a wallet can hold.
+    /// Verification is a read-time check that the forward and reverse records agree, so a reverse
+    /// pointer written to an unwilling wallet produces no false positive and that wallet overwrites
+    /// it with `setWalletAgentID`; it emits `AgentWalletSet` then `WalletAgentIDSet`, the same pair
+    /// the separate calls emit, and overwrites any existing designation on `newWallet`.
     function setAgentWalletAndID(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature)
         external
         nonReentrant
@@ -567,7 +569,7 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualSetAgentWalletAndID(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function counterfactualSetAgentWalletAndUBI(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
         returns (bytes32 computedHash)
@@ -585,9 +587,9 @@ contract Adapter8004 is
         );
 
         // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
-        //    reserved-hash guard and emits `WalletCounterfactualIDSet`, and hand back the identity it
+        //    reserved-hash guard and emits `WalletUBISet`, and hand back the identity it
         //    derived so the caller does not recompute it.
-        computedHash = _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
+        computedHash = _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -665,38 +667,36 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
-    //  Wallet counterfactual id (reverse resolution: wallet -> UBI)
+    //  Wallet UBI (reverse resolution: wallet -> UBI)
     // -----------------------------------------------------------------
 
-    function setWalletCounterfactualID(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBI(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 computedHash)
     {
-        return _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
+        return _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
     }
 
-    function setWalletCounterfactualIDFor(
-        address account,
-        TokenStandard standard,
-        address boundAddress,
-        uint256 tokenId
-    ) external returns (bytes32 computedHash) {
+    function setWalletUBIFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
+        external
+        returns (bytes32 computedHash)
+    {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        return _setWalletCounterfactualID(account, standard, boundAddress, tokenId);
+        return _setWalletUBI(account, standard, boundAddress, tokenId);
     }
 
-    function clearWalletCounterfactualID() external {
-        _clearWalletCounterfactualID(msg.sender);
+    function clearWalletUBI() external {
+        _clearWalletUBI(msg.sender);
     }
 
-    function clearWalletCounterfactualIDFor(address account) external {
+    function clearWalletUBIFor(address account) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _clearWalletCounterfactualID(account);
+        _clearWalletUBI(account);
     }
 
-    function walletCounterfactualIDOf(address account) external view returns (bytes32) {
-        bytes32 stored = _walletCounterfactualID[account];
-        return stored == bytes32(0) ? WALLET_COUNTERFACTUAL_ID_UNSET : ~stored;
+    function walletUBIOf(address account) external view returns (bytes32) {
+        bytes32 stored = _walletUBI[account];
+        return stored == bytes32(0) ? WALLET_UBI_UNSET : ~stored;
     }
 
     /// @dev Validates the coordinates before deriving from them, so this path cannot name an identity
@@ -704,7 +704,7 @@ contract Adapter8004 is
     /// pointing at an identity asserts nothing about that identity, but a coordinate the claim paths
     /// reject is one nothing can ever resolve to. Placed here rather than in the two entry points so
     /// a future caller stays covered.
-    function _setWalletCounterfactualID(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
+    function _setWalletUBI(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 computedHash)
     {
@@ -713,15 +713,15 @@ contract Adapter8004 is
 
         computedHash = _ubi(standard, boundAddress, tokenId);
         if (computedHash == bytes32(type(uint256).max)) {
-            revert WalletCounterfactualIDReserved(computedHash);
+            revert WalletUBIReserved(computedHash);
         }
-        _walletCounterfactualID[account] = ~computedHash;
-        emit WalletCounterfactualIDSet(account, computedHash, boundAddress, tokenId, standard, msg.sender);
+        _walletUBI[account] = ~computedHash;
+        emit WalletUBISet(account, computedHash, boundAddress, tokenId, standard, msg.sender);
     }
 
-    function _clearWalletCounterfactualID(address account) private {
-        delete _walletCounterfactualID[account];
-        emit WalletCounterfactualIDCleared(account, msg.sender);
+    function _clearWalletUBI(address account) private {
+        delete _walletUBI[account];
+        emit WalletUBICleared(account, msg.sender);
     }
 
     // -----------------------------------------------------------------

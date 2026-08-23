@@ -458,7 +458,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
         tokenId,
         agentURI
     );
-    // Optional URI, metadata, or wallet counterfactual setters may run here too.
+    // Optional URI, metadata, or wallet UBI setters may run here too.
     _mint(buyer, tokenId);
 }
 ```
@@ -538,7 +538,7 @@ Reserved key on the counterfactual write surface: `agent-binding`, and nothing e
 
 ### Independent wallet-id systems
 
-A wallet picks one agent id and one counterfactual identity to speak for it. Both are needed because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. These two mappings are how the wallet chooses. The adapter keeps them structurally separate. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 ubi`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
+A wallet picks one agent id and one UBI to speak for it. Both are needed because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. These two mappings are how the wallet chooses. The adapter keeps them structurally separate. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 ubi`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
 
 Full ERC-8004:
 
@@ -547,20 +547,20 @@ Full ERC-8004:
 - `walletAgentIDOf(account) -> uint256`
 - `setAgentWalletAndID(agentId, newWallet, deadline, signature)` sets the agent's wallet and points
   that wallet back at the agent in one call, with the same authorization `setAgentWallet` requires
-- `counterfactualSetAgentWalletAndID(standard, boundAddress, tokenId) -> bytes32` does the same on
+- `counterfactualSetAgentWalletAndUBI(standard, boundAddress, tokenId) -> bytes32` does the same on
   the counterfactual path, naming the caller as the wallet and returning the identity it derived. No signature is needed because the caller
   proves control of the token and is the wallet, so one actor is authorized on both sides and two
   agreeing records mean something. Naming a different wallet is still possible through
-  `counterfactualSetAgentWallet` plus `setWalletCounterfactualIDFor`, which prove less
+  `counterfactualSetAgentWallet` plus `setWalletUBIFor`, which prove less
 - unset is `WALLET_AGENT_ID_UNSET == type(uint256).max`; agent ID `0` is valid
 
 Counterfactual:
 
-- `setWalletCounterfactualID(standard, boundAddress, tokenId)` / `setWalletCounterfactualIDFor(account, standard, boundAddress, tokenId)`
-- `clearWalletCounterfactualID()` / `clearWalletCounterfactualIDFor(account)`
-- `walletCounterfactualIDOf(account) -> bytes32`
+- `setWalletUBI(standard, boundAddress, tokenId)` / `setWalletUBIFor(account, standard, boundAddress, tokenId)`
+- `clearWalletUBI()` / `clearWalletUBIFor(account)`
+- `walletUBIOf(account) -> bytes32`
 - setters derive the hash; callers cannot store an arbitrary value
-- unset is `WALLET_COUNTERFACTUAL_ID_UNSET == bytes32(type(uint256).max)`
+- unset is `WALLET_UBI_UNSET == bytes32(type(uint256).max)`
 
 `...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. Both are set directly by a controller, so both cost the caller gas. An earlier build carried a signed, relayer-submittable variant of the full-system setters; it was removed at `0.0.17` before any deployment, and `setWalletAgentIDFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
 
@@ -693,11 +693,11 @@ Counterfactual (emit-only) functions:
 - `clearWalletAgentID()`
 - `clearWalletAgentIDFor(address account)`
 - `walletAgentIDOf(address account)`
-- `setWalletCounterfactualID(TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `setWalletCounterfactualIDFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `clearWalletCounterfactualID()`
-- `clearWalletCounterfactualIDFor(address account)`
-- `walletCounterfactualIDOf(address account)`
+- `setWalletUBI(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `setWalletUBIFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `clearWalletUBI()`
+- `clearWalletUBIFor(address account)`
+- `walletUBIOf(address account)`
 
 ERC-required verification function:
 

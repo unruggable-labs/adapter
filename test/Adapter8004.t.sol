@@ -1018,7 +1018,7 @@ contract Adapter8004Test is Test {
         );
         vm.startPrank(alice);
         adapter.setWalletAgentID(agentId);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
         vm.stopPrank();
 
         assertEq(vm.load(address(adapter), bytes32(uint256(0))), sentinel, "slot 0 must never be touched");
@@ -1033,8 +1033,7 @@ contract Adapter8004Test is Test {
             "_walletAgentID at slot 2"
         );
         assertTrue(
-            vm.load(address(adapter), keccak256(abi.encode(alice, uint256(3)))) != bytes32(0),
-            "_walletCounterfactualID at slot 3"
+            vm.load(address(adapter), keccak256(abi.encode(alice, uint256(3)))) != bytes32(0), "_walletUBI at slot 3"
         );
 
         // And nothing was appended past the last declared mapping.

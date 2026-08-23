@@ -117,12 +117,12 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 41);
         assertEq(adapter.walletAgentIDOf(account), type(uint256).max);
-        assertEq(adapter.walletCounterfactualIDOf(account), bytes32(type(uint256).max));
+        assertEq(adapter.walletUBIOf(account), bytes32(type(uint256).max));
         _assertSlotsTwoAndThreeEmpty(proxy);
 
         vm.startPrank(account);
         adapter.setWalletAgentID(9);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token), 41);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 41);
         vm.stopPrank();
 
         assertEq(uint256(vm.load(proxy, _mappingSlot(account, 2))), ~uint256(9));

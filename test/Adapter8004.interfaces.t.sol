@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IInteroperableAddressView} from "../src/interfaces/IInteroperableAddressView.sol";
-import {IERC8004AdapterWalletCounterfactualID} from "../src/interfaces/IERC8004AdapterWalletCounterfactualID.sol";
+import {IERC8004AdapterWalletUBI} from "../src/interfaces/IERC8004AdapterWalletUBI.sol";
 import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRecord} from "../src/interfaces/IERC8004IdentityRecord.sol";
@@ -52,13 +52,12 @@ contract Adapter8004InterfacesTest is Test {
 
     function testPrimaryInterfacesCastAndSelectors() external {
         IERC8004AdapterWalletAgentID full = IERC8004AdapterWalletAgentID(address(adapter));
-        IERC8004AdapterWalletCounterfactualID cf = IERC8004AdapterWalletCounterfactualID(address(adapter));
+        IERC8004AdapterWalletUBI cf = IERC8004AdapterWalletUBI(address(adapter));
         assertEq(full.walletAgentIDOf(alice), type(uint256).max);
-        assertEq(cf.walletCounterfactualIDOf(alice), bytes32(type(uint256).max));
+        assertEq(cf.walletUBIOf(alice), bytes32(type(uint256).max));
         assertEq(IERC8004AdapterWalletAgentID.setWalletAgentID.selector, bytes4(keccak256("setWalletAgentID(uint256)")));
         assertEq(
-            IERC8004AdapterWalletCounterfactualID.setWalletCounterfactualID.selector,
-            bytes4(keccak256("setWalletCounterfactualID(uint8,address,uint256)"))
+            IERC8004AdapterWalletUBI.setWalletUBI.selector, bytes4(keccak256("setWalletUBI(uint8,address,uint256)"))
         );
         (bool oldNonceGetter,) = address(adapter).staticcall(abi.encodeWithSignature("nonces(address)", alice));
         assertFalse(oldNonceGetter);
@@ -163,9 +162,9 @@ contract Adapter8004InterfacesTest is Test {
         vm.prank(alice);
         adapter.clearWalletAgentID();
         vm.prank(alice);
-        adapter.setWalletCounterfactualID(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
         vm.prank(alice);
-        adapter.clearWalletCounterfactualID();
+        adapter.clearWalletUBI();
 
         bytes32[4] memory oldTopics = [
             keccak256("PrimaryAgentSet(address,uint256,address)"),
@@ -228,8 +227,8 @@ contract Adapter8004InterfacesTest is Test {
         // implementations exactly; `counterfactualRegister` is overloaded, so `.selector` is
         // ambiguous on it and both of its overloads are exercised by call below instead.
         assertEq(
-            IERC8004AdapterCounterfactual.counterfactualSetAgentWalletAndID.selector,
-            bytes4(keccak256("counterfactualSetAgentWalletAndID(uint8,address,uint256)"))
+            IERC8004AdapterCounterfactual.counterfactualSetAgentWalletAndUBI.selector,
+            bytes4(keccak256("counterfactualSetAgentWalletAndUBI(uint8,address,uint256)"))
         );
         assertEq(
             IERC8004AdapterCounterfactual.counterfactualUnsetAgentWallet.selector,
@@ -291,8 +290,8 @@ contract Adapter8004InterfacesTest is Test {
             keccak256("WalletAgentIDSet(address,uint256,address)")
         );
         assertEq(
-            IERC8004AdapterWalletCounterfactualID.WalletCounterfactualIDSet.selector,
-            keccak256("WalletCounterfactualIDSet(address,bytes32,address,uint256,uint8,address)")
+            IERC8004AdapterWalletUBI.WalletUBISet.selector,
+            keccak256("WalletUBISet(address,bytes32,address,uint256,uint8,address)")
         );
     }
 

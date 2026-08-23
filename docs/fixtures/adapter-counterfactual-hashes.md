@@ -176,7 +176,7 @@ before the upgrade.
 The counterfactual event signatures changed alongside each scheme, and `topic0` is the keccak of the
 full signature, so it discriminates schema on its own. At v0.0.15 every event gained a non-indexed
 `bytes32 extraData` and the former `uint8 version` field was removed. At v0.0.17 the five
-counterfactual update events and `WalletCounterfactualIDSet` each gained a non-indexed `uint8
+counterfactual update events and `WalletUBISet` each gained a non-indexed `uint8
 standard`, and then `extraData` was dropped from all six of those plus `CounterfactualAgentRegistered`
 and `CounterfactualAgentWalletUnset`, so `topic0` moved once more for every counterfactual event. A
 single log line still carries everything needed to recompute the hash it names. The current values
@@ -190,4 +190,4 @@ are:
 | `CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)` | `0xeae9f3081237409ccdb4af04402271802d256ead57b5ca5eefb6b0b61c62715a` |
 | `CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)` | `0xe8fa73832d285f8d56860e6d330c5b5fd1793f142062ccfa2cd2f9322f96b7e8` |
 | `CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)` | `0x531cc4f9206c5d286ad84b9b965069e88bfd025f84a64b41bb58d9bfb3b503d8` |
-| `WalletCounterfactualIDSet(address,bytes32,address,uint256,uint8,address)` | `0xc53d80905aaf1d8095f570fa85c068ab1a7e1e496c173d5cf3f3d3761b56a761` |
+| `WalletUBISet(address,bytes32,address,uint256,uint8,address)` | `0xc53d80905aaf1d8095f570fa85c068ab1a7e1e496c173d5cf3f3d3761b56a761` |

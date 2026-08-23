@@ -30,8 +30,8 @@ is not a substitute and does not prove the mapping is empty, for the reason set 
 
 At the cutover block:
 
-- start separate wallet agent id and wallet counterfactual id projections;
-- subscribe to the `WalletAgentIDSet` / `WalletAgentIDCleared` topics and the `WalletCounterfactualIDSet` / `WalletCounterfactualIDCleared` family. These were named `Primary*` in an earlier build and every one of those topic0 values changed with the rename;
+- start separate wallet agent id and wallet UBI projections;
+- subscribe to the `WalletAgentIDSet` / `WalletAgentIDCleared` topics and the `WalletUBISet` / `WalletUBICleared` family. These were named `Primary*` in an earlier build and every one of those topic0 values changed with the rename;
 - validate every counterfactual indexed hash as
   `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId))`,
   with the dynamic adapter bytes carrying the full chain plus proxy address, `boundAddress` kept as a
@@ -44,7 +44,7 @@ At the cutover block:
 
 Counterfactual event topic0 values change as well as their indexed hash values. Every counterfactual
 event gained a non-indexed `bytes32 extraData` at `0.0.15`; at `0.0.17` the five update events and
-`WalletCounterfactualIDSet` each gained a non-indexed `uint8 standard`, and then `extraData` was
+`WalletUBISet` each gained a non-indexed `uint8 standard`, and then `extraData` was
 dropped from all seven. Every counterfactual topic0 therefore differs from `0.0.15`, including
 `CounterfactualAgentRegistered`, so subscriptions must be rewritten rather than reused. The current
 values are tabulated in

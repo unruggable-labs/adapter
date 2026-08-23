@@ -206,7 +206,7 @@ interface IERC8004AdapterCounterfactual {
     /// existing designation on the caller is overwritten.
     /// @return computedHash The identity named, matching
     /// `ubiFor(standard, boundAddress, tokenId)` and the hash both emitted events carry.
-    function counterfactualSetAgentWalletAndID(
+    function counterfactualSetAgentWalletAndUBI(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId

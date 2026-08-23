@@ -7,7 +7,7 @@ Captured with `forge inspect Adapter8004 storageLayout`:
 | 0 | `__deadRegistrySlot` | `uint256` | **DEAD. RESERVED FOREVER. NEVER REUSE.** |
 | 1 | `_bindings` | `mapping(uint256 => Binding)` | unchanged |
 | 2 | `_walletAgentID` | `mapping(address => uint256)` | appended full pointer |
-| 3 | `_walletCounterfactualID` | `mapping(address => bytes32)` | appended CF pointer |
+| 3 | `_walletUBI` | `mapping(address => bytes32)` | appended CF pointer |
 
 **Regular storage now begins at slot 1 and ends at slot 3.** Slot 0 held `identityRegistry` until
 `0.0.17` made that field `immutable`, moving it out of proxy storage and into each implementation's
@@ -17,7 +17,7 @@ value. `uint256 private __deadRegistrySlot` exists solely to hold the slot down.
 
 Removing the placeholder is not a tidy-up; it is a corruption. Verified with
 `forge inspect Adapter8004 storageLayout` rather than reasoned about: without it `_bindings` moves
-to slot 0, `_walletAgentID` to 1 and `_walletCounterfactualID` to 2, so every existing binding would
+to slot 0, `_walletAgentID` to 1 and `_walletUBI` to 2, so every existing binding would
 be read against the old registry address. `testRegularStorageBeginsAtSlotOneAndSlotZeroIsUnused`
 fails if that ever happens. A fourth mapping, `_primaryAgentNonces`, backed the signed
 primary-agent surface and was removed at `0.0.17`; it was never written on any chain, because no
