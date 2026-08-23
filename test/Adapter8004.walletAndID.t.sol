@@ -7,6 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
+import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
@@ -58,7 +59,7 @@ contract Adapter8004WalletAndIDTest is Test {
     }
 
     // ----------------------------------------------------------------
-    //  Coordinate validation on the wallet-counterfactual-id path
+    //  Coordinate validation on the wallet UBI path
     // ----------------------------------------------------------------
 
     /// @dev These two setters write and emit without checking authority, deliberately, but they used
@@ -88,8 +89,8 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.prank(alice);
         adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(registry), 1);
 
-        // Nothing was written by any of the four rejected calls.
-        assertEq(adapter.walletUBIOf(alice), adapter.WALLET_UBI_UNSET(), "no write");
+        // Nothing was recorded by any of the four rejected calls.
+        assertEq(_designationOf(alice), bytes32(0), "no designation recorded");
     }
 
     /// @dev The `For` variant reaches the same private writer, so it must reject identically rather
@@ -110,6 +111,7 @@ contract Adapter8004WalletAndIDTest is Test {
     /// a designation they could legitimately want. Each coordinate is put through
     /// `counterfactualRegister` first to establish that it is claimable, then designated.
     function testWalletUBIStillAcceptsEveryClaimableCoordinate() external {
+        vm.recordLogs();
         // A token in a real collection, unowned by the designator and not yet registered.
         vm.prank(alice);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token), 1, "ipfs://a");
@@ -123,7 +125,7 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.prank(bob);
         bytes32 account = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0);
         assertEq(account, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0));
-        assertEq(adapter.walletUBIOf(bob), account, "the last designation stands");
+        assertEq(_designationOf(bob), account, "the last designation stands under the projection rule");
     }
 
     /// @dev A token that does not exist yet in a collection that does is still designatable, which is
@@ -133,107 +135,6 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.prank(bob);
         bytes32 designated = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted);
         assertEq(designated, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted));
-    }
-
-    // ----------------------------------------------------------------
-    //  Registered path
-    // ----------------------------------------------------------------
-
-    /// @dev The whole point of the surface: one call must leave exactly the state and the logs that
-    /// the two calls leave, so an indexer needs no new subscription and the existing projection keeps
-    /// working unchanged.
-    function testRegisteredCombinedMatchesTwoSeparateCalls() external {
-        uint256 combinedAgent = _register(1);
-        uint256 deadline = block.timestamp + 4 minutes;
-
-        vm.recordLogs();
-        vm.prank(alice);
-        adapter.setAgentWalletAndID(combinedAgent, address(wallet), deadline, hex"00");
-        Vm.Log[] memory combined = vm.getRecordedLogs();
-        uint256 combinedPointer = adapter.walletAgentIDOf(address(wallet));
-        address combinedWallet = registry.getAgentWallet(combinedAgent);
-
-        // Reset the reverse pointer so the second route starts from the same place.
-        vm.prank(alice);
-        adapter.clearWalletAgentIDFor(address(wallet));
-
-        uint256 separateAgent = _register(2);
-        vm.recordLogs();
-        vm.startPrank(alice);
-        adapter.setAgentWallet(separateAgent, address(wallet), deadline, hex"00");
-        adapter.setWalletAgentIDFor(address(wallet), separateAgent);
-        vm.stopPrank();
-        Vm.Log[] memory separate = vm.getRecordedLogs();
-
-        assertEq(registry.getAgentWallet(separateAgent), combinedWallet, "same forward record");
-        assertEq(combinedPointer, combinedAgent, "combined: the wallet points back at its agent");
-        assertEq(adapter.walletAgentIDOf(address(wallet)), separateAgent, "separate: the same, for its agent");
-        _assertAdapterLogsMatch(combined, separate, combinedAgent, separateAgent);
-    }
-
-    /// @dev The forward write failing must take the reverse write with it. This matters most here,
-    /// because the registry can reject the wallet signature after the caller has already proved
-    /// control of the agent.
-    function testRegisteredForwardFailureLeavesNoReversePointer() external {
-        uint256 agentId = _register(1);
-        assertEq(adapter.walletAgentIDOf(alice), adapter.WALLET_AGENT_ID_UNSET(), "premise: unset");
-
-        // An EOA wallet cannot answer ERC-1271, so the registry rejects the signature.
-        vm.expectRevert();
-        vm.prank(alice);
-        adapter.setAgentWalletAndID(agentId, bob, block.timestamp + 4 minutes, hex"00");
-
-        assertEq(adapter.walletAgentIDOf(bob), adapter.WALLET_AGENT_ID_UNSET(), "no orphan reverse pointer");
-        assertEq(registry.getAgentWallet(agentId), address(0), "and no forward record");
-    }
-
-    function testRegisteredCombinedRequiresAgentControl() external {
-        uint256 agentId = _register(1);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, agentId));
-        vm.prank(bob);
-        adapter.setAgentWalletAndID(agentId, address(wallet), block.timestamp + 4 minutes, hex"00");
-    }
-
-    /// @dev Overwriting is intended, not incidental. A wallet designated for one agent and then named
-    /// by another ends up pointing at the second, and the first agent's forward record is untouched.
-    function testRegisteredCombinedOverwritesAnExistingDesignation() external {
-        uint256 first = _register(1);
-        uint256 second = _register(2);
-        uint256 deadline = block.timestamp + 4 minutes;
-
-        vm.startPrank(alice);
-        adapter.setAgentWalletAndID(first, address(wallet), deadline, hex"00");
-        assertEq(adapter.walletAgentIDOf(address(wallet)), first);
-
-        adapter.setAgentWalletAndID(second, address(wallet), deadline, hex"00");
-        vm.stopPrank();
-
-        assertEq(adapter.walletAgentIDOf(address(wallet)), second, "the later call wins");
-        assertEq(registry.getAgentWallet(first), address(wallet), "the first agent still names the wallet");
-    }
-
-    /// @dev Read-time verification, which is what makes the missing wallet-side gate a decision
-    /// rather than an oversight: the loop is closed when the forward and reverse records agree.
-    function testRegisteredLoopVerifiesAfterTheCombinedCall() external {
-        uint256 agentId = _register(1);
-        vm.prank(alice);
-        adapter.setAgentWalletAndID(agentId, address(wallet), block.timestamp + 4 minutes, hex"00");
-
-        assertEq(registry.getAgentWallet(agentId), address(wallet), "forward: agent names the wallet");
-        assertEq(adapter.walletAgentIDOf(address(wallet)), agentId, "reverse: wallet names the agent");
-    }
-
-    /// @dev And a wallet that did not want the designation overwrites it itself, which is why a
-    /// wrongly written reverse pointer produces no lasting false positive.
-    function testWalletCanOverwriteAnUnwantedDesignation() external {
-        uint256 agentId = _register(1);
-        vm.prank(alice);
-        adapter.setAgentWalletAndID(agentId, address(wallet), block.timestamp + 4 minutes, hex"00");
-        assertEq(adapter.walletAgentIDOf(address(wallet)), agentId);
-
-        vm.prank(address(wallet));
-        adapter.clearWalletAgentID();
-        assertEq(adapter.walletAgentIDOf(address(wallet)), adapter.WALLET_AGENT_ID_UNSET(), "wallet has the last word");
     }
 
     // ----------------------------------------------------------------
@@ -248,10 +149,6 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.prank(alice);
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory combined = vm.getRecordedLogs();
-        bytes32 combinedPointer = adapter.walletUBIOf(alice);
-
-        vm.prank(alice);
-        adapter.clearWalletUBI();
 
         vm.recordLogs();
         vm.startPrank(alice);
@@ -260,7 +157,6 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.stopPrank();
         Vm.Log[] memory separate = vm.getRecordedLogs();
 
-        assertEq(adapter.walletUBIOf(alice), combinedPointer, "same reverse record");
         assertEq(combined.length, separate.length, "same number of events");
         for (uint256 i; i < combined.length; ++i) {
             assertEq(combined[i].emitter, separate[i].emitter, "same emitter");
@@ -279,11 +175,6 @@ contract Adapter8004WalletAndIDTest is Test {
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
 
         bytes32 identity = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
-        assertEq(adapter.walletUBIOf(alice), identity, "the caller is the wallet");
-        assertEq(adapter.walletUBIOf(bob), adapter.WALLET_UBI_UNSET(), "and nobody else");
-        assertEq(
-            adapter.walletUBIOf(address(wallet)), adapter.WALLET_UBI_UNSET(), "not even a wallet the caller controls"
-        );
 
         // The forward record names the caller too, so the two halves are about one actor.
         vm.recordLogs();
@@ -293,6 +184,10 @@ contract Adapter8004WalletAndIDTest is Test {
         (, address newWallet, address emitter) = abi.decode(logs[0].data, (uint8, address, address));
         assertEq(newWallet, alice, "forward: the wallet named is the caller");
         assertEq(emitter, alice, "forward: emitted by the caller");
+
+        assertEq(_project(logs, alice), identity, "the caller is the wallet");
+        assertEq(_project(logs, bob), bytes32(0), "and nobody else");
+        assertEq(_project(logs, address(wallet)), bytes32(0), "not even a wallet the caller controls");
     }
 
     /// @dev The returned hash is pinned to two independent things, not just to itself: the published
@@ -313,7 +208,7 @@ contract Adapter8004WalletAndIDTest is Test {
         );
         assertEq(logs[0].topics[1], returned, "matches the CounterfactualAgentWalletSet identity");
         assertEq(logs[1].topics[2], returned, "matches the WalletUBISet identity");
-        assertEq(adapter.walletUBIOf(alice), returned, "and the reverse pointer it wrote");
+        assertEq(_project(logs, alice), returned, "and the designation a reader projects from it");
 
         // The sibling it now matches returns the same value for the same coordinates.
         vm.prank(bob);
@@ -332,20 +227,23 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
         vm.prank(alice);
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(0), 1);
-        assertEq(adapter.walletUBIOf(alice), adapter.WALLET_UBI_UNSET(), "no orphan reverse pointer");
+        assertEq(_designationOf(alice), bytes32(0), "no orphan reverse record");
     }
 
+    /// @dev Latest-wins is a projection rule now rather than an overwrite, so the test reads both
+    /// events and applies it rather than reading a slot that no longer exists.
     function testCounterfactualCombinedOverwritesAnExistingDesignation() external {
+        vm.recordLogs();
         vm.startPrank(alice);
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
-        bytes32 first = adapter.walletUBIOf(alice);
-
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 2);
         vm.stopPrank();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 second = adapter.walletUBIOf(alice);
-        assertTrue(first != second, "the pointer moved");
-        assertEq(second, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 2));
+        bytes32 first = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        bytes32 second = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 2);
+        assertTrue(first != second, "premise: two different identities");
+        assertEq(_project(logs, alice), second, "the later designation wins in log order");
     }
 
     /// @dev Read-time verification on this path now means something: the forward record names the
@@ -359,12 +257,32 @@ contract Adapter8004WalletAndIDTest is Test {
 
         bytes32 expected = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         assertEq(logs[0].topics[1], expected, "forward: the wallet event names this identity");
-        assertEq(adapter.walletUBIOf(alice), expected, "reverse: the caller names the identity");
+        assertEq(_project(logs, alice), expected, "reverse: the caller names the identity");
     }
 
     // ----------------------------------------------------------------
     //  Helpers
     // ----------------------------------------------------------------
+
+    /// @dev The published projection rule, implemented once so the tests assert the same thing an
+    /// indexer would: latest `WalletUBISet` per account wins, `WalletUBICleared` unsets, in log
+    /// order. Zero means no live designation, which is what unset means with nothing stored.
+    function _project(Vm.Log[] memory logs, address account) private view returns (bytes32 designated) {
+        bytes32 who = bytes32(uint256(uint160(account)));
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter != address(adapter) || logs[i].topics[1] != who) continue;
+            if (logs[i].topics[0] == IERC8004AdapterCounterfactual.WalletUBISet.selector) {
+                designated = logs[i].topics[2];
+            } else if (logs[i].topics[0] == IERC8004AdapterCounterfactual.WalletUBICleared.selector) {
+                designated = bytes32(0);
+            }
+        }
+    }
+
+    /// @dev Same rule, for a test that did not start recording beforehand.
+    function _designationOf(address account) private returns (bytes32) {
+        return _project(vm.getRecordedLogs(), account);
+    }
 
     function _register(uint256 tokenId) private returns (uint256) {
         vm.prank(alice);

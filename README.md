@@ -141,7 +141,7 @@ Values `0`-`4` name a token *within* a contract, so their binding coordinate is 
 - `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and the UBI always match the id submitted. The check runs at both authority choke points, covering `register` and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `boundAddress` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
-- Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setWalletAgentIDFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could set a contract's wallet agent id while being unable to manage an identity bound to it.
+- Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setWalletUBIFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could point a contract's wallet at an identity while being unable to manage an identity bound to it.
 - **`ACCOUNT` accepts any address, with or without runtime code.** It is the only standard that applies no code test, and it can afford not to because it is the only one that never calls the address it names: authority is the single comparison `msg.sender == boundAddress`. Every other standard still requires code, because `ownerOf`, `balanceOf`, `owner()` or `hasRole` must be callable, and a code-less address reverts `InvalidBoundAddress`. The zero address and the identity registry are rejected under every standard, `ACCOUNT` included.
 - **EIP-7702 changes what `ACCOUNT` authority means, and this is worth reading before using it.** A delegation designator puts code behind an externally owned account, so `msg.sender == boundAddress` is not proof of key possession. Authority is precisely *whoever can cause a call to originate from that address*: the key holder, plus anyone able to drive the delegate to make an outbound call if a delegation is installed. **An address bound as `ACCOUNT` can install a delegation afterwards, permanently widening who can act for that identity, and a binding is immutable so this cannot be undone.** Revoking the delegation narrows the set again. This is the same accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership: an action taken outside the adapter, by the party the standard trusts, that permanently changes who can authorize. Counterfactual claims are less exposed, because they are emit-only and last-event-wins, so a key holder who revokes can re-emit and win again.
 
@@ -309,14 +309,14 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
     );
     _mint(buyer, tokenId);
 
-    // Optional: when this caller is authorized for `buyer` under the wallet-id account-control
-    // model, associate the freshly registered full identity with the buyer.
-    adapter.setWalletAgentIDFor(buyer, agentId);
+    // Optional: when this caller is authorized for `buyer` under the wallet-pointer account-control
+    // model, point the buyer's wallet at the identity just claimed.
+    adapter.setWalletUBIFor(buyer, IERCAgentBindings.TokenStandard.ERC721, address(this), tokenId);
 }
 ```
 
-If the collection cannot authorize `setWalletAgentIDFor(buyer, agentId)`, the buyer can set the
-pointer separately with `setWalletAgentID(agentId)`, or on the buyer's behalf with `setWalletAgentIDFor(buyer, agentId)`.
+If the collection cannot authorize `setWalletUBIFor`, the buyer can set the pointer themselves with
+`setWalletUBI(standard, boundAddress, tokenId)`.
 
 ### 2b. There Is No Way To Bind An Existing Agent
 
@@ -538,33 +538,32 @@ Reserved key on the counterfactual write surface: `agent-binding`, and nothing e
 
 ### Independent wallet-id systems
 
-A wallet picks one agent id and one UBI to speak for it. Both are needed because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. These two mappings are how the wallet chooses. The adapter keeps them structurally separate. Full ERC-8004 uses `address => uint256 agentId`; counterfactual uses `address => bytes32 ubi`. An account can hold both, and a write in one system cannot affect the other. Both are account assertions, not proof: consumers must also verify the corresponding registry `agentWallet` or counterfactual wallet event.
-
-Full ERC-8004:
-
-- `setWalletAgentID(uint256 agentId)` / `setWalletAgentIDFor(account, agentId)`
-- `clearWalletAgentID()` / `clearWalletAgentIDFor(account)`
-- `walletAgentIDOf(account) -> uint256`
-- `setAgentWalletAndID(agentId, newWallet, deadline, signature)` sets the agent's wallet and points
-  that wallet back at the agent in one call, with the same authorization `setAgentWallet` requires
-- `counterfactualSetAgentWalletAndUBI(standard, boundAddress, tokenId) -> bytes32` does the same on
-  the counterfactual path, naming the caller as the wallet and returning the identity it derived. No signature is needed because the caller
-  proves control of the token and is the wallet, so one actor is authorized on both sides and two
-  agreeing records mean something. Naming a different wallet is still possible through
-  `counterfactualSetAgentWallet` plus `setWalletUBIFor`, which prove less
-- unset is `WALLET_AGENT_ID_UNSET == type(uint256).max`; agent ID `0` is valid
-
-Counterfactual:
+A wallet points at one UBI to speak for it. The pointer is needed because `wallet -> agent` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. This mapping is how the wallet chooses. It is an account assertion, not proof: consumers must also verify the corresponding counterfactual wallet event.
 
 - `setWalletUBI(standard, boundAddress, tokenId)` / `setWalletUBIFor(account, standard, boundAddress, tokenId)`
 - `clearWalletUBI()` / `clearWalletUBIFor(account)`
 - `walletUBIOf(account) -> bytes32`
+- `counterfactualSetAgentWalletAndUBI(standard, boundAddress, tokenId) -> bytes32` names the caller
+  as the wallet and points that wallet back at the identity in one call, returning the identity it
+  derived. No signature is needed because the caller proves control of the token and is the wallet,
+  so one actor is authorized on both sides and two agreeing records mean something. Naming a
+  different wallet is still possible through `counterfactualSetAgentWallet` plus `setWalletUBIFor`,
+  which prove less
 - setters derive the hash; callers cannot store an arbitrary value
 - unset is `WALLET_UBI_UNSET == bytes32(type(uint256).max)`
 
-`...For` authorization is identical for both systems: account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. Both are set directly by a controller, so both cost the caller gas. An earlier build carried a signed, relayer-submittable variant of the full-system setters; it was removed at `0.0.17` before any deployment, and `setWalletAgentIDFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
+**There was a second pointer, wallet to agent id, until `0.0.17`.** It is gone and should not come
+back. An agent id is meaningful only inside the registry that issued it, so a reverse-resolution
+surface keyed on agent ids had the contract contradicting ERC-8217. Nothing reconciled the two
+pointers either: a wallet could aim them at unrelated things and no rule said which a consumer
+should believe. The agent-id half was also the less checkable, returning a bare number no consumer
+could verify without already knowing the registry, while the adapter had verified nothing. What is
+genuinely lost is a wallet designating an ERC-8004 agent never bound through this adapter, which is
+out of scope: the adapter can say nothing about such an agent.
 
-This is a hard cutover from unreleased source behavior, not a production storage migration. Live proxies never deployed the old mixed pointer, so the two mappings occupy slots 2 and 3 and start empty. Old bare-chain-id hashes are invalid. See the [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md) and the [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
+`...For` authorization is account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. The pointer is set directly by a controller, so it costs the caller gas. An earlier build carried a signed, relayer-submittable variant; it was removed at `0.0.17` before any deployment, and `setWalletUBIFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
+
+This is a hard cutover from unreleased source behavior, not a production storage migration. Neither pointer was ever deployed and the surviving one stores nothing at all, so regular storage is slot 1 alone; slot 0 is the one reserved dead slot, because it is the only one that physically holds data on a live proxy. Old bare-chain-id hashes are invalid. See the [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md) and the [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
 
 ## Counterfactual Attestations
 
@@ -613,7 +612,7 @@ One thing the enum buys: the ABI decoder rejects a value above the last member b
 
 Everything else is the reader's: target resolution, payload well-formedness, whether a revocation counts at all (only from the original attester, which an emit-only contract cannot check), and reviewer independence from the subject. The projection rules, payload encodings, and full type registry are normative in [the type-registry specification](./docs/specs/attestation-type-registry-v1.md), with identifier vectors in [the attestation fixture](./docs/fixtures/adapter-attestation-ids.md).
 
-**Emit-only, with two consequences.** No contract can read attestations on chain. Nothing needs to today, and a stored system can be added later if that changes. The surface also adds no storage slot, so regular storage still ends at slot 3. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
+**Emit-only, with two consequences.** No contract can read attestations on chain. Nothing needs to today, and a stored system can be added later if that changes. The surface also adds no storage slot, so regular storage still ends at slot 1. These functions also carry no `nonReentrant`, unlike the counterfactual writers: they make no external call, so the guard would cost roughly 2,900 gas per call to protect against nothing. That is a decision, and a test fails if the modifier is ever added back.
 
 Execution gas measured in the assembled contract, excluding the fixed 21,000 per transaction: `attest` with a small payload 7,581, `confirmAdditionalAccount` 6,916, `revoke` 1,889, plus roughly 9 gas per payload byte. `revoke` is much the cheapest because it derives no identifier at all. The other two are dominated by the ERC-7930 envelope every identity derivation builds, which every counterfactual write pays too, since they share the helper.
 
@@ -688,11 +687,6 @@ Counterfactual (emit-only) functions:
 - `bindingHashOf(uint256 agentId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
-- `setWalletAgentID(uint256 agentId)`
-- `setWalletAgentIDFor(address account, uint256 agentId)`
-- `clearWalletAgentID()`
-- `clearWalletAgentIDFor(address account)`
-- `walletAgentIDOf(address account)`
 - `setWalletUBI(TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `setWalletUBIFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
 - `clearWalletUBI()`
@@ -791,7 +785,7 @@ The Foundry suite currently covers:
 - wallet-binding pass-through with valid and invalid ERC-8004 signatures, which is the registry's
   own EIP-712 surface and is unaffected by the adapter dropping its own
 - the signed primary-agent surface staying removed: each removed selector probed and required not to
-  resolve, neither `WithSig` event topic emitted, and nothing written past slot 3
+  resolve, neither `WithSig` event topic emitted, and nothing written past the last declared slot
 - the counterfactual register family, including reserved-key rejection and the event body shape
 - the ERC-7930 encoding, which production now takes from OpenZeppelin's `draft-InteroperableAddress`,
   pinned against three independent oracles: the two former in-house encoders kept frozen as

@@ -116,24 +116,17 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(uint8(binding.standard), uint8(IERCAgentBindings.TokenStandard.ERC721));
         assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 41);
-        assertEq(adapter.walletAgentIDOf(account), type(uint256).max);
-        assertEq(adapter.walletUBIOf(account), bytes32(type(uint256).max));
         _assertSlotsTwoAndThreeEmpty(proxy);
 
-        vm.startPrank(account);
-        adapter.setWalletAgentID(9);
+        // Both wallet mappings were removed at `0.0.17` and the reverse designation became
+        // emit-only, so regular storage ends at slot 1 and the upgraded implementation must write
+        // nothing past it. The baseline never wrote slots 2 or 3, and now nothing ever will.
+        vm.record();
+        vm.prank(account);
         adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 41);
-        vm.stopPrank();
-
-        assertEq(uint256(vm.load(proxy, _mappingSlot(account, 2))), ~uint256(9));
-        assertEq(
-            vm.load(proxy, _mappingSlot(account, 3)),
-            ~adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 41)
-        );
-
-        // Slot 4 is past the declared layout now that the signed surface is gone, so it must stay
-        // untouched by every write the contract can perform.
-        assertEq(vm.load(proxy, _mappingSlot(account, 4)), bytes32(0), "nothing writes past slot 3");
+        (, bytes32[] memory writes) = vm.accesses(proxy);
+        assertEq(writes.length, 0, "the designation writes no storage on a live proxy either");
+        _assertSlotsTwoAndThreeEmpty(proxy);
     }
 
     /// @dev Appending `ACCOUNT` and `CONTRACT_OWNABLE` to `TokenStandard` must not renumber the values

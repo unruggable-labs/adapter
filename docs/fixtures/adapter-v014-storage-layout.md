@@ -6,23 +6,38 @@ Captured with `forge inspect Adapter8004 storageLayout`:
 |---:|---|---|---|
 | 0 | `__deadRegistrySlot` | `uint256` | **DEAD. RESERVED FOREVER. NEVER REUSE.** |
 | 1 | `_bindings` | `mapping(uint256 => Binding)` | unchanged |
-| 2 | `_walletAgentID` | `mapping(address => uint256)` | appended full pointer |
-| 3 | `_walletUBI` | `mapping(address => bytes32)` | appended CF pointer |
 
-**Regular storage now begins at slot 1 and ends at slot 3.** Slot 0 held `identityRegistry` until
-`0.0.17` made that field `immutable`, moving it out of proxy storage and into each implementation's
-runtime code. All three live proxies have a real registry address written into slot 0 and it stays
-there as dead bytes, so anything declared into that slot would read the address as its initial
-value. `uint256 private __deadRegistrySlot` exists solely to hold the slot down.
+**Regular storage is slot 1 alone.** Slot 0 held `identityRegistry` until `0.0.17` made
+that field `immutable`, moving it out of proxy storage and into each implementation's runtime code.
+All three live proxies have a real registry address written into slot 0 and it stays there as dead
+bytes, so anything declared into that slot would read the address as its initial value.
+`uint256 private __deadRegistrySlot` exists solely to hold the slot down.
 
-Removing the placeholder is not a tidy-up; it is a corruption. Verified with
+Removing that placeholder is not a tidy-up; it is a corruption. Verified with
 `forge inspect Adapter8004 storageLayout` rather than reasoned about: without it `_bindings` moves
-to slot 0, `_walletAgentID` to 1 and `_walletUBI` to 2, so every existing binding would
-be read against the old registry address. `testRegularStorageBeginsAtSlotOneAndSlotZeroIsUnused`
-fails if that ever happens. A fourth mapping, `_primaryAgentNonces`, backed the signed
-primary-agent surface and was removed at `0.0.17`; it was never written on any chain, because no
-live implementation exposed a function that could reach it, so the slot is simply gone rather than
-reserved or deprecated.
+to slot 0 and every existing binding would be read against the old registry address.
+`testLayoutIsThreeSlotsAndSlotZeroStaysDead` fails if that ever happens.
+
+## The rule for removing a slot
+
+**Reserve a slot that holds live data. Do not reserve one that was merely declared in a build
+nobody deployed.** A placeholder over a slot nothing has written is permanent dead space defending
+against nothing, and it costs a slot forever.
+
+Two mappings removed at `0.0.17` show both halves of the rule:
+
+- `identityRegistry`, slot 0: **reserved**, because all three live proxies physically hold the old
+  registry address there. Sliding `_bindings` onto it would read every existing binding against a
+  dead word.
+- `_walletAgentID` and `_walletUBI`, formerly slots 2 and 3, and `_primaryAgentNonces`, formerly
+  slot 4: **not reserved**, because no deployed implementation ever declared any of them, so nothing
+  has ever been written there. The deployed Mainnet/Base and Sepolia baselines declare only
+  `identityRegistry` and `_bindings`.
+
+The wallet-to-UBI reverse designation became emit-only at `0.0.17`, so it has no slot at all: the
+contract verifies that the caller holds the authority to designate and records that fact in the log.
+`testDirectUpgradeFromMainnetBaseLiveBaselinePreservesSlotsZeroAndOne` runs a designation against a
+live-baseline proxy under `vm.record` and requires zero storage writes.
 
 **How that was established, and how it was not.** Reading raw slot `0x04` proves nothing here, and
 an earlier revision of this document wrongly cited it. A `mapping(address => uint256)` stores no
@@ -45,7 +60,6 @@ bytecode for the writing selectors across the proxy implementation history, not 
 The actual deployed Mainnet/Base (`a20035c`) and Sepolia (`4647ddd`) baselines contain only slots
 0 and 1. No initializer or heuristic migration is used: direct upgrades use empty
 `upgradeToAndCall` data. The upgrade tests start from minimal implementations with that exact
-regular layout, populate slots 0 and 1, prove slots 2 and 3 are empty before the upgrade, preserve
-the registry and binding, verify new writes land at slots 2 and 3, and assert that nothing writes
-past slot 3. A separate Sepolia-baseline test proves delegate.xyz authorization survives the
+regular layout, populate slots 0 and 1, preserve the registry and binding across the upgrade, and
+assert that a designation writes no storage at all. A separate Sepolia-baseline test proves delegate.xyz authorization survives the
 upgrade.

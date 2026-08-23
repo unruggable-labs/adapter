@@ -8,7 +8,6 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -101,11 +100,10 @@ contract Adapter8004Test is Test {
         );
     }
 
-    /// @dev Registering and then claiming the result as your own primary agent is two transactions.
-    /// The pair is worth one test because of the id it lands on: a fresh registry mints agent id 0, and
-    /// `WALLET_AGENT_ID_UNSET` is all ones, so a real agent at id 0 has to stay distinguishable from
-    /// having no primary at all.
-    function testFirstMintedAgentIdIsZeroAndCanBecomeAPrimaryAgent() external {
+    /// @dev A fresh registry mints agent id 0, so the first bound agent sits on the id most likely
+    /// to be confused with a default value. Everything downstream has to keep working for it, which
+    /// is why the id is asserted rather than assumed.
+    function testFirstMintedAgentIdIsZero() external {
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit Adapter8004.AgentBound(0, IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, alice);
@@ -113,15 +111,11 @@ contract Adapter8004Test is Test {
             adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://agent/1");
 
         assertEq(agentId, 0);
-        assertEq(adapter.walletAgentIDOf(alice), adapter.WALLET_AGENT_ID_UNSET(), "no primary until one is claimed");
-
-        vm.prank(alice);
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit IERC8004AdapterWalletAgentID.WalletAgentIDSet(alice, 0, alice);
-        adapter.setWalletAgentID(agentId);
-
-        assertEq(adapter.walletAgentIDOf(alice), agentId);
-        assertTrue(adapter.walletAgentIDOf(alice) != adapter.WALLET_AGENT_ID_UNSET());
+        assertEq(adapter.bindingOf(agentId).boundAddress, address(token721), "agent 0 is a real binding");
+        assertEq(
+            adapter.bindingHashOf(agentId),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1)
+        );
     }
 
     function test721ControllerCanUpdateRegistryFields() external {
@@ -1006,9 +1000,14 @@ contract Adapter8004Test is Test {
     /// has a real address written there. The field no longer occupies it and nothing else may, so
     /// regular storage starts at slot 1. Read from the compiled layout rather than asserted from
     /// the declarations, so a reordering that moved a mapping into slot 0 fails here.
-    function testRegularStorageBeginsAtSlotOneAndSlotZeroIsUnused() external {
-        // Seed slot 0 with a sentinel standing in for the registry address a live proxy still holds
-        // there. Nothing the contract does may read or overwrite it.
+    /// @dev The layout is exactly two slots: reserved slot 0 and `_bindings` at 1. Slot 0 is
+    /// reserved because every live proxy physically holds the old registry address there, so
+    /// anything declared into it would read that address as its initial value. Both wallet mappings
+    /// were removed at `0.0.17` and their slots were reclaimed rather than reserved, because nothing
+    /// has ever been written to them. Changing the order fails this test.
+    function testLayoutIsTwoSlotsAndSlotZeroStaysDead() external {
+        // Seed the reserved slot with a sentinel standing in for the registry address a live proxy
+        // holds there. Nothing the contract does may read or overwrite it.
         bytes32 sentinel = bytes32(uint256(0xdeadbeef));
         vm.store(address(adapter), bytes32(uint256(0)), sentinel);
 
@@ -1016,28 +1015,21 @@ contract Adapter8004Test is Test {
         uint256 agentId = adapter.register(
             IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://slots", _emptyMetadata()
         );
-        vm.startPrank(alice);
-        adapter.setWalletAgentID(agentId);
+        vm.prank(alice);
         adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
-        vm.stopPrank();
 
         assertEq(vm.load(address(adapter), bytes32(uint256(0))), sentinel, "slot 0 must never be touched");
 
-        // Each write landed in the mapping whose base slot is the declared one, which is what pins
-        // `_bindings` to slot 1 rather than 0.
+        // The binding landed in the mapping whose declared base slot it belongs to. Reordering the
+        // declarations, or reserving a slot ahead of it, moves this and fails here.
         assertTrue(
             vm.load(address(adapter), keccak256(abi.encode(agentId, uint256(1)))) != bytes32(0), "_bindings at slot 1"
         );
-        assertTrue(
-            vm.load(address(adapter), keccak256(abi.encode(alice, uint256(2)))) != bytes32(0),
-            "_walletAgentID at slot 2"
-        );
-        assertTrue(
-            vm.load(address(adapter), keccak256(abi.encode(alice, uint256(3)))) != bytes32(0), "_walletUBI at slot 3"
-        );
 
-        // And nothing was appended past the last declared mapping.
-        assertEq(vm.load(address(adapter), bytes32(uint256(4))), bytes32(0), "regular storage ends at slot 3");
+        // The wallet designation is emit-only, so it writes nothing at all, and nothing was appended
+        // past the last declared mapping.
+        assertEq(vm.load(address(adapter), keccak256(abi.encode(alice, uint256(2)))), bytes32(0), "no wallet mapping");
+        assertEq(vm.load(address(adapter), bytes32(uint256(2))), bytes32(0), "regular storage ends at slot 1");
     }
 
     function testNonAdminCannotUpgradeImplementation() external {

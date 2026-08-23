@@ -10,8 +10,8 @@ implementation slot/version and scan the full proxy history for stranded wallet-
 
 **Scan the legacy topics, not the new ones.** The state this gate exists to detect could only have
 been written by an intermediate implementation, and that implementation emitted the `Primary*`
-names. `WalletAgentIDSet` and `WalletAgentIDCleared` are the `0.0.17` renames, so a proxy carrying
-stranded state emits none of them and a scan of the new names returns zero for the wrong reason.
+names. The wallet-to-agent-id surface those events belonged to was removed entirely at `0.0.17`, so
+there is no current event to scan for at all and only the legacy topics can reveal stranded state.
 Scan these four `topic0` values over full proxy history instead:
 
 | Legacy event | `topic0` |
@@ -30,8 +30,11 @@ is not a substitute and does not prove the mapping is empty, for the reason set 
 
 At the cutover block:
 
-- start separate wallet agent id and wallet UBI projections;
-- subscribe to the `WalletAgentIDSet` / `WalletAgentIDCleared` topics and the `WalletUBISet` / `WalletUBICleared` family. These were named `Primary*` in an earlier build and every one of those topic0 values changed with the rename;
+- start a wallet UBI projection. There is no wallet agent id projection: that surface was removed at
+  `0.0.17`, because an agent id is meaningful only inside the registry that issued it and a
+  reverse-resolution surface keyed on one contradicted ERC-8217;
+- subscribe to the `WalletUBISet` / `WalletUBICleared` family. These were named `Primary*` in an
+  earlier build and both topic0 values changed with the rename;
 - validate every counterfactual indexed hash as
   `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId))`,
   with the dynamic adapter bytes carrying the full chain plus proxy address, `boundAddress` kept as a

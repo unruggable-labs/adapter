@@ -412,6 +412,104 @@ Recorded under Removed below.
 
 ### Removed
 
+- **The wallet-to-agent-id surface is removed entirely.** Seven selectors no longer
+  resolve:
+
+  | Removed | Selector |
+  |---|---|
+  | `setWalletAgentID(uint256)` | `0x31b159ee` |
+  | `setWalletAgentIDFor(address,uint256)` | `0xe300b9a0` |
+  | `clearWalletAgentID()` | `0xa6fceb35` |
+  | `clearWalletAgentIDFor(address)` | `0xa842f7aa` |
+  | `walletAgentIDOf(address)` | `0x09ff1fe7` |
+  | `WALLET_AGENT_ID_UNSET()` | `0x9ed22b72` |
+  | `setAgentWalletAndID(uint256,address,uint256,bytes)` | `0x0f1634ba` |
+
+  With them go `WalletAgentIDSet` (`topic0`
+  `0x70d36868df65670ea06b1ef23a29c0ce0f22bd9f72162e582b34dff6d4657909`),
+  `WalletAgentIDCleared` (`0xe9b93ba406d75909709010ebba159de75466fbd89235c2815e9b020f44822b53`),
+  the `WalletAgentIDReserved(uint256)` error (`0x93af1327`), the `_walletAgentID`
+  mapping, both internal setters and `IERC8004AdapterWalletAgentID.sol`.
+
+  `setAgentWalletAndID` was not on the removal list but had to go with it. Its only
+  distinguishing step was writing the reverse pointer; strip that and it is exactly
+  `setAgentWallet`, so keeping it would have shipped a duplicate entry point under a
+  name promising something it no longer did.
+
+  **Why, so a future reader does not re-add it.** ERC-8217 argues that an agent id
+  is meaningful only inside the registry that issued it and is therefore not a
+  universal identifier. A reverse-resolution surface keyed on agent ids contradicts
+  that in code, so the contract and the standard were saying opposite things.
+  Nothing reconciled the two surfaces either: a wallet could set both to point at
+  unrelated things and no rule said which a consumer should believe. The agent-id
+  designation was also the less checkable of the two, since `walletAgentIDOf`
+  returned a bare number that no consumer could verify without already knowing the
+  registry, while the adapter itself had verified nothing.
+
+  **What is genuinely lost** is a wallet designating an ERC-8004 agent never bound
+  through this adapter. That is out of scope: the adapter can say nothing about such
+  an agent, and `_setWalletAgentID` validated nothing beyond the all-ones sentinel.
+
+  **Both wallet mappings are gone and the layout collapses to two slots.**
+  `_walletAgentID` occupied slot 2 and `_walletUBI` slot 3; neither remains,
+  because the reverse designation became emit-only in the same change, recorded
+  below. Regular storage is now slot 0 reserved and `_bindings` at slot 1,
+  confirmed with `forge inspect` against a real build rather than reasoned about.
+
+  **The rule, so the next removal applies it correctly: reserve a slot that holds
+  live data, and do not reserve one that was merely declared in a build nobody
+  deployed.** Slot 0 is reserved because all three live proxies physically hold the
+  old registry address in it, and sliding `_bindings` onto that word would read
+  every existing binding against a dead value. Slot 2 has never held anything: the
+  deployed Mainnet/Base and Sepolia implementations declare only `identityRegistry`
+  and `_bindings`, and both wallet mappings existed solely in this undeployed build.
+  A placeholder over either would be permanent dead space defending against nothing.
+  The same rule already applied to `_primaryAgentNonces` at slot 4, removed earlier
+  in this version without reservation for the same reason.
+
+- **The wallet-to-UBI reverse designation is emit-only.** `_walletUBI`,
+  `walletUBIOf`, `WALLET_UBI_UNSET` and the `WalletUBIReserved` error are all
+  removed. `setWalletUBI` and `setWalletUBIFor` keep their authority checks and
+  their coordinate validation and emit `WalletUBISet`; `clearWalletUBI` and
+  `clearWalletUBIFor` emit `WalletUBICleared`. Nothing is stored.
+
+  **Why it costs nothing.** The mapping was read by exactly one thing, its own
+  getter. No internal path consumed it, which is precisely the condition under which
+  the attestation surface chose emit-only, so this is the same rule applied
+  consistently rather than a new one. The contract's job here is to verify that
+  `msg.sender` holds the authority to designate and then record that fact; the
+  identifier needs no storage because it is derived from coordinates, so only the
+  designation is a choice, and a choice lives in a log as well as in a slot. What
+  makes the log trustworthy is the authority check, not the storage.
+
+  The complement encoding disappears with the storage, and nothing else used it. It
+  existed only so an unwritten slot could be told apart from a real value, which is
+  not a question that arises when there is no slot.
+
+  **Projection rules, matching the attestation surface's wording.** Applied in log
+  order, per account: the latest `WalletUBISet` wins and `WalletUBICleared` unsets,
+  where latest means highest block number then highest log index. A clear from a
+  different authorized party than the one that set **is** honoured, because both
+  functions authorize against the account rather than against whoever wrote last, so
+  the account itself, its `owner()` or `getOwner()`, and any `DEFAULT_ADMIN_ROLE`
+  holder may each undo any other. An account with no `WalletUBISet` after its last
+  `WalletUBICleared`, or with none at all, has no designation.
+
+  **Gas.** A first-time designation drops from 42,988 to 20,816, a saving of 22,172,
+  which is one cold `SSTORE` from zero almost exactly. Overwriting drops 172 and
+  clearing 191. Emit-only is verified the same way the attestation surface verifies
+  it, with `vm.record` and `vm.accesses` asserting zero writes, including once
+  against a live-baseline proxy.
+
+- **`IERC8004AdapterWalletUBI.sol` is folded into `IERC8004AdapterCounterfactual`**
+  and deleted. The division that matters is derivable-from-coordinates against
+  requires-an-actual-registration, and the wallet-to-UBI surface sits on the
+  derivable side. Counterfactual here does not mean hypothetical, it means
+  determined in advance: all four inputs exist, so the UBI exists, and performing
+  the binding neither creates nor changes it, exactly as a CREATE2 address is known
+  before deployment. No selector or `topic0` moves; the declarations changed file
+  only.
+
 - **`setIdentityRegistry` is gone, and `identityRegistry` is now `immutable`.**
   The registry is fixed when an implementation is constructed and can never
   change afterwards. It comes out of `initialize`, whose signature is now

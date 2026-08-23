@@ -6,8 +6,6 @@ import {DeployAdapterImplementationScript} from "../script/DeployAdapterImplemen
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
-import {IERC8004AdapterWalletUBI} from "../src/interfaces/IERC8004AdapterWalletUBI.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 
@@ -58,9 +56,10 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         );
     }
 
-    function testPrintedPrimaryAgentSignaturesMatchTheContract() external pure {
-        _assertSig(SIG_PRIMARY_AGENT_SET, IERC8004AdapterWalletAgentID.WalletAgentIDSet.selector, "WalletAgentIDSet");
-        _assertSig(SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET, IERC8004AdapterWalletUBI.WalletUBISet.selector, "WalletUBISet");
+    function testPrintedWalletUBISignatureMatchesTheContract() external pure {
+        _assertSig(
+            SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET, IERC8004AdapterCounterfactual.WalletUBISet.selector, "WalletUBISet"
+        );
     }
 
     function testPrintedAttestationSignaturesMatchTheContract() external pure {

@@ -223,6 +223,87 @@ interface IERC8004AdapterCounterfactual {
         uint256 tokenId
     ) external returns (bytes32 bindingHash);
 
+    // -----------------------------------------------------------------
+    //  Wallet UBI: the reverse claim, wallet to UBI
+    // -----------------------------------------------------------------
+    //
+    // The UBI a wallet picks for itself, recorded entirely in the event log. Values are always
+    // derived by the adapter from the standard and token coordinates, never supplied by the caller,
+    // and the designation is a self-assertion that a consumer must verify reciprocally before
+    // treating it as identity.
+    //
+    // **Emit-only, like the attestation surface and for the same reason.** The contract verifies
+    // that the caller holds the authority to designate and then records that fact; nothing is
+    // stored. The identifier needs no storage because it is derived from coordinates, so only the
+    // designation is a choice, and a choice lives in a log as well as in a slot. What makes the log
+    // trustworthy is the authority check, not the storage. Resolution therefore belongs to indexers,
+    // exactly as it does for attestations.
+    //
+    // **Projection rules, applied in log order.** For each account, the latest `WalletUBISet` wins
+    // and `WalletUBICleared` unsets. Latest means highest block number, then highest log index. A
+    // clear from a different authorized party than the one that set is honoured, because both
+    // functions authorize against the account rather than against whoever wrote last: the `For`
+    // variants accept the account itself, its `owner()` or `getOwner()`, or a holder of its
+    // `DEFAULT_ADMIN_ROLE`, so any of them may undo any other. An account with no `WalletUBISet`
+    // after its last `WalletUBICleared`, or with none at all, has no designation.
+    //
+    // It lives on the counterfactual interface because the division that matters is
+    // derivable-from-coordinates against requires-an-actual-registration, and this sits on the
+    // derivable side. Counterfactual here does not mean hypothetical, it means determined in
+    // advance: all four inputs exist, so the UBI exists, and performing the binding neither creates
+    // nor changes it, exactly as a CREATE2 address is known before deployment.
+    //
+    // **There was a wallet-to-agent-id surface beside this one until `0.0.17`, and it should not be
+    // re-added.** ERC-8217 argues that an agent id is meaningful only inside the registry that
+    // issued it and is therefore not a universal identifier, so a reverse-resolution surface keyed
+    // on agent ids had the contract contradicting the standard. Nothing reconciled the two either:
+    // a wallet could point them at unrelated things and no rule said which a consumer should
+    // believe. The agent-id half was also the less checkable, returning a bare number no consumer
+    // could verify without already knowing the registry, while the adapter had verified nothing.
+
+    /// @notice `standard` is the `TokenStandard` folded into the UBI. It is carried here
+    /// because `(boundAddress, tokenId)` alone does not name an identity, so a reader can recompute
+    /// the hash from this one log line. See `IERC8004AdapterCounterfactual`.
+    event WalletUBISet(
+        address indexed account,
+        bytes32 indexed ubi,
+        address boundAddress,
+        uint256 tokenId,
+        IERCAgentBindings.TokenStandard standard,
+        address indexed setBy
+    );
+    event WalletUBICleared(address indexed account, address indexed clearedBy);
+
+    /// @notice Record the caller's own wallet UBI, named by standard and token
+    /// coordinates. The adapter derives the UBI itself, so a caller cannot assert a
+    /// hash it did not compute from a real triple. `standard` selects which identity is named: the
+    /// same `(boundAddress, tokenId)` under two standards resolves to two different hashes. This is a
+    /// self-assertion and is not proof: nothing here checks that the caller holds the token or would
+    /// pass that standard's authority probe, so a consumer must verify the claim reciprocally before
+    /// treating it as identity. Emits `WalletUBISet` and returns the derived hash.
+    function setWalletUBI(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
+        external
+        returns (bytes32 ubi);
+
+    /// @notice Record `account`'s wallet UBI on its behalf. Authorized when the
+    /// caller is the account itself, its `owner()` or `getOwner()`, or a holder of its
+    /// `DEFAULT_ADMIN_ROLE`, and reverts `NotAccountController` otherwise. An account that misreports
+    /// its controller can only affect its own entry.
+    function setWalletUBIFor(
+        address account,
+        IERCAgentBindings.TokenStandard standard,
+        address boundAddress,
+        uint256 tokenId
+    ) external returns (bytes32 ubi);
+
+    /// @notice Clear the caller's own wallet UBI. Idempotent, and clearing an account that never set
+    /// one still emits `WalletUBICleared`, because the log is the record.
+    function clearWalletUBI() external;
+
+    /// @notice Clear `account`'s wallet UBI, under the same authorization rules as
+    /// `setWalletUBIFor`.
+    function clearWalletUBIFor(address account) external;
+
     /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
     /// entirely in the event log. Indexers MUST treat the latest event per UBI as
     /// authoritative, latest meaning highest block number, then highest log index.

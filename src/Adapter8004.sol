@@ -14,8 +14,6 @@ import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
 import {IInteroperableAddressView} from "./interfaces/IInteroperableAddressView.sol";
-import {IERC8004AdapterWalletUBI} from "./interfaces/IERC8004AdapterWalletUBI.sol";
-import {IERC8004AdapterWalletAgentID} from "./interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistration.sol";
 import {IERC8004IdentityRecord} from "./interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "./interfaces/IERC8004IdentityRegistry.sol";
@@ -29,9 +27,9 @@ interface IOwnableContract {
 }
 
 /// @notice Upgrade target for the active Adapter8004 proxies.
-/// @dev Regular storage runs from slot 1 to slot 3 and is append-only, with slot 0 dead and reserved
-/// forever since `identityRegistry` became immutable, so a live proxy upgrades with empty
-/// `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
+/// @dev Regular storage ends at slot 1 and is append-only, with slot 0 dead and reserved forever
+/// because every live proxy physically holds the old registry address there, so a live proxy
+/// upgrades with empty `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
 /// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId))`, the
 /// adapter address plus exactly the stored `Binding`, and a different preimage from the one live
 /// proxies compute today, so upgrading one is a hard cutover for any indexer reading counterfactual
@@ -50,8 +48,6 @@ contract Adapter8004 is
     IERC8004AdapterRegistration,
     IERC8004AdapterCounterfactual,
     IInteroperableAddressView,
-    IERC8004AdapterWalletAgentID,
-    IERC8004AdapterWalletUBI,
     IERC8004AdapterAttestation
 {
     /// @notice The one reserved metadata key, rejected on every write path that accepts caller
@@ -96,15 +92,10 @@ contract Adapter8004 is
     error NonZeroTokenIdForAccount(address boundAddress, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
-    /// @notice Thrown when `setWalletAgentIDFor` / `clearWalletAgentIDFor` is called by an address that
-    /// is neither the account itself, the account's `owner()` / `getOwner()`, nor a holder of its
+    /// @notice Thrown when `setWalletUBIFor` / `clearWalletUBIFor` is called by an address that is
+    /// neither the account itself, the account's `owner()` / `getOwner()`, nor a holder of its
     /// `DEFAULT_ADMIN_ROLE`.
     error NotAccountController(address account, address caller);
-    /// @notice Thrown when a wallet agent id setter is passed `WALLET_AGENT_ID_UNSET` (all ones). That
-    /// value is reserved as the "unset" sentinel: it complements to zero in storage and would be
-    /// indistinguishable from a never-written entry. Clear via `clearWalletAgentID[For]` instead.
-    error WalletAgentIDReserved(uint256 agentId);
-    error WalletUBIReserved(bytes32 ubi);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
     /// @notice Thrown when an upgrade target was constructed with a different ERC-8004 registry than
@@ -133,24 +124,18 @@ contract Adapter8004 is
     IERC8004IdentityRegistry public immutable identityRegistry;
 
     /// @dev **SLOT 0 IS DEAD AND MUST NEVER BE REUSED.** It held `identityRegistry` until `0.0.17`
-    /// and every live proxy has a real registry address written there. Making the field immutable
-    /// freed the slot but not the bytes, so anything declared into it would read that address as its
-    /// initial value. This placeholder exists solely to hold the slot down: regular storage begins
-    /// at slot 1. Never remove it, never repurpose it, and never declare state before it.
+    /// made that field immutable, which freed the slot but not the bytes, so every live proxy still
+    /// has a real registry address sitting there and anything declared into this slot would read
+    /// that address as its initial value. Never remove this placeholder, never repurpose it, and
+    /// never declare state before it.
+    /// @dev **The rule, so the next removal applies it correctly: reserve a slot that holds live
+    /// data, and do not reserve one that was merely declared in a build nobody deployed.** Slot 0
+    /// qualifies; the wallet mappings removed at `0.0.17` did not, so their slots were reclaimed
+    /// rather than reserved and regular storage now ends at slot 1. The full reasoning is in
+    /// `docs/fixtures/adapter-v014-storage-layout.md`.
     uint256 private __deadRegistrySlot;
 
     mapping(uint256 agentId => Binding binding) private _bindings;
-
-    /// @notice Full-system unset sentinel. Agent id zero remains representable.
-    uint256 public constant WALLET_AGENT_ID_UNSET = type(uint256).max;
-    bytes32 public constant WALLET_UBI_UNSET = bytes32(type(uint256).max);
-
-    /// @dev Reverse claims. These two mappings occupy regular slots 2 and 3, in the order declared
-    /// here, and are append-only: never reorder, insert between them, or repurpose one. They begin
-    /// empty on a proxy upgraded from the deployed baseline, which holds slots 0 and 1 only. Slot 0
-    /// is the only reserved slot and it sits behind them, not ahead.
-    mapping(address account => uint256 complementAgentId) private _walletAgentID;
-    mapping(address account => bytes32 complementRegistrationHash) private _walletUBI;
 
     /// @notice Bakes the ERC-8004 registry into this implementation and locks it there.
     /// @dev Every implementation carries its own registry, so an upgrade that would move the proxy
@@ -316,35 +301,6 @@ contract Adapter8004 is
 
         // 3. Emit the adapter-level wallet assignment after the forwarded registry call succeeds.
         emit AgentWalletSet(agentId, newWallet, msg.sender);
-    }
-
-    /// @notice Assign the agent wallet and point that wallet back at this agent in one call, closing
-    /// a loop that otherwise takes two transactions by two parties. Authorization is exactly
-    /// `setAgentWallet`'s: the caller proves control of the agent, and nothing is asked of the
-    /// wallet, which already consented through the EIP-712 signature the registry verifies.
-    /// @dev The `ID` suffix is the `uint256` agent id, where `counterfactualSetAgentWalletAndUBI`
-    /// sets a `bytes32` UBI, so the two suffixes name the two kinds of identifier a wallet can hold.
-    /// Verification is a read-time check that the forward and reverse records agree, so a reverse
-    /// pointer written to an unwilling wallet produces no false positive and that wallet overwrites
-    /// it with `setWalletAgentID`; it emits `AgentWalletSet` then `WalletAgentIDSet`, the same pair
-    /// the separate calls emit, and overwrites any existing designation on `newWallet`.
-    function setAgentWalletAndID(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature)
-        external
-        nonReentrant
-    {
-        // 1. Confirm the caller currently controls the bound token.
-        _requireController(agentId, msg.sender);
-
-        // 2. Forward the wallet assignment to ERC-8004, which enforces the wallet proof. A rejected
-        //    signature reverts here, so the reverse pointer below is never written on its own.
-        identityRegistry.setAgentWallet(agentId, newWallet, deadline, signature);
-
-        // 3. Emit the adapter-level wallet assignment after the forwarded registry call succeeds.
-        emit AgentWalletSet(agentId, newWallet, msg.sender);
-
-        // 4. Point the wallet back at this agent, reusing the setter that carries the reserved-id
-        //    guard and emits `WalletAgentIDSet`.
-        _setWalletAgentID(newWallet, agentId);
     }
 
     function unsetAgentWallet(uint256 agentId) external nonReentrant {
@@ -614,61 +570,6 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
-    //  Wallet agent id (reverse resolution: wallet -> registry agent id)
-    // -----------------------------------------------------------------
-
-    /// @notice Set the caller's own wallet agent id. The caller always controls itself, so no extra
-    /// authorization is required. The id is strictly an ERC-8004 registry token id. To remove an id,
-    /// call `clearWalletAgentID`; passing
-    /// `WALLET_AGENT_ID_UNSET` (all ones) reverts `WalletAgentIDReserved` (it is the unset sentinel).
-    function setWalletAgentID(uint256 agentId) external {
-        _setWalletAgentID(msg.sender, agentId);
-    }
-
-    /// @notice Set the wallet agent id for `account`. Authorized when the caller is the account
-    /// itself, the account's `owner()` / `getOwner()`, or a holder of its `DEFAULT_ADMIN_ROLE`. To
-    /// remove an id, call `clearWalletAgentIDFor`. Reverts `WalletAgentIDReserved` for the all-ones id.
-    function setWalletAgentIDFor(address account, uint256 agentId) external {
-        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _setWalletAgentID(account, agentId);
-    }
-
-    /// @notice Clear the caller's own wallet agent id. Afterwards `walletAgentIDOf` returns
-    /// `WALLET_AGENT_ID_UNSET`. Idempotent: clearing an already-unset account still emits
-    /// `WalletAgentIDCleared`.
-    function clearWalletAgentID() external {
-        _clearWalletAgentID(msg.sender);
-    }
-
-    /// @notice Clear the wallet agent id for `account`, under the same authorization model as
-    /// `setWalletAgentIDFor`. Reverts `NotAccountController` when the caller is not authorized.
-    function clearWalletAgentIDFor(address account) external {
-        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _clearWalletAgentID(account);
-    }
-
-    /// @notice Reverse-resolve a wallet to its agent id. Returns `WALLET_AGENT_ID_UNSET` (all
-    /// ones) when the account has never set an id or has cleared it. Every real id, including agent
-    /// id `0`, is returned as itself.
-    function walletAgentIDOf(address account) external view returns (uint256) {
-        uint256 stored = _walletAgentID[account];
-        return stored == 0 ? WALLET_AGENT_ID_UNSET : ~stored;
-    }
-
-    function _setWalletAgentID(address account, uint256 agentId) private {
-        if (agentId == type(uint256).max) revert WalletAgentIDReserved(agentId);
-        _walletAgentID[account] = ~agentId;
-        emit WalletAgentIDSet(account, agentId, msg.sender);
-    }
-
-    /// @dev Reset the account's complement slot to zero, which reads back as `WALLET_AGENT_ID_UNSET`,
-    /// and emit `WalletAgentIDCleared`. `delete` restores the exact "unwritten == unset" invariant.
-    function _clearWalletAgentID(address account) private {
-        delete _walletAgentID[account];
-        emit WalletAgentIDCleared(account, msg.sender);
-    }
-
-    // -----------------------------------------------------------------
     //  Wallet UBI (reverse resolution: wallet -> UBI)
     // -----------------------------------------------------------------
 
@@ -696,16 +597,11 @@ contract Adapter8004 is
         _clearWalletUBI(account);
     }
 
-    function walletUBIOf(address account) external view returns (bytes32) {
-        bytes32 stored = _walletUBI[account];
-        return stored == bytes32(0) ? WALLET_UBI_UNSET : ~stored;
-    }
-
     /// @dev Validates the coordinates before deriving from them, so this path cannot name an identity
-    /// no forward claim could ever match. Authority is deliberately not checked, since a wallet
-    /// pointing at an identity asserts nothing about that identity, but a coordinate the claim paths
-    /// reject is one nothing can ever resolve to. Placed here rather than in the two entry points so
-    /// a future caller stays covered.
+    /// no forward claim could ever match. The designation itself is emit-only: this checks that the
+    /// caller holds the authority to make it and then records that fact in the log, which is all a
+    /// reader needs, since the identifier is derived from coordinates rather than stored. Placed here
+    /// rather than in the two entry points so a future caller stays covered.
     function _setWalletUBI(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 bindingHash)
@@ -714,15 +610,10 @@ contract Adapter8004 is
         _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
         bindingHash = _bindingHash(standard, boundAddress, tokenId);
-        if (bindingHash == bytes32(type(uint256).max)) {
-            revert WalletUBIReserved(bindingHash);
-        }
-        _walletUBI[account] = ~bindingHash;
         emit WalletUBISet(account, bindingHash, boundAddress, tokenId, standard, msg.sender);
     }
 
     function _clearWalletUBI(address account) private {
-        delete _walletUBI[account];
         emit WalletUBICleared(account, msg.sender);
     }
 

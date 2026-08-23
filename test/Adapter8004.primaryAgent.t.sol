@@ -2,9 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
@@ -37,8 +39,6 @@ contract PrimaryAccessControlAccount {
 }
 
 contract Adapter8004PrimaryAgentTest is Test {
-    event WalletAgentIDSet(address indexed account, uint256 indexed agentId, address indexed setBy);
-    event WalletAgentIDCleared(address indexed account, address indexed clearedBy);
     event WalletUBISet(
         address indexed account,
         bytes32 indexed ubi,
@@ -67,51 +67,29 @@ contract Adapter8004PrimaryAgentTest is Test {
         token = address(new MockERC721());
     }
 
-    function testIndependentUnsetSentinelsAndZeroFullId() external {
-        assertEq(adapter.walletAgentIDOf(alice), type(uint256).max);
-        assertEq(adapter.walletUBIOf(alice), bytes32(type(uint256).max));
-        vm.prank(alice);
-        adapter.setWalletAgentID(0);
-        assertEq(adapter.walletAgentIDOf(alice), 0);
-        assertEq(adapter.walletUBIOf(alice), bytes32(type(uint256).max));
-    }
-
-    function testAccountCanHoldBothPrimariesAndEachWriteIsIndependent() external {
-        bytes32 expected = adapter.bindingHashFor(STD, token, 7);
-        vm.prank(alice);
-        adapter.setWalletAgentID(42);
-        vm.prank(alice);
-        bytes32 actual = adapter.setWalletUBI(STD, token, 7);
-        assertEq(actual, expected);
-        assertEq(adapter.walletAgentIDOf(alice), 42);
-        assertEq(adapter.walletUBIOf(alice), expected);
+    /// @dev The designation is emit-only, so a set and a clear are both recorded and neither writes
+    /// anything. There is no sentinel to distinguish a real value from an unwritten slot, because
+    /// there is no slot; the projection rule does that work instead.
+    function testSetAndClearAreRecordedAndStoreNothing() external {
+        vm.record();
+        vm.recordLogs();
 
         vm.prank(alice);
-        adapter.clearWalletAgentID();
-        assertEq(adapter.walletAgentIDOf(alice), type(uint256).max);
-        assertEq(adapter.walletUBIOf(alice), expected);
-
+        bytes32 designated = adapter.setWalletUBI(STD, token, 7);
         vm.prank(alice);
         adapter.clearWalletUBI();
-        assertEq(adapter.walletUBIOf(alice), bytes32(type(uint256).max));
-    }
 
-    function testFullAndCounterfactualSameBitsRemainIndependent() external {
-        bytes32 hash = adapter.bindingHashFor(STD, token, 9);
-        vm.prank(alice);
-        adapter.setWalletAgentID(uint256(hash));
-        vm.prank(alice);
-        adapter.setWalletUBI(STD, token, 9);
-        assertEq(adapter.walletAgentIDOf(alice), uint256(hash));
-        assertEq(adapter.walletUBIOf(alice), hash);
+        (, bytes32[] memory writes) = vm.accesses(address(adapter));
+        assertEq(writes.length, 0, "the wallet UBI surface writes no storage at all");
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 2, "both calls are recorded");
+        assertEq(logs[0].topics[0], IERC8004AdapterCounterfactual.WalletUBISet.selector);
+        assertEq(logs[0].topics[2], designated, "the set names the derived identity");
+        assertEq(logs[1].topics[0], IERC8004AdapterCounterfactual.WalletUBICleared.selector);
     }
 
     function testEventsCarryTypedValuesAndCoordinates() external {
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletAgentIDSet(alice, 42, alice);
-        vm.prank(alice);
-        adapter.setWalletAgentID(42);
-
         bytes32 hash = adapter.bindingHashFor(STD, token, 7);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit WalletUBISet(alice, hash, token, 7, STD, alice);
@@ -129,19 +107,8 @@ contract Adapter8004PrimaryAgentTest is Test {
         vm.prank(alice);
         bytes32 asAccount = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0);
 
-        assertTrue(asToken != asAccount, "one pair under two standards must be two pointers");
-        assertEq(adapter.walletUBIOf(alice), asAccount, "latest write wins");
+        assertTrue(asToken != asAccount, "one pair under two standards must be two identities");
         assertEq(asAccount, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0));
-    }
-
-    function testReservedFullSentinelRevertsWithoutChangingCounterfactual() external {
-        vm.prank(alice);
-        adapter.setWalletUBI(STD, token, 7);
-        bytes32 beforeValue = adapter.walletUBIOf(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.WalletAgentIDReserved.selector, type(uint256).max));
-        vm.prank(alice);
-        adapter.setWalletAgentID(type(uint256).max);
-        assertEq(adapter.walletUBIOf(alice), beforeValue);
     }
 
     function testCounterfactualHashZeroIsRepresentable() external {
@@ -150,45 +117,60 @@ contract Adapter8004PrimaryAgentTest is Test {
         Adapter8004ZeroHashHarness zeroAdapter = Adapter8004ZeroHashHarness(
             address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
         );
+        vm.recordLogs();
         vm.prank(alice);
         assertEq(zeroAdapter.setWalletUBI(STD, token, 1), bytes32(0));
-        assertEq(zeroAdapter.walletUBIOf(alice), bytes32(0));
+
+        // A zero identity is carried like any other. It needed a complement encoding when the value
+        // was stored; emit-only removes that concern entirely rather than special-casing it.
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs[0].topics[2], bytes32(0), "a zero identity is emitted as itself");
     }
 
-    function testOwnerAndDefaultAdminControlBothForSurfaces() external {
+    /// @dev The designation is recorded for the named account, not the caller, so the event has to
+    /// carry the account rather than whoever was authorized to act for it.
+    function testOwnerAndDefaultAdminControlTheForSurface() external {
         PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
-        vm.startPrank(alice);
-        adapter.setWalletAgentIDFor(address(owned), 5);
-        adapter.setWalletUBIFor(address(owned), STD, token, 1);
-        vm.stopPrank();
-        assertEq(adapter.walletAgentIDOf(address(owned)), 5);
-        assertEq(adapter.walletUBIOf(address(owned)), adapter.bindingHashFor(STD, token, 1));
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit WalletUBISet(address(owned), adapter.bindingHashFor(STD, token, 1), token, 1, STD, alice);
+        vm.prank(alice);
+        assertEq(adapter.setWalletUBIFor(address(owned), STD, token, 1), adapter.bindingHashFor(STD, token, 1));
 
         PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
         access.grant(bob);
-        vm.startPrank(bob);
-        adapter.setWalletAgentIDFor(address(access), 6);
-        adapter.setWalletUBIFor(address(access), STD, token, 2);
-        vm.stopPrank();
-        assertEq(adapter.walletAgentIDOf(address(access)), 6);
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit WalletUBISet(address(access), adapter.bindingHashFor(STD, token, 2), token, 2, STD, bob);
+        vm.prank(bob);
+        assertEq(adapter.setWalletUBIFor(address(access), STD, token, 2), adapter.bindingHashFor(STD, token, 2));
     }
 
-    function testNonControllerRejectedOnBothForSurfaces() external {
-        PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAccountController.selector, address(owned), bob));
-        vm.prank(bob);
-        adapter.setWalletAgentIDFor(address(owned), 1);
+    /// @dev A clear from a different authorized party than the one that set is honoured, because
+    /// both functions authorize against the account rather than against whoever wrote last. The
+    /// projection rule says so and this is the on-chain half of it.
+    function testAnyAuthorizedPartyMayClearWhatAnotherSet() external {
+        PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
+        access.grant(alice);
+        access.grant(bob);
 
+        vm.prank(alice);
+        adapter.setWalletUBIFor(address(access), STD, token, 1);
+
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit WalletUBICleared(address(access), bob);
+        vm.prank(bob);
+        adapter.clearWalletUBIFor(address(access));
+    }
+
+    function testNonControllerRejectedOnTheForSurface() external {
+        PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAccountController.selector, address(owned), bob));
         vm.prank(bob);
         adapter.setWalletUBIFor(address(owned), STD, token, 1);
     }
 
-    function testIdempotentClearsDoNotCrossClobber() external {
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletAgentIDCleared(alice, alice);
-        vm.prank(alice);
-        adapter.clearWalletAgentID();
+    /// @dev Clearing an account that never set one is a recorded no-op, not a revert, so an indexer
+    /// sees the same event either way.
+    function testIdempotentClearStillEmits() external {
         vm.expectEmit(true, true, true, true, address(adapter));
         emit WalletUBICleared(alice, alice);
         vm.prank(alice);
