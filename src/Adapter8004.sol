@@ -13,6 +13,7 @@ import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
 import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
 import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
+import {IInteroperableAddressView} from "./interfaces/IInteroperableAddressView.sol";
 import {IERC8004AdapterWalletCounterfactualID} from "./interfaces/IERC8004AdapterWalletCounterfactualID.sol";
 import {IERC8004AdapterWalletAgentID} from "./interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERC8004AdapterRegistration} from "./interfaces/IERC8004AdapterRegistration.sol";
@@ -48,6 +49,7 @@ contract Adapter8004 is
     IERC8004IdentityRecord,
     IERC8004AdapterRegistration,
     IERC8004AdapterCounterfactual,
+    IInteroperableAddressView,
     IERC8004AdapterWalletAgentID,
     IERC8004AdapterWalletCounterfactualID,
     IERC8004AdapterAttestation
@@ -416,20 +418,17 @@ contract Adapter8004 is
         return _registrationHash(binding.standard, binding.boundAddress, binding.tokenId);
     }
 
-    /// @inheritdoc IERC8004AdapterCounterfactual
+    /// @inheritdoc IInteroperableAddressView
     function interoperableAddress(address account) external view returns (bytes memory) {
         return _interoperableAddress(account);
     }
 
-    /// @inheritdoc IERC8004AdapterCounterfactual
+    /// @inheritdoc IInteroperableAddressView
     function chainIdentifier() external view returns (bytes memory) {
         return _chainIdentifier();
     }
 
-    /// @notice Announce an identity claim for a bound address, recorded entirely in the event log. A
-    /// current controller may call this, as may a collection calling directly while one of its
-    /// ERC-721, ERC-1155F or ERC-6909F ids has no current owner. Collection-authorized events set
-    /// `emitter = boundAddress`, and the same authority may re-emit any number of times.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualRegister(
         TokenStandard standard,
         address boundAddress,
@@ -440,7 +439,7 @@ contract Adapter8004 is
         return _counterfactualRegisterImpl(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
-    /// @notice Convenience overload equivalent to `counterfactualRegister(...)` with an empty metadata array.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualRegister(
         TokenStandard standard,
         address boundAddress,
@@ -479,10 +478,7 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Update the agent URI for a counterfactual identity. The update lives entirely in the
-    /// event log. A current controller may call this, as may a collection calling directly while a
-    /// supported single-owner id has no current owner.
-    /// @return computedHash The identity updated, matching `registrationHash(standard, boundAddress, tokenId)`.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetAgentURI(
         TokenStandard standard,
         address boundAddress,
@@ -502,11 +498,7 @@ contract Adapter8004 is
         emit CounterfactualAgentURISet(computedHash, boundAddress, tokenId, standard, newURI, msg.sender);
     }
 
-    /// @notice Records one metadata entry for a counterfactual identity. The entry is carried only by
-    /// the emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A
-    /// current controller may call it, as may the token contract itself while a supported
-    /// single-owner id has no current owner.
-    /// @return computedHash The identity written to, matching `registrationHash(standard, boundAddress, tokenId)`.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetMetadata(
         TokenStandard standard,
         address boundAddress,
@@ -534,12 +526,7 @@ contract Adapter8004 is
         );
     }
 
-    /// @notice Records several metadata entries for a counterfactual identity in one event. The
-    /// entries are carried only by that event, so nothing is written to the ERC-8004 registry or to
-    /// adapter storage. A current controller may call it, as may the token contract itself while a
-    /// supported single-owner id has no current owner.
-    /// @return computedHash The single identity every entry lands on, matching
-    /// `registrationHash(standard, boundAddress, tokenId)`.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetMetadataBatch(
         TokenStandard standard,
         address boundAddress,
@@ -563,11 +550,7 @@ contract Adapter8004 is
         emit CounterfactualMetadataBatchSet(computedHash, boundAddress, tokenId, standard, metadata, msg.sender);
     }
 
-    /// @notice Assigns the agent wallet for a counterfactual identity. It deliberately accepts no
-    /// signature, because no ERC-8004 wallet binding is created and the event is only an off-chain
-    /// claim. A current controller may call it, as may the token contract itself while a supported
-    /// single-owner id has no current owner.
-    /// @return computedHash The identity updated, matching `registrationHash(standard, boundAddress, tokenId)`.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetAgentWallet(
         TokenStandard standard,
         address boundAddress,
@@ -587,15 +570,7 @@ contract Adapter8004 is
         emit CounterfactualAgentWalletSet(computedHash, boundAddress, tokenId, standard, newWallet, msg.sender);
     }
 
-    /// @notice Name yourself as this identity's agent wallet and point your wallet back at it, in one
-    /// call. The caller proves control of the token, which authorizes the forward write, and the
-    /// caller is the wallet, which supplies consent for the reverse one, so both halves are
-    /// legitimate with no signature needed.
-    /// @dev The wallet is always `msg.sender`, so two records that agree show one actor was
-    /// authorized on both sides, the emitted pair matches what the separate calls emit, and any
-    /// existing designation on the caller is overwritten.
-    /// @return computedHash The identity named, matching
-    /// `registrationHash(standard, boundAddress, tokenId)` and the hash both emitted events carry.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetAgentWalletAndID(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
@@ -619,11 +594,7 @@ contract Adapter8004 is
         computedHash = _setWalletCounterfactualID(msg.sender, standard, boundAddress, tokenId);
     }
 
-    /// @notice Clears the agent wallet on a counterfactual identity. The clear is carried only by the
-    /// emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A current
-    /// controller may call it, as may the token contract itself while a supported single-owner id has
-    /// no current owner.
-    /// @return computedHash The identity cleared, matching `registrationHash(standard, boundAddress, tokenId)`.
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant

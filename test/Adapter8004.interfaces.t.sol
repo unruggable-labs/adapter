@@ -6,6 +6,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
+import {IInteroperableAddressView} from "../src/interfaces/IInteroperableAddressView.sol";
 import {IERC8004AdapterWalletCounterfactualID} from "../src/interfaces/IERC8004AdapterWalletCounterfactualID.sol";
 import {IERC8004AdapterWalletAgentID} from "../src/interfaces/IERC8004AdapterWalletAgentID.sol";
 import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
@@ -201,18 +202,62 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(logs.length, 2, "the plain set and clear events still fire");
     }
 
-    function testCounterfactualHashInterfaceCastAndSelectors() external view {
+    /// @dev The coordinate-form `registrationHash` stays on the counterfactual interface, because a
+    /// counterfactual identity has no agent id and the coordinates are its only derivation. The
+    /// ERC-7930 encoding moved to `IInteroperableAddressView`, which carries no identity meaning and
+    /// is depended on by the counterfactual and attestation surfaces alike.
+    function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
-        assertEq(cf.chainIdentifier(), adapter.chainIdentifier());
-        assertEq(cf.interoperableAddress(alice), adapter.interoperableAddress(alice));
         assertEq(
             cf.registrationHash(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
             adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
         );
+
+        IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
+        assertEq(encoding.chainIdentifier(), adapter.chainIdentifier());
+        assertEq(encoding.interoperableAddress(alice), adapter.interoperableAddress(alice));
+
+        // Moving a declaration between interfaces must not move a selector.
         assertEq(
-            IERC8004AdapterCounterfactual.interoperableAddress.selector,
-            bytes4(keccak256("interoperableAddress(address)"))
+            IInteroperableAddressView.interoperableAddress.selector, bytes4(keccak256("interoperableAddress(address)"))
         );
+        assertEq(IInteroperableAddressView.chainIdentifier.selector, bytes4(keccak256("chainIdentifier()")));
+
+        // The counterfactual writers are declared on the counterfactual interface now, so the whole
+        // surface is reachable through it. Selector equality checks the declarations match the
+        // implementations exactly; `counterfactualRegister` is overloaded, so `.selector` is
+        // ambiguous on it and both of its overloads are exercised by call below instead.
+        assertEq(
+            IERC8004AdapterCounterfactual.counterfactualSetAgentWalletAndID.selector,
+            bytes4(keccak256("counterfactualSetAgentWalletAndID(uint8,address,uint256)"))
+        );
+        assertEq(
+            IERC8004AdapterCounterfactual.counterfactualUnsetAgentWallet.selector,
+            bytes4(keccak256("counterfactualUnsetAgentWallet(uint8,address,uint256)"))
+        );
+    }
+
+    /// @dev `counterfactualRegister` is overloaded, so the interface declares both signatures and
+    /// the contract must satisfy the pair. Both are called through the interface cast rather than
+    /// through the concrete type, which is what proves the declarations are the ones being
+    /// implemented, and both must name the same identity for the same coordinates.
+    function testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() external {
+        IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
+        bytes32 expected = adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+
+        vm.prank(alice);
+        bytes32 withoutMetadata =
+            cf.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://a");
+
+        IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
+        metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
+        vm.prank(alice);
+        bytes32 withMetadata = cf.counterfactualRegister(
+            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://b", metadata
+        );
+
+        assertEq(withoutMetadata, expected, "four-argument overload");
+        assertEq(withMetadata, expected, "five-argument overload");
     }
 
     /// @dev ERC-8217 requires `registrationHashOf` on `IERCAgentBindings`, the interface that
