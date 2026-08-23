@@ -208,8 +208,8 @@ contract Adapter8004InterfacesTest is Test {
     function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(
-            cf.ubiFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
+            cf.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
         );
 
         IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
@@ -242,7 +242,7 @@ contract Adapter8004InterfacesTest is Test {
     /// implemented, and both must name the same identity for the same coordinates.
     function testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
-        bytes32 expected = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expected = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
 
         vm.prank(alice);
         bytes32 withoutMetadata =
@@ -259,29 +259,29 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(withMetadata, expected, "five-argument overload");
     }
 
-    /// @dev ERC-8217 requires `ubiOf` on `IERCAgentBindings`, the interface that standard defines,
-    /// and that is the only interface declaring it. It takes an agent id, which exists only for a
-    /// registered agent, so it belongs with the bindings surface; `ubiFor` is the coordinate form of
-    /// the same value. Deleting the declaration fails this test at compile time.
-    function testUbiOfIsReachableThroughTheBindingsInterface() external {
+    /// @dev ERC-8217 requires this function on `IERCAgentBindings`, the interface that standard
+    /// defines, and that is the only interface declaring it. It sits beside `bindingOf`, which
+    /// returns the `Binding` this hashes, and it takes an agent id, which exists only for a
+    /// registered agent. Deleting the declaration fails this test at compile time.
+    function testBindingHashOfIsReachableThroughTheBindingsInterface() external {
         uint256 agentId = _register721(alice, 1, "ipfs://a");
 
         IERCAgentBindings bindings = IERCAgentBindings(address(adapter));
-        assertEq(bindings.ubiOf(agentId), adapter.ubiOf(agentId), "same answer");
+        assertEq(bindings.bindingHashOf(agentId), adapter.bindingHashOf(agentId), "same answer");
         assertEq(
-            bindings.ubiOf(agentId),
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            bindings.bindingHashOf(agentId),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
             "and it is the coordinate form of the stored binding"
         );
 
         // The selector ERC-8217 pins.
-        assertEq(IERCAgentBindings.ubiOf.selector, bytes4(0x509e06dd));
-        assertEq(IERCAgentBindings.ubiOf.selector, bytes4(keccak256("ubiOf(uint256)")));
+        assertEq(IERCAgentBindings.bindingHashOf.selector, bytes4(0x30b7f986));
+        assertEq(IERCAgentBindings.bindingHashOf.selector, bytes4(keccak256("bindingHashOf(uint256)")));
 
         // The revert behaviour is reachable through the standard's own interface, not only through
         // the concrete contract type.
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(4242)));
-        bindings.ubiOf(4242);
+        bindings.bindingHashOf(4242);
     }
 
     function testPrimaryEventTopicsAreSystemSpecific() external pure {

@@ -63,6 +63,10 @@ interface IERCAgentBindings {
     /// `keccak256(abi.encode(bindingContractInteroperableAddress, standard, boundAddress, tokenId))`.
     /// Because a binding is immutable, an agent's UBI holds unchanged for the life of the identity.
     /// Querying an id that carries no binding reverts `UnknownAgent`.
-    /// @dev ERC-8217 mandates this function on this interface.
-    function ubiOf(uint256 agentId) external view returns (bytes32);
+    /// @dev ERC-8217 mandates this function on this interface, which is why it sits beside
+    /// `bindingOf`: that returns the `Binding`, this returns the hash of the same thing, and the
+    /// pair explains itself without a reader having to look up an acronym first. The two names do
+    /// different jobs on purpose. `bindingHash` names the mechanism and is what the code calls it;
+    /// UBI names the value that mechanism produces and is what the ERC and the prose call it.
+    function bindingHashOf(uint256 agentId) external view returns (bytes32);
 }

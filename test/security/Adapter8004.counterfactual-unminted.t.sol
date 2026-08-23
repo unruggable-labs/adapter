@@ -259,7 +259,7 @@ contract CounterfactualUnmintedTest is Test {
     function testERC721OwnerlessCollectionCanUseFullRegisterOverload() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("role", "builder");
-        bytes32 expectedHash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1);
+        bytes32 expectedHash = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1);
 
         vm.recordLogs();
         assertEq(collection.registerFull(1, "ipfs://full", metadata), expectedHash);
@@ -268,7 +268,7 @@ contract CounterfactualUnmintedTest is Test {
 
     function testERC721OwnerlessCollectionCanUseShortRegisterOverload() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
-        bytes32 expectedHash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1);
+        bytes32 expectedHash = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1);
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         vm.recordLogs();
         assertEq(collection.registerShort(1, "ipfs://short"), expectedHash);
@@ -277,7 +277,7 @@ contract CounterfactualUnmintedTest is Test {
 
     function testOwnerlessCollectionCanUseEveryUnsignedSetter() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
-        bytes32 hash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 7);
+        bytes32 hash = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 7);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
 
         vm.expectEmit(true, true, true, true, address(adapter));
@@ -314,7 +314,7 @@ contract CounterfactualUnmintedTest is Test {
     function testRegisterThenMintOrdersRegistrationBeforeTransfer() external {
         CounterfactualCollection collection = _collection(IERCAgentBindings.TokenStandard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
-        bytes32 expectedHash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 11);
+        bytes32 expectedHash = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), 11);
 
         vm.recordLogs();
         assertEq(collection.registerThenMint(alice, 11, "ipfs://born", metadata), expectedHash);
@@ -376,7 +376,7 @@ contract CounterfactualUnmintedTest is Test {
 
     function _assertOwnerCanOverwriteEveryField(CounterfactualCollection collection, uint256 tokenId) internal {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
-        bytes32 hash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId);
+        bytes32 hash = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId);
         vm.startPrank(alice);
         adapter.counterfactualRegister(
             IERCAgentBindings.TokenStandard.ERC721, address(collection), tokenId, "ipfs://owner", metadata

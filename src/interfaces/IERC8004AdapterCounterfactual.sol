@@ -116,12 +116,12 @@ interface IERC8004AdapterCounterfactual {
     /// `abi.encodePacked`.
     /// @dev **The UBI and the counterfactual identity are one value, not two.** The coordinates alone
     /// determine it, so it exists whether or not an agent is ever registered; registering adds an
-    /// agent id alongside the UBI rather than creating it, and `ubiOf(agentId)` returns this same
+    /// agent id alongside the UBI rather than creating it, and `bindingHashOf(agentId)` returns this same
     /// value for a registered agent. The four components are exactly the adapter address plus the
     /// stored `Binding`, so a registered agent's identity is derivable from its binding alone.
     /// `standard` is a parameter because it selects the identity: the same `(boundAddress, tokenId)`
     /// under two standards yields two different hashes.
-    function ubiFor(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function bindingHashFor(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         view
         returns (bytes32);
@@ -130,72 +130,72 @@ interface IERC8004AdapterCounterfactual {
     /// current controller may call this, as may a collection calling directly while one of its
     /// ERC-721, ERC-1155F or ERC-6909F ids has no current owner. Collection-authorized events set
     /// `emitter = boundAddress`, and the same authority may re-emit any number of times.
-    /// @return computedHash The identity claimed, matching `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The identity claimed, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualRegister(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Convenience overload equivalent to `counterfactualRegister(...)` with an empty metadata array.
-    /// @return computedHash The identity claimed, matching `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The identity claimed, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualRegister(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Update the agent URI for a counterfactual identity. The update lives entirely in the
     /// event log. A current controller may call this, as may a collection calling directly while a
     /// supported single-owner id has no current owner.
-    /// @return computedHash The identity updated, matching `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The identity updated, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetAgentURI(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata newURI
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Records one metadata entry for a counterfactual identity. The entry is carried only by
     /// the emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A
     /// current controller may call it, as may the token contract itself while a supported
     /// single-owner id has no current owner.
-    /// @return computedHash The identity written to, matching `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The identity written to, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetMetadata(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata metadataKey,
         bytes calldata metadataValue
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Records several metadata entries for a counterfactual identity in one event. The
     /// entries are carried only by that event, so nothing is written to the ERC-8004 registry or to
     /// adapter storage. A current controller may call it, as may the token contract itself while a
     /// supported single-owner id has no current owner.
-    /// @return computedHash The single identity every entry lands on, matching
-    /// `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The single identity every entry lands on, matching
+    /// `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetMetadataBatch(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Assigns the agent wallet for a counterfactual identity. It deliberately accepts no
     /// signature, because no ERC-8004 wallet binding is created and the event is only an off-chain
     /// claim. A current controller may call it, as may the token contract itself while a supported
     /// single-owner id has no current owner.
-    /// @return computedHash The identity updated, matching `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The identity updated, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetAgentWallet(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         address newWallet
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Name yourself as this identity's agent wallet and point your wallet back at it, in one
     /// call. The caller proves control of the token, which authorizes the forward write, and the
@@ -204,24 +204,24 @@ interface IERC8004AdapterCounterfactual {
     /// @dev The wallet is always `msg.sender`, so two records that agree show one actor was
     /// authorized on both sides, the emitted pair matches what the separate calls emit, and any
     /// existing designation on the caller is overwritten.
-    /// @return computedHash The identity named, matching
-    /// `ubiFor(standard, boundAddress, tokenId)` and the hash both emitted events carry.
+    /// @return bindingHash The identity named, matching
+    /// `bindingHashFor(standard, boundAddress, tokenId)` and the hash both emitted events carry.
     function counterfactualSetAgentWalletAndUBI(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Clears the agent wallet on a counterfactual identity. The clear is carried only by the
     /// emitted event, so nothing is written to the ERC-8004 registry or to adapter storage. A current
     /// controller may call it, as may the token contract itself while a supported single-owner id has
     /// no current owner.
-    /// @return computedHash The identity cleared, matching `ubiFor(standard, boundAddress, tokenId)`.
+    /// @return bindingHash The identity cleared, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualUnsetAgentWallet(
         IERCAgentBindings.TokenStandard standard,
         address boundAddress,
         uint256 tokenId
-    ) external returns (bytes32 computedHash);
+    ) external returns (bytes32 bindingHash);
 
     /// @notice Announces a counterfactual identity claim for a bound address. The claim lives
     /// entirely in the event log. Indexers MUST treat the latest event per UBI as

@@ -435,7 +435,7 @@ contract Adapter8004ContractBindingTest is Test {
     // -----------------------------------------------------------------
 
     function testEveryUnsignedCounterfactualWriterAcceptsTheBoundContract() external {
-        bytes32 expectedHash = adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
+        bytes32 expectedHash = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
@@ -698,9 +698,10 @@ contract Adapter8004ContractBindingTest is Test {
     /// different authority route.
     function testHybridContractGetsOneIdentityPerStandardRatherThanOneShared() external {
         HybridERC721Contract hybrid = new HybridERC721Contract(adapter);
-        bytes32 hash721 = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 0);
-        bytes32 hashAccount = adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(hybrid), 0);
-        bytes32 hashOwnable = adapter.ubiFor(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(hybrid), 0);
+        bytes32 hash721 = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(hybrid), 0);
+        bytes32 hashAccount = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(hybrid), 0);
+        bytes32 hashOwnable =
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(hybrid), 0);
 
         assertTrue(hash721 != hashAccount, "ERC721 and ACCOUNT are different identities");
         assertTrue(hash721 != hashOwnable, "ERC721 and CONTRACT_OWNABLE are different identities");
@@ -774,7 +775,8 @@ contract Adapter8004ContractBindingTest is Test {
 
         // The permanent authority can re-emit a counterfactual claim at any later time...
         assertEq(
-            token.counterfactualRegister(0), adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0)
+            token.counterfactualRegister(0),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(token), 0)
         );
 
         // ...and mint further, distinct ERC-8004 identities for the same contract, here through the

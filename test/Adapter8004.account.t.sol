@@ -88,13 +88,15 @@ contract Adapter8004AccountTest is Test {
         bytes32 ubi = adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0, "ipfs://cf");
         assertEq(
             ubi,
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, eoa, 0),
             "hash is the ACCOUNT identity for this pair"
         );
         // Inverted from the pre-`0.0.17` assertion, which required this to equal the hash for any
         // other standard at the same pair. The standard is in the preimage now, so `(eoa, 0)` claimed
         // as `ACCOUNT` and the same pair claimed as `ERC721` are two identities, not one.
-        assertTrue(ubi != adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, eoa, 0), "hash is standard-specific");
+        assertTrue(
+            ubi != adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, eoa, 0), "hash is standard-specific"
+        );
     }
 
     /// @dev The motivating defect. Before this change the code test was the only gate, so whether an
@@ -214,7 +216,7 @@ contract Adapter8004AccountTest is Test {
         assertEq(binder.codeLengthDuringConstruction(), 0, "premise: no runtime code during construction");
         assertEq(
             binder.ubi(),
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
             "hash matches the pair under the standard it claimed"
         );
     }

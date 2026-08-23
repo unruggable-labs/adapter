@@ -83,7 +83,7 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
 
         assertEq(
             _sampleUbi(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
             "sample preimage must match the contract's"
         );
     }

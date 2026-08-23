@@ -115,14 +115,14 @@ contract Adapter8004WalletAndIDTest is Test {
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token), 1, "ipfs://a");
         vm.prank(bob);
         bytes32 erc721 = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
-        assertEq(erc721, adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1));
+        assertEq(erc721, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1));
 
         // `ACCOUNT` at its canonical id, against a code-less address, which the claim path allows.
         vm.prank(bob);
         adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0, "ipfs://b");
         vm.prank(bob);
         bytes32 account = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0);
-        assertEq(account, adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0));
+        assertEq(account, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, bob, 0));
         assertEq(adapter.walletUBIOf(bob), account, "the last designation stands");
     }
 
@@ -132,7 +132,7 @@ contract Adapter8004WalletAndIDTest is Test {
         uint256 unminted = 999;
         vm.prank(bob);
         bytes32 designated = adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted);
-        assertEq(designated, adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted));
+        assertEq(designated, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), unminted));
     }
 
     // ----------------------------------------------------------------
@@ -278,7 +278,7 @@ contract Adapter8004WalletAndIDTest is Test {
         vm.prank(alice);
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
 
-        bytes32 identity = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        bytes32 identity = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         assertEq(adapter.walletUBIOf(alice), identity, "the caller is the wallet");
         assertEq(adapter.walletUBIOf(bob), adapter.WALLET_UBI_UNSET(), "and nobody else");
         assertEq(
@@ -296,7 +296,7 @@ contract Adapter8004WalletAndIDTest is Test {
     }
 
     /// @dev The returned hash is pinned to two independent things, not just to itself: the published
-    /// derivation `ubiFor` exposes, and the identity the emitted event actually carries. A
+    /// derivation `bindingHashFor` exposes, and the identity the emitted event actually carries. A
     /// return value that agreed with neither would be useless, and one that agreed only with itself
     /// would be untestable.
     function testCounterfactualCombinedReturnsTheDerivedHash() external {
@@ -308,7 +308,7 @@ contract Adapter8004WalletAndIDTest is Test {
 
         assertEq(
             returned,
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1),
             "matches the published derivation"
         );
         assertEq(logs[0].topics[1], returned, "matches the CounterfactualAgentWalletSet identity");
@@ -345,7 +345,7 @@ contract Adapter8004WalletAndIDTest is Test {
 
         bytes32 second = adapter.walletUBIOf(alice);
         assertTrue(first != second, "the pointer moved");
-        assertEq(second, adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 2));
+        assertEq(second, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 2));
     }
 
     /// @dev Read-time verification on this path now means something: the forward record names the
@@ -357,7 +357,7 @@ contract Adapter8004WalletAndIDTest is Test {
         adapter.counterfactualSetAgentWalletAndUBI(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 expected = adapter.ubiFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
+        bytes32 expected = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 1);
         assertEq(logs[0].topics[1], expected, "forward: the wallet event names this identity");
         assertEq(adapter.walletUBIOf(alice), expected, "reverse: the caller names the identity");
     }

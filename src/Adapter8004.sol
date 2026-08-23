@@ -58,7 +58,7 @@ contract Adapter8004 is
     /// metadata, because this contract writes it itself and an unreserved key would let a caller
     /// forge a record the adapter authors.
     /// @dev `cf-registration` was reserved here until `0.0.17` and deliberately is not any more: no
-    /// path writes it so there is no authored record to forge, `ubiOf` derives an
+    /// path writes it so there is no authored record to forge, `bindingHashOf` derives an
     /// agent's identifier rather than storing it so it cannot be spoofed, and reserving one spelling
     /// stops nobody who can write `ubi` instead. Do not re-add it as a consistency fix.
     string public constant BINDING_METADATA_KEY = "agent-binding";
@@ -406,14 +406,18 @@ contract Adapter8004 is
     // `IERC8004AdapterCounterfactual` states that consumers key on the UBI.
     // -----------------------------------------------------------------
 
-    function ubiFor(TokenStandard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {
-        return _ubi(standard, boundAddress, tokenId);
+    function bindingHashFor(TokenStandard standard, address boundAddress, uint256 tokenId)
+        external
+        view
+        returns (bytes32)
+    {
+        return _bindingHash(standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERCAgentBindings
-    function ubiOf(uint256 agentId) external view returns (bytes32) {
+    function bindingHashOf(uint256 agentId) external view returns (bytes32) {
         Binding memory binding = _knownBinding(agentId);
-        return _ubi(binding.standard, binding.boundAddress, binding.tokenId);
+        return _bindingHash(binding.standard, binding.boundAddress, binding.tokenId);
     }
 
     /// @inheritdoc IInteroperableAddressView
@@ -433,7 +437,7 @@ contract Adapter8004 is
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
-    ) public nonReentrant returns (bytes32 computedHash) {
+    ) public nonReentrant returns (bytes32 bindingHash) {
         return _counterfactualRegisterImpl(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
@@ -443,7 +447,7 @@ contract Adapter8004 is
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI
-    ) external nonReentrant returns (bytes32 computedHash) {
+    ) external nonReentrant returns (bytes32 bindingHash) {
         return _counterfactualRegisterImpl(
             standard, boundAddress, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0)
         );
@@ -455,7 +459,7 @@ contract Adapter8004 is
         uint256 tokenId,
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata
-    ) private returns (bytes32 computedHash) {
+    ) private returns (bytes32 bindingHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -468,12 +472,10 @@ contract Adapter8004 is
         _requireNoReservedBindingKey(metadata);
 
         // 4. Compute the deterministic UBI used as the indexer key for this claim.
-        computedHash = _ubi(standard, boundAddress, tokenId);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
 
         // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
-        emit CounterfactualAgentRegistered(
-            computedHash, boundAddress, tokenId, standard, agentURI, metadata, msg.sender
-        );
+        emit CounterfactualAgentRegistered(bindingHash, boundAddress, tokenId, standard, agentURI, metadata, msg.sender);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -482,7 +484,7 @@ contract Adapter8004 is
         address boundAddress,
         uint256 tokenId,
         string calldata newURI
-    ) external nonReentrant returns (bytes32 computedHash) {
+    ) external nonReentrant returns (bytes32 bindingHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -492,8 +494,8 @@ contract Adapter8004 is
 
         // 3. Emit the URI update, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
-        computedHash = _ubi(standard, boundAddress, tokenId);
-        emit CounterfactualAgentURISet(computedHash, boundAddress, tokenId, standard, newURI, msg.sender);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
+        emit CounterfactualAgentURISet(bindingHash, boundAddress, tokenId, standard, newURI, msg.sender);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -503,7 +505,7 @@ contract Adapter8004 is
         uint256 tokenId,
         string calldata metadataKey,
         bytes calldata metadataValue
-    ) external nonReentrant returns (bytes32 computedHash) {
+    ) external nonReentrant returns (bytes32 bindingHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -518,9 +520,9 @@ contract Adapter8004 is
 
         // 4. Emit the metadata write, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
-        computedHash = _ubi(standard, boundAddress, tokenId);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
         emit CounterfactualMetadataSet(
-            computedHash, boundAddress, tokenId, standard, metadataKey, metadataValue, msg.sender
+            bindingHash, boundAddress, tokenId, standard, metadataKey, metadataValue, msg.sender
         );
     }
 
@@ -530,7 +532,7 @@ contract Adapter8004 is
         address boundAddress,
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
-    ) external nonReentrant returns (bytes32 computedHash) {
+    ) external nonReentrant returns (bytes32 bindingHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -544,8 +546,8 @@ contract Adapter8004 is
         // 4. Emit the batch, which is the only on-chain record this function produces, and hand the
         //    identity back so the caller need not recompute it. Every entry lands on this one
         //    identity, so one hash covers the whole batch.
-        computedHash = _ubi(standard, boundAddress, tokenId);
-        emit CounterfactualMetadataBatchSet(computedHash, boundAddress, tokenId, standard, metadata, msg.sender);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
+        emit CounterfactualMetadataBatchSet(bindingHash, boundAddress, tokenId, standard, metadata, msg.sender);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -554,7 +556,7 @@ contract Adapter8004 is
         address boundAddress,
         uint256 tokenId,
         address newWallet
-    ) external nonReentrant returns (bytes32 computedHash) {
+    ) external nonReentrant returns (bytes32 bindingHash) {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -564,15 +566,15 @@ contract Adapter8004 is
 
         // 3. Emit the wallet assignment, which is the only on-chain record this function produces,
         //    and hand the identity back so the caller need not recompute it.
-        computedHash = _ubi(standard, boundAddress, tokenId);
-        emit CounterfactualAgentWalletSet(computedHash, boundAddress, tokenId, standard, newWallet, msg.sender);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
+        emit CounterfactualAgentWalletSet(bindingHash, boundAddress, tokenId, standard, newWallet, msg.sender);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetAgentWalletAndUBI(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
-        returns (bytes32 computedHash)
+        returns (bytes32 bindingHash)
     {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
@@ -583,20 +585,20 @@ contract Adapter8004 is
 
         // 3. Emit the wallet assignment, matching `counterfactualSetAgentWallet` exactly.
         emit CounterfactualAgentWalletSet(
-            _ubi(standard, boundAddress, tokenId), boundAddress, tokenId, standard, msg.sender, msg.sender
+            _bindingHash(standard, boundAddress, tokenId), boundAddress, tokenId, standard, msg.sender, msg.sender
         );
 
         // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
         //    reserved-hash guard and emits `WalletUBISet`, and hand back the identity it
         //    derived so the caller does not recompute it.
-        computedHash = _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
+        bindingHash = _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
-        returns (bytes32 computedHash)
+        returns (bytes32 bindingHash)
     {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
@@ -607,8 +609,8 @@ contract Adapter8004 is
 
         // 3. Emit the wallet clear, which is the only on-chain record this function produces, and
         //    hand the identity back so the caller need not recompute it.
-        computedHash = _ubi(standard, boundAddress, tokenId);
-        emit CounterfactualAgentWalletUnset(computedHash, boundAddress, tokenId, standard, msg.sender);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
+        emit CounterfactualAgentWalletUnset(bindingHash, boundAddress, tokenId, standard, msg.sender);
     }
 
     // -----------------------------------------------------------------
@@ -672,14 +674,14 @@ contract Adapter8004 is
 
     function setWalletUBI(TokenStandard standard, address boundAddress, uint256 tokenId)
         external
-        returns (bytes32 computedHash)
+        returns (bytes32 bindingHash)
     {
         return _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
     }
 
     function setWalletUBIFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
         external
-        returns (bytes32 computedHash)
+        returns (bytes32 bindingHash)
     {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
         return _setWalletUBI(account, standard, boundAddress, tokenId);
@@ -706,17 +708,17 @@ contract Adapter8004 is
     /// a future caller stays covered.
     function _setWalletUBI(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
         private
-        returns (bytes32 computedHash)
+        returns (bytes32 bindingHash)
     {
         _requireValidBoundAddress(standard, boundAddress);
         _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
-        computedHash = _ubi(standard, boundAddress, tokenId);
-        if (computedHash == bytes32(type(uint256).max)) {
-            revert WalletUBIReserved(computedHash);
+        bindingHash = _bindingHash(standard, boundAddress, tokenId);
+        if (bindingHash == bytes32(type(uint256).max)) {
+            revert WalletUBIReserved(bindingHash);
         }
-        _walletUBI[account] = ~computedHash;
-        emit WalletUBISet(account, computedHash, boundAddress, tokenId, standard, msg.sender);
+        _walletUBI[account] = ~bindingHash;
+        emit WalletUBISet(account, bindingHash, boundAddress, tokenId, standard, msg.sender);
     }
 
     function _clearWalletUBI(address account) private {
@@ -1106,13 +1108,13 @@ contract Adapter8004 is
         }
     }
 
-    function _ubi(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function _bindingHash(TokenStandard standard, address boundAddress, uint256 tokenId)
         internal
         view
         virtual
         returns (bytes32)
     {
-        return _ubiFrom(_interoperableAddress(address(this)), standard, boundAddress, tokenId);
+        return _bindingHashFrom(_interoperableAddress(address(this)), standard, boundAddress, tokenId);
     }
 
     /// @dev ERC-7930 v1 Chain Identifier using the CAIP-350 `eip155` profile:
@@ -1164,7 +1166,7 @@ contract Adapter8004 is
     /// `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
     /// `abi.encodePacked`: the interoperable address is dynamic, and packing it would let a different
     /// (address, standard) pair produce the same preimage bytes.
-    function _ubiFrom(
+    function _bindingHashFrom(
         bytes memory adapterInteroperableAddress,
         TokenStandard standard,
         address boundAddress,

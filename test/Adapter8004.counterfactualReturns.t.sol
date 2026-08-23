@@ -89,7 +89,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     /// property that made the five worth changing. `counterfactualRegister` and the two wallet-id
     /// setters already did; these five now join them.
     function testEveryCounterfactualFunctionAgreesOnTheIdentity() external {
-        bytes32 published = adapter.ubiFor(STD, address(token), 1);
+        bytes32 published = adapter.bindingHashFor(STD, address(token), 1);
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
         vm.startPrank(alice);
@@ -104,10 +104,10 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         uint256 agentId = adapter.register(STD, address(token), 1, "ipfs://agent");
         vm.stopPrank();
 
-        assertEq(adapter.ubiOf(agentId), published, "ubiOf");
+        assertEq(adapter.bindingHashOf(agentId), published, "bindingHashOf");
     }
 
-    /// @dev `ubiOf` answers from the stored binding, so it must agree with the
+    /// @dev `bindingHashOf` answers from the stored binding, so it must agree with the
     /// coordinate form for every standard rather than only for ERC-721.
     function testRegistrationHashOfMatchesTheCoordinateFormAcrossStandards() external {
         MockERC721 other = new MockERC721();
@@ -119,23 +119,25 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         vm.stopPrank();
         uint256 accountAgent = binder.register(0);
 
-        assertEq(adapter.ubiOf(erc721Agent), adapter.ubiFor(STD, address(other), 7), "ERC721");
+        assertEq(adapter.bindingHashOf(erc721Agent), adapter.bindingHashFor(STD, address(other), 7), "ERC721");
         assertEq(
-            adapter.ubiOf(accountAgent),
-            adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
+            adapter.bindingHashOf(accountAgent),
+            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
             "ACCOUNT"
         );
-        assertTrue(adapter.ubiOf(erc721Agent) != adapter.ubiOf(accountAgent), "two agents, two identities");
+        assertTrue(
+            adapter.bindingHashOf(erc721Agent) != adapter.bindingHashOf(accountAgent), "two agents, two identities"
+        );
     }
 
     /// @dev Unknown agents revert rather than answering zero, matching `bindingOf`. A zero answer
     /// would be indistinguishable from a real identity that happened to hash to zero.
     function testRegistrationHashOfRevertsForAnUnknownAgent() external {
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(42)));
-        adapter.ubiOf(42);
+        adapter.bindingHashOf(42);
 
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
-        adapter.ubiOf(0);
+        adapter.bindingHashOf(0);
     }
 
     /// @dev The property that makes this view safe to rely on: bindings are immutable, so the answer
@@ -143,14 +145,14 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     function testRegistrationHashOfSurvivesATokenTransfer() external {
         vm.prank(alice);
         uint256 agentId = adapter.register(STD, address(token), 1, "ipfs://agent");
-        bytes32 before = adapter.ubiOf(agentId);
+        bytes32 before = adapter.bindingHashOf(agentId);
 
         vm.prank(alice);
         token.transferFrom(alice, wallet, 1);
         assertEq(token.ownerOf(1), wallet, "premise: the token moved");
 
-        assertEq(adapter.ubiOf(agentId), before, "the identity is unchanged");
-        assertEq(before, adapter.ubiFor(STD, address(token), 1), "and still the coordinate form");
+        assertEq(adapter.bindingHashOf(agentId), before, "the identity is unchanged");
+        assertEq(before, adapter.bindingHashFor(STD, address(token), 1), "and still the coordinate form");
     }
 
     // ----------------------------------------------------------------
@@ -164,7 +166,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     /// @dev `ubi` is the first indexed field on every counterfactual event, so
     /// `topics[1]` is the identity the log carries.
     function _assertPinnedAgainst(bytes32 returned, Vm.Log[] memory logs) private view {
-        assertEq(returned, adapter.ubiFor(STD, address(token), 1), "matches the published derivation");
+        assertEq(returned, adapter.bindingHashFor(STD, address(token), 1), "matches the published derivation");
         assertEq(logs[0].topics[1], returned, "matches the identity its own event carries");
     }
 }

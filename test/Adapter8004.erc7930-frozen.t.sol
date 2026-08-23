@@ -30,7 +30,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// So this file's job is to make that failure loud, immediately, and unmistakable. It pins the
 /// encoding three ways: against exact bytes derived from the ERC-7930 layout, against both former
 /// in-house encoders kept frozen as references, and against the published fixture vectors end to
-/// end through `ubiFor` and the attestation identifier.
+/// end through `bindingHashFor` and the attestation identifier.
 contract Adapter8004Erc7930FrozenTest is Test {
     address internal constant VECTOR_ADAPTER = 0x1111111111111111111111111111111111111111;
     address internal constant VECTOR_TOKEN = 0x2222222222222222222222222222222222222222;
@@ -438,19 +438,19 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.chainId(1);
         assertEq(
-            fx.ubiFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_MAINNET,
             "published Ethereum ubi"
         );
         vm.chainId(8453);
         assertEq(
-            fx.ubiFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_BASE,
             "published Base ubi"
         );
         vm.chainId(11155111);
         assertEq(
-            fx.ubiFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_SEPOLIA,
             "published Sepolia ubi"
         );

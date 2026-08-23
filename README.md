@@ -357,7 +357,7 @@ Token standard enum values:
 
 The enum is append-only: `ACCOUNT` remains `0x05`, `CONTRACT_OWNABLE` is appended as `0x06`, `CONTRACT_ADMIN` as `0x07`, and values `0x00`-`0x04` keep their meaning, so existing stored bindings and indexed history are unaffected. `0x05` also keeps its position; only its name and its code test changed, and neither is persisted.
 
-The adapter reserves exactly one metadata key, `agent-binding`, and rejects caller attempts to set or batch-set it on either surface. It is reserved because the adapter writes that record itself, so an unreserved key would let a caller forge something the adapter authors. `cf-registration` was reserved until `0.0.17` and is now an ordinary key: nothing writes it, so there is no authored record to forge, and `ubiOf(agentId)` derives an agent's identifier rather than storing it, so it cannot be spoofed and is the authoritative source. Reserving one spelling would not have helped anyway, since a caller out to mislead an indexer can write `ubi` or any other suggestive name.
+The adapter reserves exactly one metadata key, `agent-binding`, and rejects caller attempts to set or batch-set it on either surface. It is reserved because the adapter writes that record itself, so an unreserved key would let a caller forge something the adapter authors. `cf-registration` was reserved until `0.0.17` and is now an ordinary key: nothing writes it, so there is no authored record to forge, and `bindingHashOf(agentId)` derives an agent's identifier rather than storing it, so it cannot be spoofed and is the authoritative source. Reserving one spelling would not have helped anyway, since a caller out to mislead an indexer can write `ubi` or any other suggestive name.
 
 Note:
 
@@ -477,8 +477,8 @@ Functions:
 - `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries) -> bytes32`
 - `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet) -> bytes32` (no signature because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId) -> bytes32`
-- `ubiFor(standard, boundAddress, tokenId)` (view)
-- `ubiOf(agentId)` (view) returns the same identity for an agent registered through this
+- `bindingHashFor(standard, boundAddress, tokenId)` (view)
+- `bindingHashOf(agentId)` (view) returns the same identity for an agent registered through this
   adapter, derived from its stored binding, and reverts `UnknownAgent` for an id that was never
   registered
 - `interoperableAddress(account)` (view)
@@ -684,8 +684,8 @@ Counterfactual (emit-only) functions:
 - `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata) -> bytes32`
 - `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet) -> bytes32`
 - `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId) -> bytes32`
-- `ubiFor(TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `ubiOf(uint256 agentId)`
+- `bindingHashFor(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `bindingHashOf(uint256 agentId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
 - `setWalletAgentID(uint256 agentId)`

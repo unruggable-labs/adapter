@@ -107,7 +107,7 @@ Recorded under Removed below.
   into one identifier that a single revocation erases. `variant` is the caller's
   opt-in within-block counterpart. There is deliberately **no domain constant**:
   nothing here is signed, and the interoperable address already binds the
-  preimage to this adapter on this chain, exactly as `ubiFor` binds.
+  preimage to this adapter on this chain, exactly as `bindingHashFor` binds.
   The two schemes cannot collide, because for one adapter the counterfactual
   preimage is a fixed 224 bytes and this one is at least 320.
 
@@ -206,15 +206,15 @@ Recorded under Removed below.
   there the registry verifies a deadline-bounded EIP-712 signature scoped to that
   agent and wallet, so naming a wallet other than the caller is the point.
 
-- **`ubiOf(uint256 agentId)`**, a view returning the counterfactual
+- **`bindingHashOf(uint256 agentId)`**, a view returning the counterfactual
   identity of an agent already registered through this adapter. It loads the
   stored binding and derives the identifier from those coordinates, so one call
-  replaces `bindingOf` followed by `ubiFor` and the answer is the same
+  replaces `bindingOf` followed by `bindingHashFor` and the answer is the same
   value. Unknown agents revert `UnknownAgent` rather than returning zero, sharing
   one definition of unknown with `bindingOf` through a new private
   `_knownBinding` helper that both use, and which `_requireController` now uses
   too. No storage is added and no new copy of the formula exists; the derivation
-  is the same internal helper `ubiFor` calls.
+  is the same internal helper `bindingHashFor` calls.
 
   It exists because attestations target counterfactual identifiers, and an
   integrator holding a registered `agentId` had to make two calls to find the one
@@ -235,7 +235,7 @@ Recorded under Removed below.
   five updaters, `counterfactualSetAgentURI`, `counterfactualSetMetadata`,
   `counterfactualSetMetadataBatch`, `counterfactualSetAgentWallet` and
   `counterfactualUnsetAgentWallet`, each already derived the hash for the event
-  they emit and dropped it; each now returns it as `computedHash`, the same name
+  they emit and dropped it; each now returns it as `bindingHash`, the same name
   `counterfactualRegister` and the wallet-id setters use. No new derivation was
   added anywhere: the value was already being computed, so this costs nothing but
   the return data. Return types are not part of the selector, so existing callers
@@ -322,19 +322,41 @@ Recorded under Removed below.
   alongside the UBI rather than creating it. The documentation now reads as one
   concept throughout rather than as one concept under two names.
 
-  Two views are renamed, so **both selectors change**:
+  Two views are renamed, so **both selectors change**. They were renamed twice
+  within this version, first onto the UBI vocabulary and then onto the mechanism
+  name they carry now, so the full chain is:
 
-  | Before | After | Selector |
-  |---|---|---|
-  | `registrationHashOf(uint256)` | `ubiOf(uint256)` | `0xda1b4b75` → `0x509e06dd` |
-  | `registrationHash(uint8,address,uint256)` | `ubiFor(uint8,address,uint256)` | `0xdb667f67` → `0x266224ca` |
+  | Original | Intermediate | Final | Selector |
+  |---|---|---|---|
+  | `registrationHashOf(uint256)` | `ubiOf(uint256)` | `bindingHashOf(uint256)` | `0xda1b4b75` → `0x509e06dd` → `0x30b7f986` |
+  | `registrationHash(uint8,address,uint256)` | `ubiFor(uint8,address,uint256)` | `bindingHashFor(uint8,address,uint256)` | `0xdb667f67` → `0x266224ca` → `0x3723bc92` |
 
-  `ubiOf` takes an agent id and answers for a registered agent; `ubiFor` takes raw
-  coordinates and answers for anything, registered or not. They return the same
-  value for the same binding, which is the point. The name `ubiFor` rather than a
-  bare `ubi` avoids a parameter named `ubi` shadowing a function of the same name
-  inside `attest` and `confirmAdditionalAccount`, and reads as one family with
-  `ubiOf`. The internal helpers moved with them, to `_ubi` and `_ubiFrom`.
+  Only the final column ships; the intermediate names never left this branch and
+  are recorded so a reviewer reading the branch history can follow it.
+
+  `bindingHashOf` takes an agent id and answers for a registered agent;
+  `bindingHashFor` takes raw coordinates and answers for anything, registered or
+  not. They return the same value for the same binding, which is the point. The
+  internal helpers moved with them, to `_bindingHash` and `_bindingHashFrom`.
+
+  **The final names split two jobs that one word was doing.** `bindingHash` names
+  the mechanism and is what the code calls it, sitting next to `bindingOf` so the
+  pair explains itself: one returns the `Binding`, the other returns the hash of
+  the same thing. UBI names the value that mechanism produces and stays the citable
+  noun in ERC-8217 and in prose. This is the ENS shape, where `namehash` is the
+  mechanism and `node` is the value. The acronym is therefore not retired, it is
+  confined to the place where it does work, and the `bytes32 ubi` parameters on
+  `attest` and `confirmAdditionalAccount` keep it because their job is to name the
+  subject being attested to, not the act of hashing that produced it.
+
+  The named return value on every function that derives one is `bindingHash`
+  rather than `computedHash`, in all forty-six places. Once the deriving helper is
+  `_bindingHash`, naming the result for the fact that it was computed says nothing;
+  every one of those returns is a binding hash. Named returns are not part of any
+  selector, so nothing in the ABI signature moves and no executable byte changes,
+  verified rather than assumed. They do appear as output names in the ABI JSON,
+  where `computedHash` becomes `bindingHash`; nothing in this repository reads
+  them, but a downstream generator that binds by output name would see it.
 
   The `bytes32 cfid` parameter on `attest` and `confirmAdditionalAccount` is now
   `bytes32 ubi`, and the indexed `registrationHash` field on the counterfactual and
@@ -455,7 +477,7 @@ Recorded under Removed below.
   caller out to mislead an indexer can write `cfid`, `counterfactual-id` or any
   other suggestive spelling, so reserving exactly one gave false comfort.
 
-  The real defence is `ubiOf(agentId)`, added earlier in this
+  The real defence is `bindingHashOf(agentId)`, added earlier in this
   version. It derives an agent's identifier rather than storing it, so it cannot
   be spoofed, and it is the authoritative source. That also settles the earlier
   proposal to write `cf-registration` on every `register`, which was declined
@@ -547,7 +569,7 @@ cost depends on the chain reference length:
 | --- | ---: | ---: | ---: |
 | `attest`, small payload | 7,581 | 7,581 | 7,581 |
 | `confirmAdditionalAccount` | 6,916 | 6,916 | 6,916 |
-| `ubiFor` | 5,749 | 5,749 | 5,749 |
+| `bindingHashFor` | 5,749 | 5,749 | 5,749 |
 | `revoke` | 1,889 | 1,889 | 1,889 |
 
 Flat across chains, which is itself the effect of the OpenZeppelin adoption: its
@@ -619,7 +641,7 @@ size, not gas.
   `test/Adapter8004.erc7930-frozen.t.sol` exists to make that loud: 26 tests
   pinning exact bytes for twelve chain ids on both shapes, three-way agreement
   across all 32 reference lengths, round trips through `parseEvmV1`, and the
-  published identities asserted end to end through `ubiFor`, the
+  published identities asserted end to end through `bindingHashFor`, the
   attestation identifier and a real counterfactual emission. One test,
   `testOpenZeppelinEncodingIsFrozen`, exists solely to fail on an upstream
   encoding change and says in its own comment that editing it is never the fix.
@@ -701,7 +723,7 @@ size, not gas.
   | --- | ---: | ---: | ---: |
   | `attest`, small payload | 13,387 | 6,385 | −7,002 |
   | `confirmAdditionalAccount` | 12,904 | 5,902 | −7,002 |
-  | `ubiFor` | 9,647 | 2,645 | −7,002 |
+  | `bindingHashFor` | 9,647 | 2,645 | −7,002 |
   | `revoke` | 1,889 | 1,889 | 0 |
 
   Exactly one derivation's worth in each case.
@@ -772,7 +794,7 @@ size, not gas.
   in [`IERCAgentBindings.sol`](./src/interfaces/IERCAgentBindings.sol).
 
 - **`registrationHash(address,uint256)` is removed and replaced by the
-  coordinate-form view that is now called `ubiFor(TokenStandard,address,uint256)`.**
+  coordinate-form view that is now called `bindingHashFor(TokenStandard,address,uint256)`.**
   It carried the name `registrationHash` for most of this version and was renamed
   with the rest of the terminology, recorded below. The old selector is gone rather
   than kept as an overload, deliberately: a stale caller reverts cleanly instead of
@@ -857,7 +879,7 @@ Against the 24,576-byte cap, built up from `0.0.16`:
 | + the two combined wallet-id setters | 18,123 | 6,453 |
 | + the hash return on the combined setter | 18,125 | 6,451 |
 | + the hash return on the five updaters | 18,152 | 6,424 |
-| + `ubiOf`, − a duplicated unknown-agent check | 18,146 | 6,430 |
+| + `bindingHashOf`, − a duplicated unknown-agent check | 18,146 | 6,430 |
 | − the `cf-registration` reservation | 17,808 | 6,768 |
 
 The attestation surface cost 1,047 bytes, under the 1,500–2,200 it was estimated

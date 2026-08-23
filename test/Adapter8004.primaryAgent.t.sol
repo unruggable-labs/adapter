@@ -11,7 +11,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 contract Adapter8004ZeroHashHarness is Adapter8004 {
     constructor(address registry_) Adapter8004(registry_) {}
 
-    function _ubi(IERCAgentBindings.TokenStandard, address, uint256) internal pure override returns (bytes32) {
+    function _bindingHash(IERCAgentBindings.TokenStandard, address, uint256) internal pure override returns (bytes32) {
         return bytes32(0);
     }
 }
@@ -77,7 +77,7 @@ contract Adapter8004PrimaryAgentTest is Test {
     }
 
     function testAccountCanHoldBothPrimariesAndEachWriteIsIndependent() external {
-        bytes32 expected = adapter.ubiFor(STD, token, 7);
+        bytes32 expected = adapter.bindingHashFor(STD, token, 7);
         vm.prank(alice);
         adapter.setWalletAgentID(42);
         vm.prank(alice);
@@ -97,7 +97,7 @@ contract Adapter8004PrimaryAgentTest is Test {
     }
 
     function testFullAndCounterfactualSameBitsRemainIndependent() external {
-        bytes32 hash = adapter.ubiFor(STD, token, 9);
+        bytes32 hash = adapter.bindingHashFor(STD, token, 9);
         vm.prank(alice);
         adapter.setWalletAgentID(uint256(hash));
         vm.prank(alice);
@@ -112,7 +112,7 @@ contract Adapter8004PrimaryAgentTest is Test {
         vm.prank(alice);
         adapter.setWalletAgentID(42);
 
-        bytes32 hash = adapter.ubiFor(STD, token, 7);
+        bytes32 hash = adapter.bindingHashFor(STD, token, 7);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit WalletUBISet(alice, hash, token, 7, STD, alice);
         vm.prank(alice);
@@ -131,7 +131,7 @@ contract Adapter8004PrimaryAgentTest is Test {
 
         assertTrue(asToken != asAccount, "one pair under two standards must be two pointers");
         assertEq(adapter.walletUBIOf(alice), asAccount, "latest write wins");
-        assertEq(asAccount, adapter.ubiFor(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0));
+        assertEq(asAccount, adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, token, 0));
     }
 
     function testReservedFullSentinelRevertsWithoutChangingCounterfactual() external {
@@ -162,7 +162,7 @@ contract Adapter8004PrimaryAgentTest is Test {
         adapter.setWalletUBIFor(address(owned), STD, token, 1);
         vm.stopPrank();
         assertEq(adapter.walletAgentIDOf(address(owned)), 5);
-        assertEq(adapter.walletUBIOf(address(owned)), adapter.ubiFor(STD, token, 1));
+        assertEq(adapter.walletUBIOf(address(owned)), adapter.bindingHashFor(STD, token, 1));
 
         PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
         access.grant(bob);
