@@ -216,27 +216,28 @@ contract Adapter8004InterfacesTest is Test {
     }
 
     /// @dev ERC-8217 requires `registrationHashOf` on `IERCAgentBindings`, the interface that
-    /// standard defines. It is also kept on `IERC8004AdapterCounterfactual` for consumers written
-    /// against the earlier layout. Both casts must compile and must answer identically, which is the
-    /// whole point of the two-base override; deleting either declaration fails this test.
-    function testRegistrationHashOfIsReachableThroughBothInterfaces() external {
+    /// standard defines, and that is the only interface declaring it. The function takes an agent
+    /// id, which exists only for a registered agent, so it belongs with the bindings surface rather
+    /// than with any counterfactual one. Deleting the declaration fails this test at compile time.
+    function testRegistrationHashOfIsReachableThroughTheBindingsInterface() external {
         uint256 agentId = _register721(alice, 1, "ipfs://a");
 
-        bytes32 viaBindings = IERCAgentBindings(address(adapter)).registrationHashOf(agentId);
-        bytes32 viaCounterfactual = IERC8004AdapterCounterfactual(address(adapter)).registrationHashOf(agentId);
-
-        assertEq(viaBindings, adapter.registrationHashOf(agentId), "ERC-8217 interface answers the same");
-        assertEq(viaCounterfactual, viaBindings, "and so does the retained declaration");
-
-        // One function, so one selector, whichever interface a caller compiled against.
-        assertEq(IERCAgentBindings.registrationHashOf.selector, bytes4(keccak256("registrationHashOf(uint256)")));
+        IERCAgentBindings bindings = IERCAgentBindings(address(adapter));
+        assertEq(bindings.registrationHashOf(agentId), adapter.registrationHashOf(agentId), "same answer");
         assertEq(
-            IERC8004AdapterCounterfactual.registrationHashOf.selector, IERCAgentBindings.registrationHashOf.selector
+            bindings.registrationHashOf(agentId),
+            adapter.registrationHash(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            "and it is the coordinate form of the stored binding"
         );
 
-        // The ERC-8217 revert behaviour is reachable through the standard's own interface too.
+        // The selector ERC-8217 pins.
+        assertEq(IERCAgentBindings.registrationHashOf.selector, bytes4(0xda1b4b75));
+        assertEq(IERCAgentBindings.registrationHashOf.selector, bytes4(keccak256("registrationHashOf(uint256)")));
+
+        // The revert behaviour is reachable through the standard's own interface, not only through
+        // the concrete contract type.
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(4242)));
-        IERCAgentBindings(address(adapter)).registrationHashOf(4242);
+        bindings.registrationHashOf(4242);
     }
 
     function testPrimaryEventTopicsAreSystemSpecific() external pure {

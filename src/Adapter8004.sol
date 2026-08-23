@@ -411,15 +411,7 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERCAgentBindings
-    /// @dev Declared on both `IERCAgentBindings`, where ERC-8217 requires it, and on
-    /// `IERC8004AdapterCounterfactual`, kept for older consumers, so the override must name both
-    /// bases explicitly. One body serves both and the selector is unchanged.
-    function registrationHashOf(uint256 agentId)
-        external
-        view
-        override(IERCAgentBindings, IERC8004AdapterCounterfactual)
-        returns (bytes32)
-    {
+    function registrationHashOf(uint256 agentId) external view returns (bytes32) {
         Binding memory binding = _knownBinding(agentId);
         return _registrationHash(binding.standard, binding.boundAddress, binding.tokenId);
     }
