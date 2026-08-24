@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @notice Safe-owned UUPS upgrade flow for `Adapter8004`.
@@ -136,9 +136,7 @@ contract DeployAdapterImplementationScript is Script {
         console2.log("ERC-7930 Interoperable Address for proxy:");
         console2.logBytes(proxyInteroperableAddress);
         console2.log("Sample bindingHashFor(proxy, standard=ERC721, boundAddress=0x1, tokenId=0):");
-        console2.logBytes32(
-            _sampleUbi(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0)
-        );
+        console2.logBytes32(_sampleUbi(proxyInteroperableAddress, IERC8217.TokenStandard.ERC721, address(1), 0));
 
         console2.log("=== New wallet-id event topic[0] hashes ===");
         console2.logBytes32(keccak256(bytes(SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET)));
@@ -173,7 +171,7 @@ contract DeployAdapterImplementationScript is Script {
     /// preimage, and the accompanying test holds it against the contract so the two cannot diverge.
     function _sampleUbi(
         bytes memory proxyInteroperableAddress,
-        IERCAgentBindings.TokenStandard standard,
+        IERC8217.TokenStandard standard,
         address boundAddress,
         uint256 tokenId
     ) internal pure returns (bytes32) {

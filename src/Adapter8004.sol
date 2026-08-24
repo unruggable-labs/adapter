@@ -10,7 +10,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IDelegateRegistry} from "./interfaces/IDelegateRegistry.sol";
-import {IERCAgentBindings} from "./interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "./interfaces/IERC8217.sol";
 import {IERC8004AdapterAttestation} from "./interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "./interfaces/IERC8004AdapterCounterfactual.sol";
 import {IInteroperableAddressView} from "./interfaces/IInteroperableAddressView.sol";
@@ -43,7 +43,7 @@ contract Adapter8004 is
     UUPSUpgradeable,
     ReentrancyGuard,
     IERC721Receiver,
-    IERCAgentBindings,
+    IERC8217,
     IERC8004IdentityRecord,
     IERC8004AdapterRegistration,
     IERC8004AdapterCounterfactual,
@@ -370,7 +370,7 @@ contract Adapter8004 is
         return _bindingHash(standard, boundAddress, tokenId);
     }
 
-    /// @inheritdoc IERCAgentBindings
+    /// @inheritdoc IERC8217
     function bindingHashOf(uint256 agentId) external view returns (bytes32) {
         Binding memory binding = _knownBinding(agentId);
         return _bindingHash(binding.standard, binding.boundAddress, binding.tokenId);

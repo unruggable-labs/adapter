@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
@@ -47,7 +47,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         // The mock (and the real registry) set agentWallet = msg.sender during
         // register; the adapter must clear it as step 7 of register.
@@ -67,9 +67,9 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
-        IERCAgentBindings.Binding memory beforeBinding = adapter.bindingOf(agentId);
+        IERC8217.Binding memory beforeBinding = adapter.bindingOf(agentId);
 
         // Exercise every non-reverting controller path and re-check the
         // binding. These calls should never touch _bindings[agentId].
@@ -85,7 +85,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
         adapter.unsetAgentWallet(agentId);
         vm.stopPrank();
 
-        IERCAgentBindings.Binding memory afterBinding = adapter.bindingOf(agentId);
+        IERC8217.Binding memory afterBinding = adapter.bindingOf(agentId);
         assertEq(uint256(afterBinding.standard), uint256(beforeBinding.standard), "standard mutated");
         assertEq(afterBinding.boundAddress, beforeBinding.boundAddress, "boundAddress mutated");
         assertEq(afterBinding.tokenId, beforeBinding.tokenId, "tokenId mutated");
@@ -102,7 +102,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         bytes memory stored = registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY());
         bytes memory expected = abi.encodePacked(address(adapter));
@@ -173,7 +173,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
 
         vm.expectRevert(bytes("metadata write disabled"));
-        failing.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 99, "", metadata);
+        failing.register(IERC8217.TokenStandard.ERC721, address(token721), 99, "", metadata);
 
         // Nothing persisted. The registry issued id 0 and the adapter wrote `_bindings[0]` before
         // the failure arrived, so this is the assertion that the revert rolled that write back.

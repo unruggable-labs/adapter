@@ -11,7 +11,7 @@ pragma solidity ^0.8.24;
 /// live in `docs/specs/attestation-type-registry-v1.md`.
 interface IERC8004AdapterAttestation {
     /// @dev **APPEND ONLY. NEVER RENUMBER, NEVER REORDER, NEVER REMOVE A MEMBER.** These numbers are
-    /// identity-critical for the same reason `IERCAgentBindings.TokenStandard`'s are: the `uint8` of
+    /// identity-critical for the same reason `IERC8217.TokenStandard`'s are: the `uint8` of
     /// this enum sits in the preimage of every `attestationId`, so renumbering a member re-keys every
     /// attestation ever emitted under it, and every revocation that names one. Nothing on chain
     /// records the old value, so that is unrecoverable. Add new types at the end.

@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IInteroperableAddressView} from "../src/interfaces/IInteroperableAddressView.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRecord} from "../src/interfaces/IERC8004IdentityRecord.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -39,21 +39,21 @@ contract Adapter8004InterfacesTest is Test {
     }
 
     function testTokenStandardValuesAreAdditive() external pure {
-        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC721), 0);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC1155), 1);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909), 2);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC1155F), 3);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.ERC6909F), 4);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.ACCOUNT), 5);
-        assertEq(uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE), 6);
+        assertEq(uint8(IERC8217.TokenStandard.ERC721), 0);
+        assertEq(uint8(IERC8217.TokenStandard.ERC1155), 1);
+        assertEq(uint8(IERC8217.TokenStandard.ERC6909), 2);
+        assertEq(uint8(IERC8217.TokenStandard.ERC1155F), 3);
+        assertEq(uint8(IERC8217.TokenStandard.ERC6909F), 4);
+        assertEq(uint8(IERC8217.TokenStandard.ACCOUNT), 5);
+        assertEq(uint8(IERC8217.TokenStandard.CONTRACT_OWNABLE), 6);
     }
 
     function testPrimaryInterfacesCastAndSelectors() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         vm.prank(alice);
         assertEq(
-            cf.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            cf.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1),
             "reachable through the interface cast"
         );
         assertEq(
@@ -107,8 +107,8 @@ contract Adapter8004InterfacesTest is Test {
         // whole wallet-pointer family went away.
         vm.prank(alice);
         assertEq(
-            adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1)
+            adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1)
         );
         vm.prank(alice);
         adapter.clearWalletUBI();
@@ -149,7 +149,7 @@ contract Adapter8004InterfacesTest is Test {
         // Positive control: the renamed surface works, so the assertions above cannot pass because
         // the whole family disappeared.
         vm.prank(alice);
-        assertTrue(adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1) != bytes32(0));
+        assertTrue(adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1) != bytes32(0));
         vm.prank(alice);
         adapter.clearWalletUBI();
     }
@@ -158,7 +158,7 @@ contract Adapter8004InterfacesTest is Test {
     function testRenamedWalletIdEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1);
         vm.prank(alice);
         adapter.clearWalletUBI();
 
@@ -183,7 +183,7 @@ contract Adapter8004InterfacesTest is Test {
     function testRemovedSignedPrimaryAgentEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setWalletUBI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1);
         vm.prank(alice);
         adapter.clearWalletUBI();
 
@@ -204,8 +204,8 @@ contract Adapter8004InterfacesTest is Test {
     function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(
-            cf.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, alice, 7)
+            cf.bindingHashFor(IERC8217.TokenStandard.ERC721, alice, 7),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, alice, 7)
         );
 
         IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
@@ -238,41 +238,40 @@ contract Adapter8004InterfacesTest is Test {
     /// implemented, and both must name the same identity for the same coordinates.
     function testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
-        bytes32 expected = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expected = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1);
 
         vm.prank(alice);
         bytes32 withoutMetadata =
-            cf.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://a");
+            cf.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://a");
 
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
         vm.prank(alice);
-        bytes32 withMetadata = cf.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://b", metadata
-        );
+        bytes32 withMetadata =
+            cf.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://b", metadata);
 
         assertEq(withoutMetadata, expected, "four-argument overload");
         assertEq(withMetadata, expected, "five-argument overload");
     }
 
-    /// @dev ERC-8217 requires this function on `IERCAgentBindings`, the interface that standard
+    /// @dev ERC-8217 requires this function on `IERC8217`, the interface that standard
     /// defines, and that is the only interface declaring it. It sits beside `bindingOf`, which
     /// returns the `Binding` this hashes, and it takes an agent id, which exists only for a
     /// registered agent. Deleting the declaration fails this test at compile time.
     function testBindingHashOfIsReachableThroughTheBindingsInterface() external {
         uint256 agentId = _register721(alice, 1, "ipfs://a");
 
-        IERCAgentBindings bindings = IERCAgentBindings(address(adapter));
+        IERC8217 bindings = IERC8217(address(adapter));
         assertEq(bindings.bindingHashOf(agentId), adapter.bindingHashOf(agentId), "same answer");
         assertEq(
             bindings.bindingHashOf(agentId),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1),
             "and it is the coordinate form of the stored binding"
         );
 
         // The selector ERC-8217 pins.
-        assertEq(IERCAgentBindings.bindingHashOf.selector, bytes4(0x30b7f986));
-        assertEq(IERCAgentBindings.bindingHashOf.selector, bytes4(keccak256("bindingHashOf(uint256)")));
+        assertEq(IERC8217.bindingHashOf.selector, bytes4(0x30b7f986));
+        assertEq(IERC8217.bindingHashOf.selector, bytes4(keccak256("bindingHashOf(uint256)")));
 
         // The revert behaviour is reachable through the standard's own interface, not only through
         // the concrete contract type.
@@ -430,7 +429,7 @@ contract Adapter8004InterfacesTest is Test {
     function _register721(address caller, uint256 tokenId, string memory agentURI) internal returns (uint256) {
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         vm.prank(caller);
-        return adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, agentURI, empty);
+        return adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, agentURI, empty);
     }
 }
 

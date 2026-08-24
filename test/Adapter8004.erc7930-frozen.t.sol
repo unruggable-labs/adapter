@@ -7,7 +7,7 @@ import {InteroperableAddress} from "@openzeppelin/contracts/utils/draft-Interope
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {Adapter8004HashHarness, ReferenceErc7930, WordAlignedErc7930} from "./Adapter8004.erc7930.t.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
@@ -438,19 +438,17 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.chainId(1);
         assertEq(
-            fx.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_MAINNET,
             "published Ethereum ubi"
         );
         vm.chainId(8453);
         assertEq(
-            fx.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_UBI_BASE,
-            "published Base ubi"
+            fx.bindingHashFor(IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBI_BASE, "published Base ubi"
         );
         vm.chainId(11155111);
         assertEq(
-            fx.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_SEPOLIA,
             "published Sepolia ubi"
         );
@@ -485,7 +483,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
         vm.recordLogs();
         vm.prank(ALICE);
         bytes32 returned = Adapter8004(VECTOR_ADAPTER).counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ERC721, VECTOR_TOKEN, 42, "ipfs://cf"
+            IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42, "ipfs://cf"
         );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();

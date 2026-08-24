@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
@@ -65,22 +65,19 @@ contract MockERC20 {
     // ---------------------------------------------------------------
 
     function register(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
+        return ADAPTER.register(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
     function registerWithMetadata(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         returns (uint256)
     {
-        return ADAPTER.register(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent", metadata
-        );
+        return ADAPTER.register(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent", metadata);
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent"
-        );
+        return
+            ADAPTER.counterfactualRegister(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
     function counterfactualRegisterWithMetadata(
@@ -88,37 +85,34 @@ contract MockERC20 {
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, agentURI, metadata
-        );
+        return
+            ADAPTER.counterfactualRegister(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, agentURI, metadata);
     }
 
     function counterfactualSetAgentURI(uint256 tokenId, string calldata newURI) external {
-        ADAPTER.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, newURI);
+        ADAPTER.counterfactualSetAgentURI(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, newURI);
     }
 
     function counterfactualSetMetadata(uint256 tokenId, string calldata metadataKey, bytes calldata metadataValue)
         external
     {
         ADAPTER.counterfactualSetMetadata(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue
+            IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue
         );
     }
 
     function counterfactualSetMetadataBatch(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
     {
-        ADAPTER.counterfactualSetMetadataBatch(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, metadata
-        );
+        ADAPTER.counterfactualSetMetadataBatch(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, metadata);
     }
 
     function counterfactualSetAgentWallet(uint256 tokenId, address newWallet) external {
-        ADAPTER.counterfactualSetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, newWallet);
+        ADAPTER.counterfactualSetAgentWallet(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, newWallet);
     }
 
     function counterfactualUnsetAgentWallet(uint256 tokenId) external {
-        ADAPTER.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId);
+        ADAPTER.counterfactualUnsetAgentWallet(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId);
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
@@ -25,7 +25,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     address internal wallet = makeAddr("wallet");
     address internal admin = makeAddr("admin");
 
-    IERCAgentBindings.TokenStandard internal constant STD = IERCAgentBindings.TokenStandard.ERC721;
+    IERC8217.TokenStandard internal constant STD = IERC8217.TokenStandard.ERC721;
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
@@ -122,7 +122,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         assertEq(adapter.bindingHashOf(erc721Agent), adapter.bindingHashFor(STD, address(other), 7), "ERC721");
         assertEq(
             adapter.bindingHashOf(accountAgent),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ACCOUNT, address(binder), 0),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ACCOUNT, address(binder), 0),
             "ACCOUNT"
         );
         assertTrue(

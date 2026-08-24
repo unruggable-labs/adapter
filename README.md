@@ -193,7 +193,7 @@ Deployment scripts:
 Interfaces:
 
 - [`src/interfaces/IERC8004IdentityRegistry.sol`](/Users/nxt3d/projects/adapter/src/interfaces/IERC8004IdentityRegistry.sol)
-- [`src/interfaces/IERCAgentBindings.sol`](/Users/nxt3d/projects/adapter/src/interfaces/IERCAgentBindings.sol)
+- [`src/interfaces/IERC8217.sol`](/Users/nxt3d/projects/adapter/src/interfaces/IERC8217.sol)
 - [`src/interfaces/IERC8004AdapterRegistration.sol`](/Users/nxt3d/projects/adapter/src/interfaces/IERC8004AdapterRegistration.sol)
 - [`src/interfaces/IERC8004AdapterCounterfactual.sol`](/Users/nxt3d/projects/adapter/src/interfaces/IERC8004AdapterCounterfactual.sol)
 - [`src/interfaces/IERC8004IdentityRecord.sol`](/Users/nxt3d/projects/adapter/src/interfaces/IERC8004IdentityRecord.sol)
@@ -302,7 +302,7 @@ For a full ERC-8004 identity created during mint, register before minting:
 ```solidity
 function mint(address buyer, uint256 tokenId, string calldata agentURI) external {
     uint256 agentId = adapter.register(
-        IERCAgentBindings.TokenStandard.ERC721,
+        IERC8217.TokenStandard.ERC721,
         address(this),
         tokenId,
         agentURI
@@ -311,7 +311,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 
     // Optional: when this caller is authorized for `buyer` under the wallet-pointer account-control
     // model, point the buyer's wallet at the identity just claimed.
-    adapter.setWalletUBIFor(buyer, IERCAgentBindings.TokenStandard.ERC721, address(this), tokenId);
+    adapter.setWalletUBIFor(buyer, IERC8217.TokenStandard.ERC721, address(this), tokenId);
 }
 ```
 
@@ -453,7 +453,7 @@ Recommended collection flow:
 ```solidity
 function mint(address buyer, uint256 tokenId, string calldata agentURI) external {
     adapter.counterfactualRegister(
-        IERCAgentBindings.TokenStandard.ERC721,
+        IERC8217.TokenStandard.ERC721,
         address(this),
         tokenId,
         agentURI

@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
@@ -92,11 +92,11 @@ contract Adapter8004DelegateTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
         vm.prank(hot);
-        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(collection), 1, "ipfs://x");
+        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC721, address(collection), 1, "ipfs://x");
 
         // And a real delegation from a real owner still works, so the guard did not close the path.
         vm.prank(cold);
-        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://ok");
+        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://ok");
     }
 
     // -----------------------------------------------------------------
@@ -105,8 +105,7 @@ contract Adapter8004DelegateTest is Test {
 
     function testDirectOwnerStillRegistersAndManages() external {
         vm.prank(cold);
-        uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
 
         vm.startPrank(cold);
         adapter.setAgentURI(agentId, "ipfs://owner");
@@ -125,9 +124,8 @@ contract Adapter8004DelegateTest is Test {
         delegateRegistry.delegateERC721(hot, cold, address(token721), 1, rights, true);
 
         vm.prank(hot);
-        uint256 agentId = adapter.register(
-            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://hot", _emptyMetadata()
-        );
+        uint256 agentId =
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://hot", _emptyMetadata());
 
         assertEq(registry.tokenURI(agentId), "ipfs://hot");
         assertTrue(adapter.isController(agentId, hot));
@@ -273,8 +271,7 @@ contract Adapter8004DelegateTest is Test {
         vm.etch(adapter.DELEGATE_REGISTRY(), "");
 
         vm.prank(cold);
-        uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
 
         // Direct owner still works with no registry.
         vm.prank(cold);
@@ -293,8 +290,7 @@ contract Adapter8004DelegateTest is Test {
 
     function testERC1155DelegateIsNotController() external {
         vm.prank(cold);
-        uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), 10, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), 10, "", _emptyMetadata());
 
         // Even a full all-wallet delegation must not grant ERC-1155 control: the no-vault API
         // cannot map a delegation to a specific holder.
@@ -313,8 +309,7 @@ contract Adapter8004DelegateTest is Test {
 
     function testERC6909DelegateIsNotController() external {
         vm.prank(cold);
-        uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), 42, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), 42, "", _emptyMetadata());
 
         delegateRegistry.delegateAll(hot, cold, bytes32(0), true);
 
@@ -333,7 +328,7 @@ contract Adapter8004DelegateTest is Test {
 
         vm.prank(hot);
         uint256 agentId = adapter.register(
-            IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50, "ipfs://hot1155f", _emptyMetadata()
+            IERC8217.TokenStandard.ERC1155F, address(token1155F), 50, "ipfs://hot1155f", _emptyMetadata()
         );
 
         assertTrue(adapter.isController(agentId, hot));
@@ -348,7 +343,7 @@ contract Adapter8004DelegateTest is Test {
 
         vm.prank(hot);
         uint256 agentId = adapter.register(
-            IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60, "ipfs://hot6909f", _emptyMetadata()
+            IERC8217.TokenStandard.ERC6909F, address(token6909F), 60, "ipfs://hot6909f", _emptyMetadata()
         );
 
         assertTrue(adapter.isController(agentId, hot));
@@ -363,12 +358,8 @@ contract Adapter8004DelegateTest is Test {
         delegateRegistry.delegateERC721(hot, cold, address(token6909F), 60, rights, true);
 
         vm.startPrank(hot);
-        adapter.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ERC1155F, address(token1155F), 50, "ipfs://cf1155f"
-        );
-        adapter.counterfactualSetAgentURI(
-            IERCAgentBindings.TokenStandard.ERC6909F, address(token6909F), 60, "ipfs://cf6909f"
-        );
+        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC1155F, address(token1155F), 50, "ipfs://cf1155f");
+        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC6909F, address(token6909F), 60, "ipfs://cf6909f");
         vm.stopPrank();
     }
 
@@ -383,17 +374,15 @@ contract Adapter8004DelegateTest is Test {
         batch[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "b", metadataValue: bytes("1")});
 
         vm.startPrank(hot);
-        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://cf");
+        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://cf");
         adapter.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://cf", _emptyMetadata()
+            IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://cf", _emptyMetadata()
         );
-        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://cf-uri");
-        adapter.counterfactualSetMetadata(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "k", bytes("v"));
-        adapter.counterfactualSetMetadataBatch(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, batch);
-        adapter.counterfactualSetAgentWallet(
-            IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, address(0xBEEF)
-        );
-        adapter.counterfactualUnsetAgentWallet(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1);
+        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://cf-uri");
+        adapter.counterfactualSetMetadata(IERC8217.TokenStandard.ERC721, address(token721), 1, "k", bytes("v"));
+        adapter.counterfactualSetMetadataBatch(IERC8217.TokenStandard.ERC721, address(token721), 1, batch);
+        adapter.counterfactualSetAgentWallet(IERC8217.TokenStandard.ERC721, address(token721), 1, address(0xBEEF));
+        adapter.counterfactualUnsetAgentWallet(IERC8217.TokenStandard.ERC721, address(token721), 1);
         vm.stopPrank();
     }
 
@@ -401,14 +390,14 @@ contract Adapter8004DelegateTest is Test {
         // No delegation for eve.
         vm.prank(eve);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
-        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://x");
+        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://x");
 
         // Revoked delegation also reverts on the counterfactual pre-binding check.
         delegateRegistry.delegateERC721(hot, cold, address(token721), 1, rights, true);
         delegateRegistry.delegateERC721(hot, cold, address(token721), 1, rights, false);
         vm.prank(hot);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
-        adapter.counterfactualSetAgentURI(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "ipfs://x");
+        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://x");
     }
 
     // -----------------------------------------------------------------
@@ -431,7 +420,7 @@ contract Adapter8004DelegateTest is Test {
 
     function _registerByCold() internal returns (uint256 agentId) {
         vm.prank(cold);
-        agentId = adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
+        agentId = adapter.register(IERC8217.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
     }
 
     function _emptyMetadata() internal pure returns (IERC8004IdentityRegistry.MetadataEntry[] memory metadata) {

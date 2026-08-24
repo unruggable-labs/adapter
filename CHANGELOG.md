@@ -370,6 +370,39 @@ Recorded under Removed below.
   fixture tables keep the terminology of the scheme they document, because renaming
   them would misdescribe history rather than clarify it.
 
+- **`IERCAgentBindings` is renamed `IERC8217`**, and
+  `src/interfaces/IERCAgentBindings.sol` moves to `src/interfaces/IERC8217.sol`.
+  The type qualifiers move with it, so `IERCAgentBindings.TokenStandard` is now
+  `IERC8217.TokenStandard` and `IERCAgentBindings.Binding` is `IERC8217.Binding`.
+
+  The name follows the OpenZeppelin convention of naming an interface for the
+  standard it implements, as `IERC721`, `IERC1155` and `IERC165` do. This
+  interface is ERC-8217's, so naming it for the ERC tells a reader which document
+  specifies it; `IERCAgentBindings` named the subject but not the source.
+
+  **Nothing observable changes.** Every executable byte of the runtime is
+  unchanged, all 44 selectors are unchanged, and `interfaceId` derives from
+  selectors rather than from the name, so ERC-165 detection would be unaffected
+  even if this contract implemented it. Only the CBOR metadata hash moves, as it
+  does for any source edit.
+
+  One caveat, stated precisely because the expectation going in was that the ABI
+  would be byte-identical and it is not. The interface name appears 23 times in
+  the emitted ABI JSON, in `internalType` hints such as
+  `enum IERC8217.TokenStandard`. Those are Solidity source annotations rather than
+  part of the canonical ABI: strip them and the two ABIs are identical, so every
+  `type`, every function name, every selector and every encoding is unchanged. A
+  consumer that keys on `internalType` strings would see the rename; nothing that
+  encodes or dispatches a call would.
+
+  **Only this interface is renamed.** `IERC8004AdapterCounterfactual`,
+  `IERC8004AdapterAttestation`, `IERC8004AdapterRegistration`,
+  `IERC8004IdentityRecord` and `IInteroperableAddressView` are adapter surfaces
+  rather than standards, and `IERC8004IdentityRegistry` belongs to ERC-8004 and is
+  already named for it. If the counterfactual surface later gets its own ERC
+  number it earns the same treatment then, as a deliberate change rather than a
+  side effect of this one.
+
 - **The wallet counterfactual id surface is the wallet UBI surface.** A wallet
   counterfactual id was always the UBI of that wallet, so the whole family is
   renamed onto the vocabulary the previous entry settled. Nine ABI members move:
@@ -889,7 +922,7 @@ size, not gas.
   Before this version the numbering was event-critical, which tolerated
   renumbering with a re-index. It no longer does. **Append only: never renumber,
   never reorder, never remove a member.** The constraint is recorded on the enum
-  in [`IERCAgentBindings.sol`](./src/interfaces/IERCAgentBindings.sol).
+  in [`IERC8217.sol`](./src/interfaces/IERC8217.sol).
 
 - **`registrationHash(address,uint256)` is removed and replaced by the
   coordinate-form view that is now called `bindingHashFor(TokenStandard,address,uint256)`.**

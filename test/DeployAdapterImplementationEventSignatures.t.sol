@@ -6,7 +6,7 @@ import {DeployAdapterImplementationScript} from "../script/DeployAdapterImplemen
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 
 /// @notice Holds the deploy script's printed event signatures against the contract they describe.
@@ -81,8 +81,8 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, address(adapter));
 
         assertEq(
-            _sampleUbi(proxyInteroperableAddress, IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(1), 0),
+            _sampleUbi(proxyInteroperableAddress, IERC8217.TokenStandard.ERC721, address(1), 0),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(1), 0),
             "sample preimage must match the contract's"
         );
     }

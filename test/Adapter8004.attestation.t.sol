@@ -7,7 +7,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
@@ -161,10 +161,10 @@ contract Adapter8004AttestationTest is Test {
 
         // The ubi side, pinned by hashing it against the published view.
         bytes memory ubiPreimage =
-            abi.encode(adapterAddress, IERCAgentBindings.TokenStandard.ERC721, address(token), uint256(42));
+            abi.encode(adapterAddress, IERC8217.TokenStandard.ERC721, address(token), uint256(42));
         assertEq(
             keccak256(ubiPreimage),
-            adapter.bindingHashFor(IERCAgentBindings.TokenStandard.ERC721, address(token), 42),
+            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token), 42),
             "premise: this is the preimage the contract hashes for a ubi"
         );
 
@@ -346,7 +346,7 @@ contract Adapter8004AttestationTest is Test {
         // Premise: the store really does simulate being inside a guarded frame.
         vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
         vm.prank(alice);
-        adapter.counterfactualRegister(IERCAgentBindings.TokenStandard.ERC721, address(token), 1, "ipfs://cf");
+        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token), 1, "ipfs://cf");
 
         vm.recordLogs();
         vm.startPrank(alice);

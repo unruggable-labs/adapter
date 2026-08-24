@@ -7,7 +7,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
@@ -34,7 +34,7 @@ contract SecurityAdapter8004Test is Test {
 
     event AgentBound(
         uint256 indexed agentId,
-        IERCAgentBindings.TokenStandard indexed standard,
+        IERC8217.TokenStandard indexed standard,
         address indexed boundAddress,
         uint256 tokenId,
         address registeredBy
@@ -95,48 +95,45 @@ contract SecurityAdapter8004Test is Test {
     function testRegisterRejectsZeroTokenContract() external {
         vm.prank(alice);
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(0), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.TokenStandard.ERC721, address(0), 1, "", _emptyMetadata());
     }
 
     function testRegisterEmitsAgentBound() external {
         vm.expectEmit(true, true, true, true, address(adapter));
         // agentId is assigned sequentially by MockIdentityRegistry starting at 0
-        emit AgentBound(0, IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, alice);
+        emit AgentBound(0, IERC8217.TokenStandard.ERC721, address(token721), 1, alice);
         vm.prank(alice);
-        adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
     }
 
     function testRegister1155NonControllerReverts() external {
         vm.prank(eve);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
-        adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), 10, "", _emptyMetadata());
+        adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), 10, "", _emptyMetadata());
     }
 
     function testRegister6909NonControllerReverts() external {
         vm.prank(eve);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
-        adapter.register(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), 42, "", _emptyMetadata());
+        adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), 42, "", _emptyMetadata());
     }
 
     function testRegisterSameTokenAcrossStandardsProducesDistinctAgents() external {
         // Same boundAddress/tokenId pair but different standards hash to
         // different binding keys — each should yield a fresh agentId.
         vm.prank(alice);
-        uint256 a1 =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
+        uint256 a1 = adapter.register(IERC8217.TokenStandard.ERC721, address(token721), 1, "", _emptyMetadata());
 
         // ERC721 at tokenId 1 is held by alice and would collide with the 1155
         // binding key only if (standard) were dropped from the hash. It is not.
         // Mint a fresh 1155 id to avoid polluting setUp state.
         token1155.mint(alice, 1, 1);
         vm.prank(alice);
-        uint256 a2 =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), 1, "", _emptyMetadata());
+        uint256 a2 = adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), 1, "", _emptyMetadata());
 
         token6909.mint(alice, 1, 1);
         vm.prank(alice);
-        uint256 a3 =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), 1, "", _emptyMetadata());
+        uint256 a3 = adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), 1, "", _emptyMetadata());
 
         assertTrue(a1 != a2 && a2 != a3 && a1 != a3, "agentIds must be distinct");
     }
@@ -264,8 +261,8 @@ contract SecurityAdapter8004Test is Test {
 
     function testBindingOfHappyPath() external {
         uint256 agentId = _register721(alice, 1);
-        IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
-        assertEq(uint256(b.standard), uint256(IERCAgentBindings.TokenStandard.ERC721));
+        IERC8217.Binding memory b = adapter.bindingOf(agentId);
+        assertEq(uint256(b.standard), uint256(IERC8217.TokenStandard.ERC721));
         assertEq(b.boundAddress, address(token721));
         assertEq(b.tokenId, 1);
     }
@@ -349,20 +346,17 @@ contract SecurityAdapter8004Test is Test {
 
     function _register721(address caller, uint256 tokenId) internal returns (uint256) {
         vm.prank(caller);
-        return
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        return adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
     }
 
     function _register1155(address caller, uint256 tokenId) internal returns (uint256) {
         vm.prank(caller);
-        return
-            adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), tokenId, "", _emptyMetadata());
+        return adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), tokenId, "", _emptyMetadata());
     }
 
     function _register6909(address caller, uint256 tokenId) internal returns (uint256) {
         vm.prank(caller);
-        return
-            adapter.register(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
+        return adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
     }
 
     function _emptyMetadata() internal pure returns (IERC8004IdentityRegistry.MetadataEntry[] memory) {

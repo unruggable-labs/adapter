@@ -5,7 +5,7 @@ import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {InteroperableAddress} from "@openzeppelin/contracts/utils/draft-InteroperableAddress.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
@@ -143,7 +143,7 @@ contract Adapter8004HashHarness is Adapter8004 {
 
     function bindingHashFrom(
         bytes memory adapterInteroperableAddress,
-        IERCAgentBindings.TokenStandard standard,
+        IERC8217.TokenStandard standard,
         address boundAddress,
         uint256 tokenId
     ) external pure returns (bytes32) {
@@ -216,22 +216,22 @@ contract Adapter8004ERC7930Test is Test {
     function testPublishedCrossNamespaceVectors() external view {
         _assertVector(
             hex"000100000101141111111111111111111111111111111111111111",
-            IERCAgentBindings.TokenStandard.ERC721,
+            IERC8217.TokenStandard.ERC721,
             0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9
         );
         _assertVector(
             hex"00010000022105141111111111111111111111111111111111111111",
-            IERCAgentBindings.TokenStandard.ERC721,
+            IERC8217.TokenStandard.ERC721,
             0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3
         );
         _assertVector(
             hex"0001000003aa36a7141111111111111111111111111111111111111111",
-            IERCAgentBindings.TokenStandard.ERC721,
+            IERC8217.TokenStandard.ERC721,
             0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f
         );
         _assertVector(
             hex"000100022045296998a6f8e2a784db5d9f95e18fc23f70441a1039446801089879b08c7ef0141111111111111111111111111111111111111111",
-            IERCAgentBindings.TokenStandard.ERC721,
+            IERC8217.TokenStandard.ERC721,
             0x0f9c133f3a5c0ca7b20f94b3b57e5ac97f214b004e73fa71b1d6a2075deaa3cc
         );
     }
@@ -243,22 +243,22 @@ contract Adapter8004ERC7930Test is Test {
         bytes memory mainnetAdapter = hex"000100000101141111111111111111111111111111111111111111";
         _assertVector(
             mainnetAdapter,
-            IERCAgentBindings.TokenStandard.ERC721,
+            IERC8217.TokenStandard.ERC721,
             0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9
         );
         _assertVector(
             mainnetAdapter,
-            IERCAgentBindings.TokenStandard.ERC1155,
+            IERC8217.TokenStandard.ERC1155,
             0x14cfea274e2d2b7367bffaa93dbfdda489fd4fbed711f949a321a75789fdec44
         );
         _assertVector(
             mainnetAdapter,
-            IERCAgentBindings.TokenStandard.ACCOUNT,
+            IERC8217.TokenStandard.ACCOUNT,
             0x3d8eaa0572359ac90e967f6acdd9106d9c026f3c35872baa01de02f78a997c69
         );
         _assertVector(
             mainnetAdapter,
-            IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE,
+            IERC8217.TokenStandard.CONTRACT_OWNABLE,
             0x5bdc0e660d093b00b2552ec33586abf07d3b1572decf08bdd5563fa8c3180787
         );
     }
@@ -284,9 +284,8 @@ contract Adapter8004ERC7930Test is Test {
         bytes32 schemeC = keccak256(abi.encode(mainnetAdapter, uint8(0), VECTOR_TOKEN, uint256(42), bytes32(0)));
         assertEq(schemeC, 0xefa93cfacbc3a08981c5725059a0a35e463f4063313da93f44d85cc02f457a0b, "frozen scheme C vector");
 
-        for (uint8 s; s <= uint8(type(IERCAgentBindings.TokenStandard).max); ++s) {
-            bytes32 current =
-                harness.bindingHashFrom(mainnetAdapter, IERCAgentBindings.TokenStandard(s), VECTOR_TOKEN, 42);
+        for (uint8 s; s <= uint8(type(IERC8217.TokenStandard).max); ++s) {
+            bytes32 current = harness.bindingHashFrom(mainnetAdapter, IERC8217.TokenStandard(s), VECTOR_TOKEN, 42);
             assertTrue(current != schemeA, "must not collide with the live pre-ERC-7930 scheme");
             assertTrue(current != schemeB, "must not collide with the standard-less ERC-7930 scheme");
             assertTrue(current != schemeC, "must not collide with the extraData scheme");
@@ -300,11 +299,11 @@ contract Adapter8004ERC7930Test is Test {
     /// produce a distinct identity for the same pair. The worked example is the contract that is also
     /// an ERC-721 collection claiming `(X, 0)` as `ERC721`, `ACCOUNT` and `CONTRACT_OWNABLE`.
     function testEveryStandardIsADistinctIdentityForOnePair() external view {
-        uint8 max = uint8(type(IERCAgentBindings.TokenStandard).max);
+        uint8 max = uint8(type(IERC8217.TokenStandard).max);
         bytes32[] memory seen = new bytes32[](uint256(max) + 1);
 
         for (uint8 i; i <= max; ++i) {
-            seen[i] = harness.bindingHashFor(IERCAgentBindings.TokenStandard(i), VECTOR_TOKEN, 0);
+            seen[i] = harness.bindingHashFor(IERC8217.TokenStandard(i), VECTOR_TOKEN, 0);
             for (uint8 j; j < i; ++j) {
                 assertTrue(seen[i] != seen[j], "two standards must never alias onto one identity");
             }
@@ -315,14 +314,14 @@ contract Adapter8004ERC7930Test is Test {
         external
         view
     {
-        uint8 max = uint8(type(IERCAgentBindings.TokenStandard).max);
+        uint8 max = uint8(type(IERC8217.TokenStandard).max);
         a = uint8(bound(a, 0, max));
         b = uint8(bound(b, 0, max));
         vm.assume(a != b);
 
         assertTrue(
-            harness.bindingHashFor(IERCAgentBindings.TokenStandard(a), boundAddress, tokenId)
-                != harness.bindingHashFor(IERCAgentBindings.TokenStandard(b), boundAddress, tokenId)
+            harness.bindingHashFor(IERC8217.TokenStandard(a), boundAddress, tokenId)
+                != harness.bindingHashFor(IERC8217.TokenStandard(b), boundAddress, tokenId)
         );
     }
 
@@ -520,11 +519,11 @@ contract Adapter8004ERC7930Test is Test {
     function testCanonicalFormulaAndNegativeEncodings() external view {
         address token = address(0xCAFE);
         uint256 tokenId = 99;
-        uint8 standard = uint8(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE);
+        uint8 standard = uint8(IERC8217.TokenStandard.CONTRACT_OWNABLE);
         bytes memory identifier = adapter.chainIdentifier();
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
         bytes memory tokenAddress = adapter.interoperableAddress(token);
-        bytes32 actual = adapter.bindingHashFor(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, token, tokenId);
+        bytes32 actual = adapter.bindingHashFor(IERC8217.TokenStandard.CONTRACT_OWNABLE, token, tokenId);
 
         assertEq(actual, keccak256(abi.encode(adapterAddress, standard, token, tokenId)), "canonical");
         // The four components are exactly the adapter envelope plus the stored binding. Appending a
@@ -550,19 +549,17 @@ contract Adapter8004ERC7930Test is Test {
         bytes memory otherTypeAdapter = hex"000100010101141111111111111111111111111111111111111111";
         bytes memory otherReferenceAdapter = hex"000100000102141111111111111111111111111111111111111111";
         bytes memory otherAdapter = hex"000100000101143333333333333333333333333333333333333333";
-        IERCAgentBindings.TokenStandard s = IERCAgentBindings.TokenStandard.ERC721;
+        IERC8217.TokenStandard s = IERC8217.TokenStandard.ERC721;
         bytes32 base = harness.bindingHashFrom(adapterAddress, s, VECTOR_TOKEN, 42);
         assertTrue(base != harness.bindingHashFrom(otherTypeAdapter, s, VECTOR_TOKEN, 42));
         assertTrue(base != harness.bindingHashFrom(otherReferenceAdapter, s, VECTOR_TOKEN, 42));
         assertTrue(base != harness.bindingHashFrom(otherAdapter, s, VECTOR_TOKEN, 42));
         assertTrue(base != harness.bindingHashFrom(adapterAddress, s, address(0x4444), 42));
         assertTrue(base != harness.bindingHashFrom(adapterAddress, s, VECTOR_TOKEN, 43));
-        assertTrue(
-            base != harness.bindingHashFrom(adapterAddress, IERCAgentBindings.TokenStandard.ERC1155, VECTOR_TOKEN, 42)
-        );
+        assertTrue(base != harness.bindingHashFrom(adapterAddress, IERC8217.TokenStandard.ERC1155, VECTOR_TOKEN, 42));
     }
 
-    function _assertVector(bytes memory adapterAddress, IERCAgentBindings.TokenStandard standard, bytes32 expected)
+    function _assertVector(bytes memory adapterAddress, IERC8217.TokenStandard standard, bytes32 expected)
         internal
         view
     {

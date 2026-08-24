@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
 /// @dev A binder that is not a token at all: no ERC-20/721/1155/6909 interface, no `ownerOf`, no
@@ -27,13 +27,12 @@ contract MockContractBinder {
     // ---------------------------------------------------------------
 
     function register(uint256 tokenId) external returns (uint256) {
-        return
-            ADAPTER.register(IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent");
+        return ADAPTER.register(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent");
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
         return ADAPTER.counterfactualRegister(
-            IERCAgentBindings.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent"
+            IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent"
         );
     }
 

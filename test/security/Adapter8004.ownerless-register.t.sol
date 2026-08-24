@@ -5,18 +5,18 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
 contract OwnerlessRegisterCollection {
     Adapter8004 internal immutable ADAPTER;
-    IERCAgentBindings.TokenStandard internal immutable STANDARD;
+    IERC8217.TokenStandard internal immutable STANDARD;
     bool internal immutable MISSING_RETURNS_ZERO;
 
     mapping(uint256 tokenId => address owner) internal _owners;
 
-    constructor(Adapter8004 adapter, IERCAgentBindings.TokenStandard standard, bool missingReturnsZero) {
+    constructor(Adapter8004 adapter, IERC8217.TokenStandard standard, bool missingReturnsZero) {
         ADAPTER = adapter;
         STANDARD = standard;
         MISSING_RETURNS_ZERO = missingReturnsZero;
@@ -44,11 +44,11 @@ contract OwnerlessRegisterCollection {
 
 contract OwnerlessRegisterPlainMultiToken {
     Adapter8004 internal immutable ADAPTER;
-    IERCAgentBindings.TokenStandard internal immutable STANDARD;
+    IERC8217.TokenStandard internal immutable STANDARD;
 
     mapping(address account => mapping(uint256 tokenId => uint256 balance)) internal _balances;
 
-    constructor(Adapter8004 adapter, IERCAgentBindings.TokenStandard standard) {
+    constructor(Adapter8004 adapter, IERC8217.TokenStandard standard) {
         ADAPTER = adapter;
         STANDARD = standard;
     }
@@ -78,23 +78,23 @@ contract OwnerlessRegisterTest is Test {
     }
 
     function testOwnerlessCollectionsCanRegisterForEverySingleOwnerStandard() external {
-        _assertOwnerlessRegister(IERCAgentBindings.TokenStandard.ERC721, 1);
-        _assertOwnerlessRegister(IERCAgentBindings.TokenStandard.ERC1155F, 2);
-        _assertOwnerlessRegister(IERCAgentBindings.TokenStandard.ERC6909F, 3);
+        _assertOwnerlessRegister(IERC8217.TokenStandard.ERC721, 1);
+        _assertOwnerlessRegister(IERC8217.TokenStandard.ERC1155F, 2);
+        _assertOwnerlessRegister(IERC8217.TokenStandard.ERC6909F, 3);
     }
 
     function testStrangerCannotRegisterOwnerlessCollectionToken() external {
         OwnerlessRegisterCollection collection =
-            new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, false);
+            new OwnerlessRegisterCollection(adapter, IERC8217.TokenStandard.ERC721, false);
 
         vm.prank(stranger);
         vm.expectRevert();
-        adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(collection), 10, "ipfs://stranger");
+        adapter.register(IERC8217.TokenStandard.ERC721, address(collection), 10, "ipfs://stranger");
     }
 
     function testOwnerlessCollectionCanRegisterWhenOwnerOfReturnsZero() external {
         OwnerlessRegisterCollection collection =
-            new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, true);
+            new OwnerlessRegisterCollection(adapter, IERC8217.TokenStandard.ERC721, true);
 
         uint256 agentId = collection.register(9);
         assertEq(adapter.bindingOf(agentId).boundAddress, address(collection));
@@ -102,7 +102,7 @@ contract OwnerlessRegisterTest is Test {
 
     function testAfterMintCollectionLosesSpecialPathAndBuyerControlsAgent() external {
         OwnerlessRegisterCollection collection =
-            new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, false);
+            new OwnerlessRegisterCollection(adapter, IERC8217.TokenStandard.ERC721, false);
         uint256 agentId = collection.register(11);
         collection.mint(buyer, 11);
 
@@ -121,7 +121,7 @@ contract OwnerlessRegisterTest is Test {
 
     function testAfterMintCollectionCanRegisterWhenItIsCurrentController() external {
         OwnerlessRegisterCollection collection =
-            new OwnerlessRegisterCollection(adapter, IERCAgentBindings.TokenStandard.ERC721, false);
+            new OwnerlessRegisterCollection(adapter, IERC8217.TokenStandard.ERC721, false);
         collection.mint(address(collection), 12);
 
         uint256 agentId = collection.register(12);
@@ -129,22 +129,22 @@ contract OwnerlessRegisterTest is Test {
     }
 
     function testPlainERC1155AndERC6909RemainBalanceOnly() external {
-        _assertPlainMultiTokenExcluded(IERCAgentBindings.TokenStandard.ERC1155, 20);
-        _assertPlainMultiTokenExcluded(IERCAgentBindings.TokenStandard.ERC6909, 21);
+        _assertPlainMultiTokenExcluded(IERC8217.TokenStandard.ERC1155, 20);
+        _assertPlainMultiTokenExcluded(IERC8217.TokenStandard.ERC6909, 21);
     }
 
-    function _assertOwnerlessRegister(IERCAgentBindings.TokenStandard standard, uint256 tokenId) internal {
+    function _assertOwnerlessRegister(IERC8217.TokenStandard standard, uint256 tokenId) internal {
         OwnerlessRegisterCollection collection = new OwnerlessRegisterCollection(adapter, standard, false);
         uint256 agentId = collection.register(tokenId);
 
-        IERCAgentBindings.Binding memory binding = adapter.bindingOf(agentId);
+        IERC8217.Binding memory binding = adapter.bindingOf(agentId);
         assertEq(uint8(binding.standard), uint8(standard));
         assertEq(binding.boundAddress, address(collection));
         assertEq(binding.tokenId, tokenId);
         assertEq(registry.ownerOf(agentId), address(adapter));
     }
 
-    function _assertPlainMultiTokenExcluded(IERCAgentBindings.TokenStandard standard, uint256 tokenId) internal {
+    function _assertPlainMultiTokenExcluded(IERC8217.TokenStandard standard, uint256 tokenId) internal {
         OwnerlessRegisterPlainMultiToken token = new OwnerlessRegisterPlainMultiToken(adapter, standard);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(token), type(uint256).max));
         token.register(tokenId);

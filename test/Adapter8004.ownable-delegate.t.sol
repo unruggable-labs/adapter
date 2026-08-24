@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Adapter8004} from "../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 
@@ -60,8 +60,7 @@ contract Adapter8004OwnableDelegateTest is Test {
     function _bind(address ownerAddress) internal returns (OwnableBinder binder, uint256 agentId) {
         binder = new OwnableBinder(adapter, ownerAddress);
         vm.prank(ownerAddress);
-        agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.CONTRACT_OWNABLE, address(binder), 0, "ipfs://ownable");
+        agentId = adapter.register(IERC8217.TokenStandard.CONTRACT_OWNABLE, address(binder), 0, "ipfs://ownable");
     }
 
     function testOwnerDelegateIsAuthorized() external {

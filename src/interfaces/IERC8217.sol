@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-interface IERCAgentBindings {
+interface IERC8217 {
     /// @dev **APPEND ONLY. NEVER RENUMBER, NEVER REORDER, NEVER REMOVE A MEMBER.** These numbers are
     /// identity-critical, not merely descriptive. The `uint8` of this enum sits in the preimage of
     /// every UBI, so renumbering a member silently re-keys every

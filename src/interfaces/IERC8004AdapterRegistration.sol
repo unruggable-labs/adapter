@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERCAgentBindings} from "./IERCAgentBindings.sol";
+import {IERC8217} from "./IERC8217.sol";
 import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 
 /// @notice Agent creation entry point for `Adapter8004`: registers through an ERC-8004 registry
@@ -19,7 +19,7 @@ interface IERC8004AdapterRegistration {
     /// caller-supplied entry for it reverts `ReservedMetadataKey`. Every other key is accepted.
     /// Emits `AgentBound` and returns the new `agentId`.
     function register(
-        IERCAgentBindings.TokenStandard standard,
+        IERC8217.TokenStandard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -27,10 +27,7 @@ interface IERC8004AdapterRegistration {
     ) external returns (uint256 agentId);
 
     /// @notice Convenience overload equivalent to `register(...)` with an empty metadata array.
-    function register(
-        IERCAgentBindings.TokenStandard standard,
-        address boundAddress,
-        uint256 tokenId,
-        string calldata agentURI
-    ) external returns (uint256 agentId);
+    function register(IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
+        external
+        returns (uint256 agentId);
 }

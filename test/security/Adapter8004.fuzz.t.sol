@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {Adapter8004} from "../../src/Adapter8004.sol";
-import {IERCAgentBindings} from "../../src/interfaces/IERCAgentBindings.sol";
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
@@ -46,12 +46,12 @@ contract FuzzAdapter8004Test is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
-        IERCAgentBindings.Binding memory b = adapter.bindingOf(agentId);
+        IERC8217.Binding memory b = adapter.bindingOf(agentId);
         assertEq(b.boundAddress, address(token721));
         assertEq(b.tokenId, tokenId);
-        assertEq(uint256(b.standard), uint256(IERCAgentBindings.TokenStandard.ERC721));
+        assertEq(uint256(b.standard), uint256(IERC8217.TokenStandard.ERC721));
     }
 
     // -----------------------------------------------------------------
@@ -65,10 +65,10 @@ contract FuzzAdapter8004Test is Test {
 
         vm.startPrank(holder);
         uint256 firstAgentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         uint256 secondAgentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
         vm.stopPrank();
 
         assertTrue(firstAgentId != secondAgentId);
@@ -86,7 +86,7 @@ contract FuzzAdapter8004Test is Test {
         token721.mint(alice, tokenId);
         vm.prank(alice);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertFalse(adapter.isController(agentId, bob));
@@ -120,7 +120,7 @@ contract FuzzAdapter8004Test is Test {
 
         vm.prank(alice);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC1155, address(token1155), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), tokenId, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertEq(adapter.isController(agentId, bob), bobBal > 0);
@@ -143,7 +143,7 @@ contract FuzzAdapter8004Test is Test {
 
         vm.prank(alice);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertEq(adapter.isController(agentId, bob), bobBal > 0);
@@ -161,7 +161,7 @@ contract FuzzAdapter8004Test is Test {
         token721.mint(holder, tokenId);
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERCAgentBindings.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         vm.startPrank(attacker);
 
