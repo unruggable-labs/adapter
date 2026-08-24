@@ -32,6 +32,12 @@ interface IERCAgentBindings {
     /// a delegation after binding permanently widens that set, and on an immutable binding that
     /// cannot be undone.
     ///
+    /// Values 0-4 additionally grant temporary authority to the bound token contract itself while
+    /// `ownerOf(tokenId)` reports no current owner, which lets a collection claim an identity before
+    /// mint. The contract must call the adapter directly rather than through a router or forwarder,
+    /// since authority compares the adapter's immediate caller. Minting closes that window and a
+    /// later burn can reopen it, because no historical-existence bit is stored.
+    ///
     /// `ACCOUNT` and `CONTRACT_ADMIN` are offered no delegation route. For `ACCOUNT` the delegator
     /// would be the bound address itself, and an address delegating on its own behalf cannot revoke
     /// without the same executor it used to delegate. For `CONTRACT_ADMIN` there is no single

@@ -4,123 +4,35 @@ pragma solidity ^0.8.24;
 import {IERCAgentBindings} from "./IERCAgentBindings.sol";
 import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 
-/// @notice Event-only surface for the counterfactual register family on `Adapter8004`. The functions
-/// themselves stay on the adapter (they need internal helpers); this interface owns the event
-/// declarations so off-chain consumers and tests can depend on a stable type without importing
-/// the full contract.
+/// @notice Declares the counterfactual functions and events of `Adapter8004`. The implementations
+/// live on the adapter. The surface writes no storage: every call is recorded entirely in the event
+/// log.
 ///
-/// Every counterfactual event below carries the `TokenStandard` as its first non-indexed field. The
-/// three indexed slots are fixed across every event and already spent on
-/// `(ubi, boundAddress, tokenId)`, so the standard is non-indexed; carrying it on every
-/// event is what makes a single log line verifiable against the hash on its own, with no lookup of
-/// the claim that created the identity. There is deliberately no in-payload schema version, because
-/// `topic0` is the keccak of the full event signature and so already discriminates schema on its own.
+/// The Universal Binding Identifier, or UBI, is the hash of a binding, derived as
+/// `keccak256(abi.encode(bindingContractInteroperableAddress, standard, boundAddress, tokenId))`
+/// using `abi.encode` and never `abi.encodePacked`. `standard` is the `TokenStandard` enum as its
+/// `uint8`. The authority rules for each standard are documented on that enum in
+/// `IERCAgentBindings`.
 ///
-/// The identity is the UBI, which is the adapter address plus exactly
-/// `(standard, boundAddress, tokenId)`. One coordinate under one standard is one identity, and the
-/// same coordinate under two standards is two. Consumers must key on the UBI and must not
-/// collapse rows by `(boundAddress, tokenId)`, which does not name a standard.
+/// A counterfactual registration is a claim about a binding that could be made, recorded in the log
+/// without being performed, and the UBI is the same value whether or not the binding is ever
+/// performed.
 ///
-/// Adapter8004's existing unsigned counterfactual functions accept either ordinary current-controller
-/// authority or, for ERC-721/ERC-1155F/ERC-6909F only, temporary authority from the directly calling
-/// token contract while `ownerOf(tokenId)` reports no current owner. The collection must call the
-/// adapter directly before mint (not through a router, forwarder, or delegatecall). A revert or
-/// canonical zero response opens that window; minting to a non-collection owner closes it, while a
-/// later burn can reopen it because the adapter deliberately stores no historical-existence bit.
-/// Plain ERC-1155/ERC-6909 remain positive-balance controlled. Collection-authorized events retain
-/// the existing schema and carry `emitter = boundAddress`; later owner/delegate events overwrite
-/// them by normal log ordering.
+/// Every counterfactual event carries the `TokenStandard` as its first non-indexed field, so one log
+/// line is verifiable on its own without looking up the claim that created the identity. The three
+/// indexed fields are `(ubi, boundAddress, tokenId)` on every event.
 ///
-/// `ACCOUNT` (`TokenStandard` value 5) uses the same unsigned
-/// functions under a different authority. It names an address itself rather than a token within it,
-/// so `tokenId` MUST be `0`; any other id reverts `NonZeroTokenIdForAccount`. The named address is
-/// the only authorized emitter: the adapter's immediate EVM caller must be `boundAddress`. A
-/// router, forwarder, or multicall that calls the adapter itself fails, since the adapter sees that
-/// contract as `msg.sender`. Where the bound address is a contract, an external owner or governance
-/// address may instead call an entry point on it that makes the outbound adapter call; where it is an
-/// externally owned account, sending a transaction is itself that path. `delegatecall` into the adapter is
-/// unsupported and dangerous, because it is a UUPS implementation with its own storage layout rather
-/// than a library. Holders, an optional `owner()`, and the adapter admin have no authority, and the
-/// adapter probes neither `ownerOf` nor either `balanceOf` shape. The transient single-owner window
-/// above closes on mint and can reopen on burn, whereas an account-level binding has no token whose
-/// ownership could change hands, so its authority window never closes. An ERC-20 claiming its own
-/// contract-level identity through `ACCOUNT` is the motivating example, and there is no
-/// ERC-20-specific standard value.
+/// Consumers key on the UBI. They must not collapse rows by `(boundAddress, tokenId)`: that pair
+/// does not name a standard, and the same pair under two standards is two identities.
 ///
-/// **`ACCOUNT` accepts any address, with or without runtime code, and applies no code test at all.**
-/// It is the only standard that does not, and it can afford not to because it never calls the
-/// address it names: authority is the single comparison `msg.sender == boundAddress`, which is well
-/// defined either way. The zero address and the identity registry are still rejected. A plain
-/// externally-owned account and a deployed contract are therefore equally valid subjects, which is
-/// the point of the standard.
-///
-/// Under EIP-7702 an externally-owned account can carry code, so `msg.sender == boundAddress` is
-/// not proof of key possession. Authority means, exactly, whoever can cause a call to originate from
-/// that address. For an undelegated account that is the key holder. For a delegated one it is the
-/// key holder plus anyone who can drive the delegate to make an outbound call, which for the common
-/// batch-executor delegate is a broad set. **An address bound as `ACCOUNT` can install a 7702
-/// delegation afterwards, and doing so permanently widens who can act for that identity.** Revoking
-/// the delegation narrows it again, but the binding is immutable and cannot be undone. This is the
-/// same accepted shape as a `CONTRACT_OWNABLE` binding whose contract renounces ownership: an action
-/// outside the adapter, taken by the party the standard trusts, that permanently changes who can
-/// authorize and that the adapter will not second-guess. Counterfactual claims are less exposed than
-/// bindings, because they are emit-only and last-event-wins, so a key holder who revokes a
-/// delegation can re-emit and their claim wins again.
-///
-/// `CONTRACT_OWNABLE` (`TokenStandard` value 6) is an explicit opt-in to a second
-/// authority route. Authority is the contract's current canonical nonzero `owner()`, resolved
-/// dynamically, and not the bound contract itself. The probe is a STATICCALL and fails closed: a revert,
-/// returndata whose length is not exactly 32 bytes, dirty upper bits, or a zero owner grants nobody.
-/// Ownership transfers therefore give existing claims to the new owner and remove authority from
-/// the old owner without changing the immutable binding, and they also end any delegation the former
-/// owner had granted. A delegate of the current owner is authorized as well, through a
-/// contract-scoped delegate.xyz check rather than a token-scoped one, because the binding names a
-/// contract rather than a token. Like `ACCOUNT`, this value is outside the single-owner token set
-/// and gets no ownerless window. Because there is no contract-self fallback, a contract that
-/// renounces ownership permanently freezes the identity: no owner means nobody left to authorize.
-///
-/// `CONTRACT_ADMIN` (`TokenStandard` value 7) is the same idea for an AccessControl
-/// contract that exposes no `owner()`. Authority is any holder of its `DEFAULT_ADMIN_ROLE`, which is
-/// `bytes32(0)`, and not the bound contract itself. The `hasRole` probe is a STATICCALL and fails
-/// closed: a revert, returndata whose length is not exactly 32 bytes, or a zero word grants nobody.
-/// Role membership is read on every call, so revoking it removes authority immediately. There is no
-/// delegate.xyz route, because a role is a membership predicate that many addresses can satisfy and
-/// none can enumerate, so there is no well-defined delegator to name. Like the other two contract
-/// values it is outside the single-owner token set and gets no ownerless window.
-///
-/// A counterfactual claim cannot be withdrawn. Later events from the same contract only
-/// supersede earlier ones by last-event-wins, and `counterfactualUnsetAgentWallet` clears the
-/// wallet field alone. The event schema and indexed topics do not vary by account-level standard,
-/// and every counterfactual event carries the standard non-indexed. The on-chain `AgentBound.standard`
-/// keeps its own indexed slot.
-///
-/// **The standard is part of the identity.** It sits in the UBI preimage as its
-/// `uint8`, so two standards claiming the same `(boundAddress, tokenId)` are two identities and never
-/// alias. A contract that is also an ERC-721 collection, claiming token `#0`, `ACCOUNT`, and
-/// `CONTRACT_OWNABLE` at `(X, 0)`, is the worked example: three coordinates, three distinct hashes,
-/// three separate histories. Last-event-wins therefore resolves within one standard only, and no
-/// claimant's history can be superseded, or attributed to, a different claimant who reached the same
-/// `(boundAddress, tokenId)` through a different authority route.
-///
-/// What the standard in the hash records is that the claimer passed *that standard's* authority probe
-/// at claim time. It is not an assertion that the bound contract conforms to the ERC: the adapter
-/// probes authority, not interface support, and never calls `supportsInterface`. A claim under
-/// `ERC721` means `ownerOf` answered and named the caller, or the collection called during its own
-/// ownerless window. It does not certify that the contract is a well-formed ERC-721.
+/// Later events supersede earlier ones per UBI in log order, latest meaning highest block number
+/// then highest log index. `counterfactualUnsetAgentWallet` clears the wallet field alone.
 interface IERC8004AdapterCounterfactual {
-    /// @notice Computes the Universal Binding Identifier for a set of coordinates, scoped to this
-    /// chain and this adapter proxy, so off-chain consumers can derive it without reimplementing the
-    /// rules. The UBI is
-    /// `keccak256(abi.encode(interoperableAddress(adapter), standard, boundAddress, tokenId))`, with
-    /// `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
-    /// `abi.encodePacked`.
-    /// @dev **The UBI and the counterfactual identity are one value, not two.** The coordinates alone
-    /// determine it, so it exists whether or not an agent is ever registered; registering adds an
-    /// agent id alongside the UBI rather than creating it, and `bindingHashOf(agentId)` returns this same
-    /// value for a registered agent. The four components are exactly the adapter address plus the
-    /// stored `Binding`, so a registered agent's identity is derivable from its binding alone.
-    /// `standard` is a parameter because it selects the identity: the same `(boundAddress, tokenId)`
-    /// under two standards yields two different hashes.
+    /// @notice Returns the UBI for a set of coordinates, scoped to this chain and this adapter.
+    /// @dev The four components are the adapter address plus exactly the stored `Binding`, so the
+    /// coordinates alone determine the value and `bindingHashOf(agentId)` returns the same value for
+    /// a registered agent. `standard` selects the identity: the same `(boundAddress, tokenId)` under
+    /// two standards yields two different hashes.
     function bindingHashFor(IERCAgentBindings.TokenStandard standard, address boundAddress, uint256 tokenId)
         external
         view
