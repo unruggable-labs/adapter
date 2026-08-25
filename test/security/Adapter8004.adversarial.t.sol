@@ -58,7 +58,7 @@ contract AdversarialAdapter8004Test is Test {
         RevertingToken rev = new RevertingToken();
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC721, address(rev), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC721, address(rev), 1, "", _emptyMetadata());
 
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
@@ -68,14 +68,14 @@ contract AdversarialAdapter8004Test is Test {
         RevertingToken rev = new RevertingToken();
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC1155, address(rev), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC1155, address(rev), 1, "", _emptyMetadata());
     }
 
     function testRegisterPropagatesRevertingToken6909() external {
         RevertingToken rev = new RevertingToken();
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC6909, address(rev), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC6909, address(rev), 1, "", _emptyMetadata());
     }
 
     /// An EOA or any account with no bytecode cannot satisfy the staticcall
@@ -84,7 +84,7 @@ contract AdversarialAdapter8004Test is Test {
         address eoa = makeAddr("eoa");
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC721, eoa, 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC721, eoa, 1, "", _emptyMetadata());
     }
 
     // -----------------------------------------------------------------
@@ -100,7 +100,7 @@ contract AdversarialAdapter8004Test is Test {
         mal.setOwner(1, alice);
 
         vm.prank(alice);
-        uint256 agentId = adapter.register(IERC8217.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertFalse(adapter.isController(agentId, bob));
@@ -114,7 +114,7 @@ contract AdversarialAdapter8004Test is Test {
         mal.setOwner(1, alice);
 
         vm.prank(alice);
-        uint256 agentId = adapter.register(IERC8217.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
 
         vm.prank(alice);
         adapter.setMetadata(agentId, "k", bytes("alice"));
@@ -145,7 +145,7 @@ contract AdversarialAdapter8004Test is Test {
             address(adapter),
             abi.encodeWithSignature(
                 "register(uint8,address,uint256,string,(string,bytes)[])",
-                IERC8217.TokenStandard.ERC721,
+                IERC8217.Standard.ERC721,
                 address(mal),
                 2,
                 "",
@@ -155,7 +155,7 @@ contract AdversarialAdapter8004Test is Test {
 
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
 
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
@@ -168,7 +168,7 @@ contract AdversarialAdapter8004Test is Test {
 
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC1155, address(mal), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC1155, address(mal), 1, "", _emptyMetadata());
     }
 
     function testMaliciousERC6909ReentryIsBlockedByStaticcall() external {
@@ -178,7 +178,7 @@ contract AdversarialAdapter8004Test is Test {
 
         vm.prank(alice);
         vm.expectRevert();
-        adapter.register(IERC8217.TokenStandard.ERC6909, address(mal), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC6909, address(mal), 1, "", _emptyMetadata());
     }
 
     // -----------------------------------------------------------------
@@ -194,11 +194,11 @@ contract AdversarialAdapter8004Test is Test {
 
         vm.prank(bob);
         uint256 firstAgentId =
-            adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), 7, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC1155, address(token1155), 7, "", _emptyMetadata());
 
         vm.prank(alice);
         uint256 secondAgentId =
-            adapter.register(IERC8217.TokenStandard.ERC1155, address(token1155), 7, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC1155, address(token1155), 7, "", _emptyMetadata());
 
         assertTrue(firstAgentId != secondAgentId);
         assertTrue(adapter.isController(firstAgentId, alice));
@@ -213,11 +213,11 @@ contract AdversarialAdapter8004Test is Test {
 
         vm.prank(bob);
         uint256 firstAgentId =
-            adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), 7, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC6909, address(token6909), 7, "", _emptyMetadata());
 
         vm.prank(alice);
         uint256 secondAgentId =
-            adapter.register(IERC8217.TokenStandard.ERC6909, address(token6909), 7, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC6909, address(token6909), 7, "", _emptyMetadata());
 
         assertTrue(firstAgentId != secondAgentId);
         assertTrue(adapter.isController(firstAgentId, alice));
@@ -246,7 +246,7 @@ contract AdversarialAdapter8004Test is Test {
         mal.setOwner(1, alice);
 
         vm.prank(alice);
-        uint256 agentId = overflowing.register(IERC8217.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
+        uint256 agentId = overflowing.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
 
         IERC8217.Binding memory binding = overflowing.bindingOf(agentId);
         assertEq(binding.boundAddress, address(mal));
@@ -283,7 +283,7 @@ contract AdversarialAdapter8004Test is Test {
             address(adapter),
             abi.encodeWithSignature(
                 "register(uint8,address,uint256,string,(string,bytes)[])",
-                IERC8217.TokenStandard.ERC721,
+                IERC8217.Standard.ERC721,
                 address(mal),
                 1,
                 "",
@@ -293,7 +293,7 @@ contract AdversarialAdapter8004Test is Test {
 
         vm.prank(alice);
         vm.expectRevert(IReentrancyGuardErrors.ReentrancyGuardReentrantCall.selector);
-        adapter.register(IERC8217.TokenStandard.ERC721, address(mal), 1, "", _emptyMetadata());
+        adapter.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
     }
 
     function _emptyMetadata() internal pure returns (IERC8004IdentityRegistry.MetadataEntry[] memory) {

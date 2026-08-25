@@ -19,7 +19,7 @@ interface IERC8004AdapterRegistration {
     /// caller-supplied entry for it reverts `ReservedMetadataKey`. Every other key is accepted.
     /// Emits `AgentBound` and returns the new `agentId`.
     function register(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -27,7 +27,7 @@ interface IERC8004AdapterRegistration {
     ) external returns (uint256 agentId);
 
     /// @notice Convenience overload equivalent to `register(...)` with an empty metadata array.
-    function register(IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
+    function register(IERC8217.Standard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
         external
         returns (uint256 agentId);
 }

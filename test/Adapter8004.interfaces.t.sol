@@ -38,22 +38,22 @@ contract Adapter8004InterfacesTest is Test {
         token721.mint(alice, 1);
     }
 
-    function testTokenStandardValuesAreAdditive() external pure {
-        assertEq(uint8(IERC8217.TokenStandard.ERC721), 0);
-        assertEq(uint8(IERC8217.TokenStandard.ERC1155), 1);
-        assertEq(uint8(IERC8217.TokenStandard.ERC6909), 2);
-        assertEq(uint8(IERC8217.TokenStandard.ERC1155F), 3);
-        assertEq(uint8(IERC8217.TokenStandard.ERC6909F), 4);
-        assertEq(uint8(IERC8217.TokenStandard.ACCOUNT), 5);
-        assertEq(uint8(IERC8217.TokenStandard.CONTRACT_OWNABLE), 6);
+    function testStandardValuesAreAdditive() external pure {
+        assertEq(uint8(IERC8217.Standard.ERC721), 0);
+        assertEq(uint8(IERC8217.Standard.ERC1155), 1);
+        assertEq(uint8(IERC8217.Standard.ERC6909), 2);
+        assertEq(uint8(IERC8217.Standard.ERC1155F), 3);
+        assertEq(uint8(IERC8217.Standard.ERC6909F), 4);
+        assertEq(uint8(IERC8217.Standard.ACCOUNT), 5);
+        assertEq(uint8(IERC8217.Standard.CONTRACT_OWNABLE), 6);
     }
 
     function testPrimaryInterfacesCastAndSelectors() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         vm.prank(alice);
         assertEq(
-            cf.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1),
+            cf.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1),
             "reachable through the interface cast"
         );
         assertEq(
@@ -107,8 +107,8 @@ contract Adapter8004InterfacesTest is Test {
         // whole wallet-pointer family went away.
         vm.prank(alice);
         assertEq(
-            adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1)
+            adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1)
         );
         vm.prank(alice);
         adapter.clearWalletUBI();
@@ -149,7 +149,7 @@ contract Adapter8004InterfacesTest is Test {
         // Positive control: the renamed surface works, so the assertions above cannot pass because
         // the whole family disappeared.
         vm.prank(alice);
-        assertTrue(adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1) != bytes32(0));
+        assertTrue(adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1) != bytes32(0));
         vm.prank(alice);
         adapter.clearWalletUBI();
     }
@@ -158,7 +158,7 @@ contract Adapter8004InterfacesTest is Test {
     function testRenamedWalletIdEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1);
+        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1);
         vm.prank(alice);
         adapter.clearWalletUBI();
 
@@ -183,7 +183,7 @@ contract Adapter8004InterfacesTest is Test {
     function testRemovedSignedPrimaryAgentEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token721), 1);
+        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1);
         vm.prank(alice);
         adapter.clearWalletUBI();
 
@@ -204,8 +204,8 @@ contract Adapter8004InterfacesTest is Test {
     function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(
-            cf.bindingHashFor(IERC8217.TokenStandard.ERC721, alice, 7),
-            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, alice, 7)
+            cf.bindingHashFor(IERC8217.Standard.ERC721, alice, 7),
+            adapter.bindingHashFor(IERC8217.Standard.ERC721, alice, 7)
         );
 
         IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
@@ -238,17 +238,17 @@ contract Adapter8004InterfacesTest is Test {
     /// implemented, and both must name the same identity for the same coordinates.
     function testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
-        bytes32 expected = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1);
+        bytes32 expected = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1);
 
         vm.prank(alice);
         bytes32 withoutMetadata =
-            cf.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://a");
+            cf.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://a");
 
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
         vm.prank(alice);
         bytes32 withMetadata =
-            cf.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token721), 1, "ipfs://b", metadata);
+            cf.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://b", metadata);
 
         assertEq(withoutMetadata, expected, "four-argument overload");
         assertEq(withMetadata, expected, "five-argument overload");
@@ -265,7 +265,7 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(bindings.bindingHashOf(agentId), adapter.bindingHashOf(agentId), "same answer");
         assertEq(
             bindings.bindingHashOf(agentId),
-            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token721), 1),
+            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1),
             "and it is the coordinate form of the stored binding"
         );
 
@@ -429,7 +429,7 @@ contract Adapter8004InterfacesTest is Test {
     function _register721(address caller, uint256 tokenId, string memory agentURI) internal returns (uint256) {
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         vm.prank(caller);
-        return adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, agentURI, empty);
+        return adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, agentURI, empty);
     }
 }
 

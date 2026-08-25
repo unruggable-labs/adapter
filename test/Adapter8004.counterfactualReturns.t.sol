@@ -25,7 +25,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     address internal wallet = makeAddr("wallet");
     address internal admin = makeAddr("admin");
 
-    IERC8217.TokenStandard internal constant STD = IERC8217.TokenStandard.ERC721;
+    IERC8217.Standard internal constant STD = IERC8217.Standard.ERC721;
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
@@ -122,7 +122,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         assertEq(adapter.bindingHashOf(erc721Agent), adapter.bindingHashFor(STD, address(other), 7), "ERC721");
         assertEq(
             adapter.bindingHashOf(accountAgent),
-            adapter.bindingHashFor(IERC8217.TokenStandard.ACCOUNT, address(binder), 0),
+            adapter.bindingHashFor(IERC8217.Standard.ACCOUNT, address(binder), 0),
             "ACCOUNT"
         );
         assertTrue(

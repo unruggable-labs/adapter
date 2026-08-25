@@ -302,7 +302,7 @@ For a full ERC-8004 identity created during mint, register before minting:
 ```solidity
 function mint(address buyer, uint256 tokenId, string calldata agentURI) external {
     uint256 agentId = adapter.register(
-        IERC8217.TokenStandard.ERC721,
+        IERC8217.Standard.ERC721,
         address(this),
         tokenId,
         agentURI
@@ -311,7 +311,7 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
 
     // Optional: when this caller is authorized for `buyer` under the wallet-pointer account-control
     // model, point the buyer's wallet at the identity just claimed.
-    adapter.setWalletUBIFor(buyer, IERC8217.TokenStandard.ERC721, address(this), tokenId);
+    adapter.setWalletUBIFor(buyer, IERC8217.Standard.ERC721, address(this), tokenId);
 }
 ```
 
@@ -341,7 +341,7 @@ On a successful `register`, the adapter writes canonical ERC-8217 metadata with:
 The token coordinates are not stored in the metadata blob. A verifier reads the binding-contract address from the metadata and then reads the full binding from `bindingOf(agentId)` on that contract:
 
 ```solidity
-struct Binding { TokenStandard standard; address boundAddress; uint256 tokenId; }
+struct Binding { Standard standard; address boundAddress; uint256 tokenId; }
 ```
 
 Token standard enum values:
@@ -453,7 +453,7 @@ Recommended collection flow:
 ```solidity
 function mint(address buyer, uint256 tokenId, string calldata agentURI) external {
     adapter.counterfactualRegister(
-        IERC8217.TokenStandard.ERC721,
+        IERC8217.Standard.ERC721,
         address(this),
         tokenId,
         agentURI
@@ -492,7 +492,7 @@ Indexer rules:
   `keccak256(abi.encode(interoperableAddress(adapterProxy), standard, boundAddress, tokenId))`,
   using standard `(bytes,uint8,address,uint256)` ABI encoding (not packed); the adapter proxy
   carries the full local ERC-7930 envelope, `boundAddress` remains a naked EVM address, and
-  `standard` is the `TokenStandard` enum's `uint8`. Those four components are the adapter address
+  `standard` is the `Standard` enum's `uint8`. Those four components are the adapter address
   plus exactly the stored `Binding`, so nothing in the preimage is unavailable from `bindingOf`
 - `interoperableAddress(account)` is the ERC-7930 v1 / CAIP-350 `eip155` encoding of the local
   chain plus AddressLength `20` and the raw EVM address
@@ -524,7 +524,7 @@ Indexer rules:
 - what the standard in the hash records is that the claimer passed *that standard's* authority probe
   at claim time. It is **not** an assertion that the bound contract conforms to the ERC; the adapter
   probes authority and never calls `supportsInterface`
-- because the enum's `uint8` is in the preimage, `TokenStandard` numbering is identity-critical.
+- because the enum's `uint8` is in the preimage, `Standard` numbering is identity-critical.
   Append only: never renumber, never reorder, never remove a member
 - the standard is a non-indexed body field on every counterfactual event, so it cannot be filtered by
   topic — filter by the UBI instead, which already distinguishes standards. The on-chain
@@ -591,7 +591,7 @@ keccak256(abi.encode(adapterInteroperableAddress, attester, ubi, attestationType
 
 **The caller is the attester, and there is no acting-for path.** A controller participates by causing the account itself to make the call, so the account is still `msg.sender`; nothing can manufacture an account's consent from outside it. The cost is chosen: an account that cannot make outbound calls, such as a minimal vault or a payment splitter with no executor, cannot attest. Ordinary wallets, multisigs, smart wallets with executors, timelocks, and EIP-7702-delegated accounts all can.
 
-**Five types, in a closed `AttestationType` enum.** The set is fixed by the deployed implementation, so admitting a sixth is an upgrade. That is a deliberate choice of a closed namespace over an open one: a type is what an enum is for, `TokenStandard` in the same contract is already an enum, and the contract is upgradeable, so the cost of admitting a type is an upgrade the owner can already make.
+**Five types, in a closed `AttestationType` enum.** The set is fixed by the deployed implementation, so admitting a sixth is an upgrade. That is a deliberate choice of a closed namespace over an open one: a type is what an enum is for, `Standard` in the same contract is already an enum, and the contract is upgradeable, so the cost of admitting a type is an upgrade the owner can already make.
 
 | Member | `uint8` | Payload | Projection |
 |---|---|---|---|
@@ -604,7 +604,7 @@ keccak256(abi.encode(adapterInteroperableAddress, attester, ubi, attestationType
 
 `UNSPECIFIED` holds zero because Solidity enums start there: without it the first real type would be the value a default-initialized variable carries, which is exactly what `AttestationTypeZero` exists to reject.
 
-The numbering is identity-critical, exactly as the `TokenStandard` numbering is: the `uint8` sits in the identifier preimage, so renumbering a member re-keys every attestation ever emitted under it. Append only, never reorder.
+The numbering is identity-critical, exactly as the `Standard` numbering is: the `uint8` sits in the identifier preimage, so renumbering a member re-keys every attestation ever emitted under it. Append only, never reorder.
 
 One thing the enum buys: the ABI decoder rejects a value above the last member before any contract code runs, so a garbage type is refused for free rather than by a check.
 
@@ -654,8 +654,8 @@ That is the whole owner surface. **No owner function reaches into an individual 
 
 User-facing functions:
 
-- `register(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
-- `register(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI)`
+- `register(Standard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
+- `register(Standard standard, address boundAddress, uint256 tokenId, string agentURI)`
 - `setAgentURI(uint256 agentId, string newURI)`
 - `setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)`
 - `setMetadataBatch(uint256 agentId, MetadataEntry[] metadata)`
@@ -676,19 +676,19 @@ Attestation (emit-only) functions:
 
 Counterfactual (emit-only) functions:
 
-- `counterfactualRegister(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
-- `counterfactualRegister(TokenStandard standard, address boundAddress, uint256 tokenId, string agentURI)`
-- `counterfactualSetAgentURI(TokenStandard standard, address boundAddress, uint256 tokenId, string newURI) -> bytes32`
-- `counterfactualSetMetadata(TokenStandard standard, address boundAddress, uint256 tokenId, string metadataKey, bytes metadataValue) -> bytes32`
-- `counterfactualSetMetadataBatch(TokenStandard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata) -> bytes32`
-- `counterfactualSetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet) -> bytes32`
-- `counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId) -> bytes32`
-- `bindingHashFor(TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `counterfactualRegister(Standard standard, address boundAddress, uint256 tokenId, string agentURI, MetadataEntry[] metadata)`
+- `counterfactualRegister(Standard standard, address boundAddress, uint256 tokenId, string agentURI)`
+- `counterfactualSetAgentURI(Standard standard, address boundAddress, uint256 tokenId, string newURI) -> bytes32`
+- `counterfactualSetMetadata(Standard standard, address boundAddress, uint256 tokenId, string metadataKey, bytes metadataValue) -> bytes32`
+- `counterfactualSetMetadataBatch(Standard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata) -> bytes32`
+- `counterfactualSetAgentWallet(Standard standard, address boundAddress, uint256 tokenId, address newWallet) -> bytes32`
+- `counterfactualUnsetAgentWallet(Standard standard, address boundAddress, uint256 tokenId) -> bytes32`
+- `bindingHashFor(Standard standard, address boundAddress, uint256 tokenId)`
 - `bindingHashOf(uint256 agentId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
-- `setWalletUBI(TokenStandard standard, address boundAddress, uint256 tokenId)`
-- `setWalletUBIFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)`
+- `setWalletUBI(Standard standard, address boundAddress, uint256 tokenId)`
+- `setWalletUBIFor(address account, Standard standard, address boundAddress, uint256 tokenId)`
 - `clearWalletUBI()`
 - `clearWalletUBIFor(address account)`
 - `walletUBIOf(address account)`

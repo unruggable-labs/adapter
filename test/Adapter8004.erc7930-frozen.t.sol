@@ -438,17 +438,17 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.chainId(1);
         assertEq(
-            fx.bindingHashFor(IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_MAINNET,
             "published Ethereum ubi"
         );
         vm.chainId(8453);
         assertEq(
-            fx.bindingHashFor(IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBI_BASE, "published Base ubi"
+            fx.bindingHashFor(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBI_BASE, "published Base ubi"
         );
         vm.chainId(11155111);
         assertEq(
-            fx.bindingHashFor(IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42),
+            fx.bindingHashFor(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42),
             PUBLISHED_UBI_SEPOLIA,
             "published Sepolia ubi"
         );
@@ -483,7 +483,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
         vm.recordLogs();
         vm.prank(ALICE);
         bytes32 returned = Adapter8004(VECTOR_ADAPTER).counterfactualRegister(
-            IERC8217.TokenStandard.ERC721, VECTOR_TOKEN, 42, "ipfs://cf"
+            IERC8217.Standard.ERC721, VECTOR_TOKEN, 42, "ipfs://cf"
         );
 
         Vm.Log[] memory logs = vm.getRecordedLogs();

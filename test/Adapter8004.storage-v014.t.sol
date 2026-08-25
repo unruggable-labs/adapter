@@ -33,7 +33,7 @@ abstract contract Adapter8004LiveBaseline is Initializable, OwnableUpgradeable, 
         identityRegistry = IERC8004IdentityRegistry(identityRegistry_);
     }
 
-    function seedLiveBinding(uint256 agentId, IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function seedLiveBinding(uint256 agentId, IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         onlyOwner
     {
@@ -100,7 +100,7 @@ contract Adapter8004StorageV014Test is Test {
 
     function testDirectUpgradeFromMainnetBaseLiveBaselinePreservesSlotsZeroAndOne() external {
         Adapter8004LiveBaseline baseline = _deployBaseline(new Adapter8004MainnetBaseBaseline());
-        baseline.seedLiveBinding(7, IERC8217.TokenStandard.ERC721, address(token), 41);
+        baseline.seedLiveBinding(7, IERC8217.Standard.ERC721, address(token), 41);
         address proxy = address(baseline);
 
         assertEq(address(uint160(uint256(vm.load(proxy, bytes32(uint256(0)))))), address(registry));
@@ -110,7 +110,7 @@ contract Adapter8004StorageV014Test is Test {
 
         assertEq(address(adapter.identityRegistry()), address(registry));
         IERC8217.Binding memory binding = adapter.bindingOf(7);
-        assertEq(uint8(binding.standard), uint8(IERC8217.TokenStandard.ERC721));
+        assertEq(uint8(binding.standard), uint8(IERC8217.Standard.ERC721));
         assertEq(binding.boundAddress, address(token));
         assertEq(binding.tokenId, 41);
         _assertSlotsTwoAndThreeEmpty(proxy);
@@ -120,21 +120,21 @@ contract Adapter8004StorageV014Test is Test {
         // nothing past it. The baseline never wrote slots 2 or 3, and now nothing ever will.
         vm.record();
         vm.prank(account);
-        adapter.setWalletUBI(IERC8217.TokenStandard.ERC721, address(token), 41);
+        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token), 41);
         (, bytes32[] memory writes) = vm.accesses(proxy);
         assertEq(writes.length, 0, "the designation writes no storage on a live proxy either");
         _assertSlotsTwoAndThreeEmpty(proxy);
     }
 
-    /// @dev Appending `ACCOUNT` and `CONTRACT_OWNABLE` to `TokenStandard` must not renumber the values
+    /// @dev Appending `ACCOUNT` and `CONTRACT_OWNABLE` to `Standard` must not renumber the values
     /// already persisted in live `Binding` rows. Pins `ERC6909F == 4` as the stored byte on both sides
     /// of the upgrade and checks the upgraded implementation still routes it down the single-owner path.
-    function testAppendedContractStandardDoesNotRenumberStoredTokenStandards() external {
+    function testAppendedContractStandardDoesNotRenumberStoredStandards() external {
         MockERC6909F token6909F = new MockERC6909F();
         token6909F.mint(cold, 60);
 
         Adapter8004LiveBaseline baseline = _deployBaseline(new Adapter8004MainnetBaseBaseline());
-        baseline.seedLiveBinding(7, IERC8217.TokenStandard.ERC6909F, address(token6909F), 60);
+        baseline.seedLiveBinding(7, IERC8217.Standard.ERC6909F, address(token6909F), 60);
         address proxy = address(baseline);
 
         // `Binding` packs `standard` (uint8) into the low byte of the struct's first slot.
@@ -144,12 +144,12 @@ contract Adapter8004StorageV014Test is Test {
         Adapter8004 adapter = _upgrade(baseline);
 
         assertEq(uint8(uint256(vm.load(proxy, bindingSlot))), 4, "post-upgrade stored standard byte");
-        assertEq(uint8(IERC8217.TokenStandard.ERC6909F), 4);
-        assertEq(uint8(IERC8217.TokenStandard.ACCOUNT), 5);
-        assertEq(uint8(IERC8217.TokenStandard.CONTRACT_OWNABLE), 6);
+        assertEq(uint8(IERC8217.Standard.ERC6909F), 4);
+        assertEq(uint8(IERC8217.Standard.ACCOUNT), 5);
+        assertEq(uint8(IERC8217.Standard.CONTRACT_OWNABLE), 6);
 
         IERC8217.Binding memory binding = adapter.bindingOf(7);
-        assertEq(uint8(binding.standard), uint8(IERC8217.TokenStandard.ERC6909F));
+        assertEq(uint8(binding.standard), uint8(IERC8217.Standard.ERC6909F));
         assertEq(binding.boundAddress, address(token6909F));
         assertEq(binding.tokenId, 60);
 
@@ -165,7 +165,7 @@ contract Adapter8004StorageV014Test is Test {
         delegateRegistry.delegateERC721(hot, cold, address(token), 41, DELEGATE_RIGHTS, true);
 
         Adapter8004LiveBaseline baseline = _deployBaseline(new Adapter8004SepoliaBaseline());
-        baseline.seedLiveBinding(7, IERC8217.TokenStandard.ERC721, address(token), 41);
+        baseline.seedLiveBinding(7, IERC8217.Standard.ERC721, address(token), 41);
         assertTrue(baseline.isController(7, hot));
         _assertSlotsTwoAndThreeEmpty(address(baseline));
 

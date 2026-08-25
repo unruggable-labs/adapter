@@ -60,7 +60,7 @@ contract Adapter8004OwnableDelegateTest is Test {
     function _bind(address ownerAddress) internal returns (OwnableBinder binder, uint256 agentId) {
         binder = new OwnableBinder(adapter, ownerAddress);
         vm.prank(ownerAddress);
-        agentId = adapter.register(IERC8217.TokenStandard.CONTRACT_OWNABLE, address(binder), 0, "ipfs://ownable");
+        agentId = adapter.register(IERC8217.Standard.CONTRACT_OWNABLE, address(binder), 0, "ipfs://ownable");
     }
 
     function testOwnerDelegateIsAuthorized() external {

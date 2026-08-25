@@ -6,7 +6,7 @@ import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
-/// @dev Concrete token fixture for `TokenStandard.ACCOUNT`: a minimal ERC-20 that binds itself as a
+/// @dev Concrete token fixture for `Standard.ACCOUNT`: a minimal ERC-20 that binds itself as a
 /// contract. It has no `ownerOf` and no `balanceOf(address,uint256)`, so any adapter probe for
 /// per-token ownership or per-id balance would have to hit a function it does not have, and its
 /// ordinary `balanceOf(address)` gives holders no authority. The adapter-driving helpers below run
@@ -65,19 +65,19 @@ contract MockERC20 {
     // ---------------------------------------------------------------
 
     function register(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.register(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
+        return ADAPTER.register(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
     function registerWithMetadata(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         returns (uint256)
     {
-        return ADAPTER.register(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent", metadata);
+        return ADAPTER.register(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent", metadata);
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
         return
-            ADAPTER.counterfactualRegister(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
+            ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
     function counterfactualRegisterWithMetadata(
@@ -86,33 +86,33 @@ contract MockERC20 {
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external returns (bytes32) {
         return
-            ADAPTER.counterfactualRegister(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, agentURI, metadata);
+            ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, agentURI, metadata);
     }
 
     function counterfactualSetAgentURI(uint256 tokenId, string calldata newURI) external {
-        ADAPTER.counterfactualSetAgentURI(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, newURI);
+        ADAPTER.counterfactualSetAgentURI(IERC8217.Standard.ACCOUNT, address(this), tokenId, newURI);
     }
 
     function counterfactualSetMetadata(uint256 tokenId, string calldata metadataKey, bytes calldata metadataValue)
         external
     {
         ADAPTER.counterfactualSetMetadata(
-            IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue
+            IERC8217.Standard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue
         );
     }
 
     function counterfactualSetMetadataBatch(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
     {
-        ADAPTER.counterfactualSetMetadataBatch(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, metadata);
+        ADAPTER.counterfactualSetMetadataBatch(IERC8217.Standard.ACCOUNT, address(this), tokenId, metadata);
     }
 
     function counterfactualSetAgentWallet(uint256 tokenId, address newWallet) external {
-        ADAPTER.counterfactualSetAgentWallet(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, newWallet);
+        ADAPTER.counterfactualSetAgentWallet(IERC8217.Standard.ACCOUNT, address(this), tokenId, newWallet);
     }
 
     function counterfactualUnsetAgentWallet(uint256 tokenId) external {
-        ADAPTER.counterfactualUnsetAgentWallet(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId);
+        ADAPTER.counterfactualUnsetAgentWallet(IERC8217.Standard.ACCOUNT, address(this), tokenId);
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

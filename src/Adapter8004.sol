@@ -105,7 +105,7 @@ contract Adapter8004 is
 
     event AgentBound(
         uint256 indexed agentId,
-        TokenStandard indexed standard,
+        Standard indexed standard,
         address indexed boundAddress,
         uint256 tokenId,
         address registeredBy
@@ -160,7 +160,7 @@ contract Adapter8004 is
     }
 
     function register(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -169,7 +169,7 @@ contract Adapter8004 is
         return _register(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
-    function register(TokenStandard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
+    function register(Standard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
         external
         nonReentrant
         returns (uint256 agentId)
@@ -178,7 +178,7 @@ contract Adapter8004 is
     }
 
     function _register(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -362,7 +362,7 @@ contract Adapter8004 is
     // `IERC8004AdapterCounterfactual` states that consumers key on the UBI.
     // -----------------------------------------------------------------
 
-    function bindingHashFor(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function bindingHashFor(Standard standard, address boundAddress, uint256 tokenId)
         external
         view
         returns (bytes32)
@@ -388,7 +388,7 @@ contract Adapter8004 is
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualRegister(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -399,7 +399,7 @@ contract Adapter8004 is
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualRegister(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI
@@ -410,7 +410,7 @@ contract Adapter8004 is
     }
 
     function _counterfactualRegisterImpl(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -436,7 +436,7 @@ contract Adapter8004 is
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetAgentURI(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata newURI
@@ -456,7 +456,7 @@ contract Adapter8004 is
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetMetadata(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata metadataKey,
@@ -484,7 +484,7 @@ contract Adapter8004 is
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetMetadataBatch(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
@@ -508,7 +508,7 @@ contract Adapter8004 is
 
     /// @inheritdoc IERC8004AdapterCounterfactual
     function counterfactualSetAgentWallet(
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId,
         address newWallet
@@ -527,7 +527,7 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualSetAgentWalletAndUBI(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function counterfactualSetAgentWalletAndUBI(Standard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
         returns (bytes32 bindingHash)
@@ -551,7 +551,7 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualUnsetAgentWallet(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function counterfactualUnsetAgentWallet(Standard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
         returns (bytes32 bindingHash)
@@ -573,14 +573,14 @@ contract Adapter8004 is
     //  Wallet UBI (reverse resolution: wallet -> UBI)
     // -----------------------------------------------------------------
 
-    function setWalletUBI(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBI(Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash)
     {
         return _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
     }
 
-    function setWalletUBIFor(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBIFor(address account, Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash)
     {
@@ -602,7 +602,7 @@ contract Adapter8004 is
     /// caller holds the authority to make it and then records that fact in the log, which is all a
     /// reader needs, since the identifier is derived from coordinates rather than stored. Placed here
     /// rather than in the two entry points so a future caller stays covered.
-    function _setWalletUBI(address account, TokenStandard standard, address boundAddress, uint256 tokenId)
+    function _setWalletUBI(address account, Standard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 bindingHash)
     {
@@ -745,11 +745,11 @@ contract Adapter8004 is
     /// zero `boundAddress` as its unbound sentinel. The identity registry is rejected because
     /// binding it would let `_hasBindingControl` resolve to the adapter post-bind and lock the agent
     /// away from any external controller.
-    function _requireValidBoundAddress(TokenStandard standard, address boundAddress) internal view {
+    function _requireValidBoundAddress(Standard standard, address boundAddress) internal view {
         if (boundAddress == address(0)) {
             revert InvalidBoundAddress();
         }
-        if (standard != TokenStandard.ACCOUNT && boundAddress.code.length == 0) {
+        if (standard != Standard.ACCOUNT && boundAddress.code.length == 0) {
             revert InvalidBoundAddress();
         }
         if (boundAddress == address(identityRegistry)) {
@@ -767,7 +767,7 @@ contract Adapter8004 is
         }
     }
 
-    function _requireBindingControl(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
+    function _requireBindingControl(Standard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
     {
@@ -789,7 +789,7 @@ contract Adapter8004 is
     /// Every mode compares the adapter's immediate EVM caller, so a router, forwarder or multicall
     /// that calls the adapter acts as itself. `delegatecall` into this contract is unsupported and
     /// dangerous, because it is a UUPS implementation with its own storage layout.
-    function _requireTokenAuthority(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
+    function _requireTokenAuthority(Standard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
     {
@@ -810,7 +810,7 @@ contract Adapter8004 is
     /// `_requireBindingControl` so a future direct caller stays covered. A nonzero id reverts rather
     /// than being coerced, since coercion would hand the caller a binding and a UBI
     /// that do not match the id they submitted.
-    function _requireCanonicalTokenId(TokenStandard standard, address boundAddress, uint256 tokenId) internal pure {
+    function _requireCanonicalTokenId(Standard standard, address boundAddress, uint256 tokenId) internal pure {
         if (_isAccountStandard(standard) && tokenId != 0) {
             revert NonZeroTokenIdForAccount(boundAddress, tokenId);
         }
@@ -843,7 +843,7 @@ contract Adapter8004 is
         return _hasBindingControl(binding.standard, binding.boundAddress, binding.tokenId, account);
     }
 
-    function _hasBindingControl(TokenStandard standard, address boundAddress, uint256 tokenId, address account)
+    function _hasBindingControl(Standard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
         returns (bool)
@@ -857,7 +857,7 @@ contract Adapter8004 is
         //    no token whose ownership could change hands, so the bound address stays the controller
         //    of the agents it binds and its latest write to a mutable registry field wins. It sits
         //    outside `_isSingleOwnerStandard`, so it gets no ownerless-window probe.
-        if (standard == TokenStandard.ACCOUNT) {
+        if (standard == Standard.ACCOUNT) {
             return account == boundAddress;
         }
 
@@ -870,7 +870,7 @@ contract Adapter8004 is
         //    moves. The delegation check is contract-scoped, because a contract binding pins
         //    `tokenId` to 0 and a token-scoped check would let a delegation covering token id 0
         //    confer authority over the whole contract.
-        if (standard == TokenStandard.CONTRACT_OWNABLE) {
+        if (standard == Standard.CONTRACT_OWNABLE) {
             address contractOwner = _currentContractOwner(boundAddress);
             if (contractOwner == address(0)) {
                 return false;
@@ -888,7 +888,7 @@ contract Adapter8004 is
         //    not manage an identity bound to it. Direct authority only: a role is a membership
         //    predicate that many addresses satisfy and none can enumerate, so there is no
         //    well-defined delegator for delegate.xyz to name.
-        if (standard == TokenStandard.CONTRACT_ADMIN) {
+        if (standard == Standard.CONTRACT_ADMIN) {
             return _hasDefaultAdminRole(boundAddress, account);
         }
 
@@ -911,7 +911,7 @@ contract Adapter8004 is
 
         // 5. ERC-1155 control means any positive balance for the bound id.
         //    No delegate.xyz check: the no-vault API cannot soundly map a delegation to a holder.
-        if (standard == TokenStandard.ERC1155) {
+        if (standard == Standard.ERC1155) {
             return IERC1155(boundAddress).balanceOf(account, tokenId) > 0;
         }
 
@@ -922,14 +922,14 @@ contract Adapter8004 is
 
     /// @dev The three standards that name a contract rather than a token within it. They share the
     /// canonical `tokenId == 0` coordinate and none of them is a single-owner token standard.
-    function _isAccountStandard(TokenStandard standard) internal pure returns (bool) {
-        return standard == TokenStandard.ACCOUNT || standard == TokenStandard.CONTRACT_OWNABLE
-            || standard == TokenStandard.CONTRACT_ADMIN;
+    function _isAccountStandard(Standard standard) internal pure returns (bool) {
+        return standard == Standard.ACCOUNT || standard == Standard.CONTRACT_OWNABLE
+            || standard == Standard.CONTRACT_ADMIN;
     }
 
-    function _isSingleOwnerStandard(TokenStandard standard) internal pure returns (bool) {
+    function _isSingleOwnerStandard(Standard standard) internal pure returns (bool) {
         return
-            standard == TokenStandard.ERC721 || standard == TokenStandard.ERC1155F || standard == TokenStandard.ERC6909F;
+            standard == Standard.ERC721 || standard == Standard.ERC1155F || standard == Standard.ERC6909F;
     }
 
     /// @dev Fail-closed EIP-173 owner probe for the opt-in `CONTRACT_OWNABLE` standard. The typed
@@ -999,7 +999,7 @@ contract Adapter8004 is
         }
     }
 
-    function _bindingHash(TokenStandard standard, address boundAddress, uint256 tokenId)
+    function _bindingHash(Standard standard, address boundAddress, uint256 tokenId)
         internal
         view
         virtual
@@ -1054,12 +1054,12 @@ contract Adapter8004 is
 
     /// @dev The canonical UBI is
     /// `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))`, with
-    /// `standard` encoded as the `TokenStandard` enum's `uint8`. Always `abi.encode`, never
+    /// `standard` encoded as the `Standard` enum's `uint8`. Always `abi.encode`, never
     /// `abi.encodePacked`: the interoperable address is dynamic, and packing it would let a different
     /// (address, standard) pair produce the same preimage bytes.
     function _bindingHashFrom(
         bytes memory adapterInteroperableAddress,
-        TokenStandard standard,
+        Standard standard,
         address boundAddress,
         uint256 tokenId
     ) internal pure returns (bytes32) {

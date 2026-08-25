@@ -8,7 +8,7 @@ pragma solidity ^0.8.24;
 ///
 /// Registration is separate and uses different signatures:
 /// - Registry: `IERC8004IdentityRegistry.register(string agentURI, MetadataEntry[] metadata)`
-/// - Adapter: `IERC8004AdapterRegistration.register(TokenStandard, address token, uint256 id,
+/// - Adapter: `IERC8004AdapterRegistration.register(Standard, address token, uint256 id,
 ///   string agentURI, MetadataEntry[] metadata)`
 interface IERC8004IdentityRecord {
     function setMetadata(uint256 agentId, string memory metadataKey, bytes memory metadataValue) external;

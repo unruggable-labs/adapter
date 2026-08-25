@@ -11,14 +11,14 @@ import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
 contract CounterfactualCollection {
     Adapter8004 internal immutable ADAPTER;
-    IERC8217.TokenStandard internal immutable STANDARD;
+    IERC8217.Standard internal immutable STANDARD;
     bool internal immutable MISSING_RETURNS_ZERO;
 
     mapping(uint256 tokenId => address owner) internal _owners;
 
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
 
-    constructor(Adapter8004 adapter, IERC8217.TokenStandard standard, bool missingReturnsZero) {
+    constructor(Adapter8004 adapter, IERC8217.Standard standard, bool missingReturnsZero) {
         ADAPTER = adapter;
         STANDARD = standard;
         MISSING_RETURNS_ZERO = missingReturnsZero;
@@ -98,11 +98,11 @@ contract CounterfactualCollection {
 
 contract CounterfactualPlainMultiToken {
     Adapter8004 internal immutable ADAPTER;
-    IERC8217.TokenStandard internal immutable STANDARD;
+    IERC8217.Standard internal immutable STANDARD;
 
     mapping(address account => mapping(uint256 tokenId => uint256 balance)) internal _balances;
 
-    constructor(Adapter8004 adapter, IERC8217.TokenStandard standard) {
+    constructor(Adapter8004 adapter, IERC8217.Standard standard) {
         ADAPTER = adapter;
         STANDARD = standard;
     }
@@ -135,7 +135,7 @@ contract CounterfactualMalformedOwnerCollection {
     }
 
     function register(uint256 tokenId) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(this), tokenId, "ipfs://malformed");
+        return ADAPTER.counterfactualRegister(IERC8217.Standard.ERC721, address(this), tokenId, "ipfs://malformed");
     }
 
     fallback() external {
@@ -160,14 +160,14 @@ contract CounterfactualReentrantOwnerCollection {
     }
 
     function register(uint256 tokenId) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(this), tokenId, "ipfs://outer");
+        return ADAPTER.counterfactualRegister(IERC8217.Standard.ERC721, address(this), tokenId, "ipfs://outer");
     }
 
     fallback() external {
         (bool success, bytes memory result) = address(ADAPTER).staticcall(
             abi.encodeWithSignature(
                 "counterfactualSetAgentURI(uint8,address,uint256,string)",
-                IERC8217.TokenStandard.ERC721,
+                IERC8217.Standard.ERC721,
                 address(this),
                 uint256(80),
                 "ipfs://reentrant"
@@ -201,7 +201,7 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         string newURI,
         address emitter
     );
@@ -209,7 +209,7 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         string metadataKey,
         bytes metadataValue,
         address emitter
@@ -218,7 +218,7 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
     );
@@ -226,7 +226,7 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address newWallet,
         address emitter
     );
@@ -234,7 +234,7 @@ contract CounterfactualUnmintedTest is Test {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address emitter
     );
 
@@ -253,9 +253,9 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testERC721OwnerlessCollectionCanUseFullRegisterOverload() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("role", "builder");
-        bytes32 expectedHash = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(collection), 1);
+        bytes32 expectedHash = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(collection), 1);
 
         vm.recordLogs();
         assertEq(collection.registerFull(1, "ipfs://full", metadata), expectedHash);
@@ -263,8 +263,8 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testERC721OwnerlessCollectionCanUseShortRegisterOverload() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
-        bytes32 expectedHash = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(collection), 1);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
+        bytes32 expectedHash = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(collection), 1);
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
         vm.recordLogs();
         assertEq(collection.registerShort(1, "ipfs://short"), expectedHash);
@@ -272,45 +272,45 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testOwnerlessCollectionCanUseEveryUnsignedSetter() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
-        bytes32 hash = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(collection), 7);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
+        bytes32 hash = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(collection), 7);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentURISet(
-            hash, address(collection), 7, IERC8217.TokenStandard.ERC721, "ipfs://uri", address(collection)
+            hash, address(collection), 7, IERC8217.Standard.ERC721, "ipfs://uri", address(collection)
         );
         collection.setURI(7, "ipfs://uri");
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualMetadataSet(
-            hash, address(collection), 7, IERC8217.TokenStandard.ERC721, "k", bytes("v"), address(collection)
+            hash, address(collection), 7, IERC8217.Standard.ERC721, "k", bytes("v"), address(collection)
         );
         collection.setMetadata(7, "k", bytes("v"));
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualMetadataBatchSet(
-            hash, address(collection), 7, IERC8217.TokenStandard.ERC721, metadata, address(collection)
+            hash, address(collection), 7, IERC8217.Standard.ERC721, metadata, address(collection)
         );
         collection.setMetadataBatch(7, metadata);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentWalletSet(
-            hash, address(collection), 7, IERC8217.TokenStandard.ERC721, alice, address(collection)
+            hash, address(collection), 7, IERC8217.Standard.ERC721, alice, address(collection)
         );
         collection.setWallet(7, alice);
 
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentWalletUnset(
-            hash, address(collection), 7, IERC8217.TokenStandard.ERC721, address(collection)
+            hash, address(collection), 7, IERC8217.Standard.ERC721, address(collection)
         );
         collection.unsetWallet(7);
     }
 
     function testRegisterThenMintOrdersRegistrationBeforeTransfer() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("k", "v");
-        bytes32 expectedHash = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(collection), 11);
+        bytes32 expectedHash = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(collection), 11);
 
         vm.recordLogs();
         assertEq(collection.registerThenMint(alice, 11, "ipfs://born", metadata), expectedHash);
@@ -328,7 +328,7 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testMintThenRegisterRevertsAtomically() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
         vm.expectRevert(
@@ -343,7 +343,7 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testAfterMintCollectionEveryUnsignedWriteRevertsButOwnerCanOverwrite() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         collection.mint(alice, 13);
         _assertEveryCollectionWriteReverts(collection, 13);
         _assertOwnerCanOverwriteEveryField(collection, 13);
@@ -372,47 +372,47 @@ contract CounterfactualUnmintedTest is Test {
 
     function _assertOwnerCanOverwriteEveryField(CounterfactualCollection collection, uint256 tokenId) internal {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
-        bytes32 hash = adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(collection), tokenId);
+        bytes32 hash = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(collection), tokenId);
         vm.startPrank(alice);
         adapter.counterfactualRegister(
-            IERC8217.TokenStandard.ERC721, address(collection), tokenId, "ipfs://owner", metadata
+            IERC8217.Standard.ERC721, address(collection), tokenId, "ipfs://owner", metadata
         );
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentURISet(
-            hash, address(collection), tokenId, IERC8217.TokenStandard.ERC721, "ipfs://latest", alice
+            hash, address(collection), tokenId, IERC8217.Standard.ERC721, "ipfs://latest", alice
         );
-        adapter.counterfactualSetAgentURI(IERC8217.TokenStandard.ERC721, address(collection), tokenId, "ipfs://latest");
+        adapter.counterfactualSetAgentURI(IERC8217.Standard.ERC721, address(collection), tokenId, "ipfs://latest");
         adapter.counterfactualSetMetadata(
-            IERC8217.TokenStandard.ERC721, address(collection), tokenId, "owner", bytes("yes")
+            IERC8217.Standard.ERC721, address(collection), tokenId, "owner", bytes("yes")
         );
-        adapter.counterfactualSetMetadataBatch(IERC8217.TokenStandard.ERC721, address(collection), tokenId, metadata);
-        adapter.counterfactualSetAgentWallet(IERC8217.TokenStandard.ERC721, address(collection), tokenId, eve);
-        adapter.counterfactualUnsetAgentWallet(IERC8217.TokenStandard.ERC721, address(collection), tokenId);
+        adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(collection), tokenId, metadata);
+        adapter.counterfactualSetAgentWallet(IERC8217.Standard.ERC721, address(collection), tokenId, eve);
+        adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ERC721, address(collection), tokenId);
         vm.stopPrank();
     }
 
     function testCollectionCanStillCallAfterMintWhenItIsNormalController() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         collection.mint(address(collection), 14);
         collection.setURI(14, "ipfs://owned-by-collection");
     }
 
     function testStrangerCannotClaimOwnerlessIdAndEOACannotMasqueradeAsCollection() external {
-        CounterfactualCollection zeroOwnerCollection = _collection(IERC8217.TokenStandard.ERC721, true);
+        CounterfactualCollection zeroOwnerCollection = _collection(IERC8217.Standard.ERC721, true);
 
         vm.prank(eve);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualRegister(
-            IERC8217.TokenStandard.ERC721, address(zeroOwnerCollection), 1, "ipfs://stranger"
+            IERC8217.Standard.ERC721, address(zeroOwnerCollection), 1, "ipfs://stranger"
         );
 
         vm.prank(eve);
         vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC721, eve, 1, "ipfs://eoa");
+        adapter.counterfactualRegister(IERC8217.Standard.ERC721, eve, 1, "ipfs://eoa");
     }
 
     function testMultipleOwnerlessRegistrationsUseSameHashAndLastLogWins() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         IERC8004IdentityRegistry.MetadataEntry[] memory first = _metadata("seq", "one");
         IERC8004IdentityRegistry.MetadataEntry[] memory second = _metadata("seq", "two");
 
@@ -427,13 +427,13 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testOwnerlessAndPostMintClosureForEverySingleOwnerStandard() external {
-        _assertSingleOwnerStandard(IERC8217.TokenStandard.ERC721, 31);
-        _assertSingleOwnerStandard(IERC8217.TokenStandard.ERC1155F, 32);
-        _assertSingleOwnerStandard(IERC8217.TokenStandard.ERC6909F, 33);
+        _assertSingleOwnerStandard(IERC8217.Standard.ERC721, 31);
+        _assertSingleOwnerStandard(IERC8217.Standard.ERC1155F, 32);
+        _assertSingleOwnerStandard(IERC8217.Standard.ERC6909F, 33);
     }
 
     function testZeroOwnerResponseOpensWindowAndNonzeroOwnerClosesIt() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, true);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, true);
         collection.registerShort(40, "ipfs://zero");
         collection.mint(alice, 40);
 
@@ -471,36 +471,36 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testBurnReopensOnlyCollectionOwnerlessWindow() external {
-        CounterfactualCollection collection = _collection(IERC8217.TokenStandard.ERC721, false);
+        CounterfactualCollection collection = _collection(IERC8217.Standard.ERC721, false);
         collection.mint(alice, 50);
         collection.burn(50);
         collection.registerShort(50, "ipfs://after-burn");
 
         vm.prank(eve);
         vm.expectRevert();
-        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(collection), 50, "ipfs://stranger");
+        adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(collection), 50, "ipfs://stranger");
     }
 
     function testPlainERC1155AndERC6909HaveNoOwnerlessCollectionAuthority() external {
-        _assertPlainMultiTokenExcluded(IERC8217.TokenStandard.ERC1155, 61);
-        _assertPlainMultiTokenExcluded(IERC8217.TokenStandard.ERC6909, 62);
+        _assertPlainMultiTokenExcluded(IERC8217.Standard.ERC1155, 61);
+        _assertPlainMultiTokenExcluded(IERC8217.Standard.ERC6909, 62);
     }
 
     function testPlainERC1155AndERC6909PositiveHolderBehaviorIsUnchanged() external {
         CounterfactualPlainMultiToken token1155 =
-            new CounterfactualPlainMultiToken(adapter, IERC8217.TokenStandard.ERC1155);
+            new CounterfactualPlainMultiToken(adapter, IERC8217.Standard.ERC1155);
         CounterfactualPlainMultiToken token6909 =
-            new CounterfactualPlainMultiToken(adapter, IERC8217.TokenStandard.ERC6909);
+            new CounterfactualPlainMultiToken(adapter, IERC8217.Standard.ERC6909);
         token1155.mint(alice, 71, 1);
         token6909.mint(alice, 72, 1);
 
         vm.startPrank(alice);
-        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC1155, address(token1155), 71, "ipfs://1155-holder");
-        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC6909, address(token6909), 72, "ipfs://6909-holder");
+        adapter.counterfactualRegister(IERC8217.Standard.ERC1155, address(token1155), 71, "ipfs://1155-holder");
+        adapter.counterfactualRegister(IERC8217.Standard.ERC6909, address(token6909), 72, "ipfs://6909-holder");
         vm.stopPrank();
     }
 
-    function _assertSingleOwnerStandard(IERC8217.TokenStandard standard, uint256 tokenId) internal {
+    function _assertSingleOwnerStandard(IERC8217.Standard standard, uint256 tokenId) internal {
         CounterfactualCollection collection = _collection(standard, false);
         collection.registerShort(tokenId, "ipfs://ownerless");
         collection.mint(alice, tokenId);
@@ -514,13 +514,13 @@ contract CounterfactualUnmintedTest is Test {
         adapter.counterfactualRegister(standard, address(collection), tokenId, "ipfs://owner");
     }
 
-    function _assertPlainMultiTokenExcluded(IERC8217.TokenStandard standard, uint256 tokenId) internal {
+    function _assertPlainMultiTokenExcluded(IERC8217.Standard standard, uint256 tokenId) internal {
         CounterfactualPlainMultiToken token = new CounterfactualPlainMultiToken(adapter, standard);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(token), type(uint256).max));
         token.registerAsCollection(tokenId);
     }
 
-    function _collection(IERC8217.TokenStandard standard, bool missingReturnsZero)
+    function _collection(IERC8217.Standard standard, bool missingReturnsZero)
         internal
         returns (CounterfactualCollection)
     {
@@ -543,7 +543,7 @@ contract CounterfactualUnmintedTest is Test {
         assertEq(entry.topics[1], expectedHash);
         assertEq(entry.topics[2], bytes32(uint256(uint160(collection))));
         assertEq(entry.topics[3], bytes32(tokenId));
-        assertEq(keccak256(entry.data), keccak256(abi.encode(IERC8217.TokenStandard.ERC721, uri, metadata, collection)));
+        assertEq(keccak256(entry.data), keccak256(abi.encode(IERC8217.Standard.ERC721, uri, metadata, collection)));
     }
 
     function _metadata(string memory key, string memory value)

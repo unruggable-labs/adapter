@@ -13,7 +13,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 contract Adapter8004ZeroHashHarness is Adapter8004 {
     constructor(address registry_) Adapter8004(registry_) {}
 
-    function _bindingHash(IERC8217.TokenStandard, address, uint256) internal pure override returns (bytes32) {
+    function _bindingHash(IERC8217.Standard, address, uint256) internal pure override returns (bytes32) {
         return bytes32(0);
     }
 }
@@ -44,7 +44,7 @@ contract Adapter8004PrimaryAgentTest is Test {
         bytes32 indexed ubi,
         address boundAddress,
         uint256 tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address indexed setBy
     );
     event WalletUBICleared(address indexed account, address indexed clearedBy);
@@ -56,7 +56,7 @@ contract Adapter8004PrimaryAgentTest is Test {
     /// counterfactual id setters validate their coordinates, so a code-less address under a
     /// code-requiring standard is rejected, exactly as the claim paths reject it.
     address internal token;
-    IERC8217.TokenStandard internal constant STD = IERC8217.TokenStandard.ERC721;
+    IERC8217.Standard internal constant STD = IERC8217.Standard.ERC721;
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
@@ -105,10 +105,10 @@ contract Adapter8004PrimaryAgentTest is Test {
         vm.prank(alice);
         bytes32 asToken = adapter.setWalletUBI(STD, token, 0);
         vm.prank(alice);
-        bytes32 asAccount = adapter.setWalletUBI(IERC8217.TokenStandard.ACCOUNT, token, 0);
+        bytes32 asAccount = adapter.setWalletUBI(IERC8217.Standard.ACCOUNT, token, 0);
 
         assertTrue(asToken != asAccount, "one pair under two standards must be two identities");
-        assertEq(asAccount, adapter.bindingHashFor(IERC8217.TokenStandard.ACCOUNT, token, 0));
+        assertEq(asAccount, adapter.bindingHashFor(IERC8217.Standard.ACCOUNT, token, 0));
     }
 
     function testCounterfactualHashZeroIsRepresentable() external {

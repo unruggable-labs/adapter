@@ -126,7 +126,7 @@ Recorded under Removed below.
 
   An earlier build of this branch used open hash-named `bytes32` constants that
   any third party could extend under their own namespace. The enum was chosen
-  because a type is what an enum is for, because `TokenStandard` in this same
+  because a type is what an enum is for, because `Standard` in this same
   contract is already an enum, and because the contract is upgradeable, so the
   cost of admitting a type is an upgrade the owner can already make. The open
   namespace is the capability given up, knowingly.
@@ -136,7 +136,7 @@ Recorded under Removed below.
   which is exactly what `AttestationTypeZero` exists to reject; with it the guard
   keeps working unchanged in meaning.
 
-  **The numbering is identity-critical**, in the same way `TokenStandard`'s
+  **The numbering is identity-critical**, in the same way `Standard`'s
   became: the `uint8` sits in the `attestationId` preimage, so renumbering a
   member re-keys every attestation ever emitted under it and every revocation
   naming one. Nothing on chain records the old value. Append only, never reorder,
@@ -170,7 +170,7 @@ Recorded under Removed below.
 
   ```
   setAgentWalletAndID(uint256 agentId, address newWallet, uint256 deadline, bytes signature)
-  counterfactualSetAgentWalletAndUBI(TokenStandard standard, address boundAddress, uint256 tokenId, address newWallet)
+  counterfactualSetAgentWalletAndUBI(Standard standard, address boundAddress, uint256 tokenId, address newWallet)
   ```
 
   Setting an agent's wallet and setting that wallet's id are two halves of one
@@ -263,6 +263,14 @@ Recorded under Removed below.
   declared in an interface at all.
 
 ### Changed
+
+- **`TokenStandard` is renamed to `Standard`.** Three of the eight members are not
+  token standards: `ACCOUNT` is a plain address, and `CONTRACT_OWNABLE` and
+  `CONTRACT_ADMIN` are role checks on any contract. The struct field and the event
+  parameter were already named `standard`. An enum canonicalizes to `uint8` in every
+  signature, so selectors, `AgentBound` topics, the ERC-165 `interfaceId` and the
+  binding hash preimage are all unchanged. Only the ABI's `internalType` hints move,
+  from `enum IERC8217.TokenStandard` to `enum IERC8217.Standard`.
 
 - **The primary-agent surface is renamed to the wallet-id surface.** The mapping
   exists because `wallet -> agentId` is one to many: ERC-8004's `setAgentWallet`
@@ -372,8 +380,8 @@ Recorded under Removed below.
 
 - **`IERCAgentBindings` is renamed `IERC8217`**, and
   `src/interfaces/IERCAgentBindings.sol` moves to `src/interfaces/IERC8217.sol`.
-  The type qualifiers move with it, so `IERCAgentBindings.TokenStandard` is now
-  `IERC8217.TokenStandard` and `IERCAgentBindings.Binding` is `IERC8217.Binding`.
+  The type qualifiers move with it, so `IERCAgentBindings.Standard` is now
+  `IERC8217.Standard` and `IERCAgentBindings.Binding` is `IERC8217.Binding`.
 
   The name follows the OpenZeppelin convention of naming an interface for the
   standard it implements, as `IERC721`, `IERC1155` and `IERC165` do. This
@@ -389,7 +397,7 @@ Recorded under Removed below.
   One caveat, stated precisely because the expectation going in was that the ABI
   would be byte-identical and it is not. The interface name appears 23 times in
   the emitted ABI JSON, in `internalType` hints such as
-  `enum IERC8217.TokenStandard`. Those are Solidity source annotations rather than
+  `enum IERC8217.Standard`. Those are Solidity source annotations rather than
   part of the canonical ABI: strip them and the two ABIs are identical, so every
   `type`, every function name, every selector and every encoding is unchanged. A
   consumer that keys on `internalType` strings would see the rename; nothing that
@@ -889,7 +897,7 @@ size, not gas.
   keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
   ```
 
-  `standard` is the `TokenStandard` enum as its `uint8`, sitting between the
+  `standard` is the `Standard` enum as its `uint8`, sitting between the
   adapter's ERC-7930 Interoperable Address and `boundAddress`. Always
   `abi.encode`, never packed. The reserved `extraData` discriminator that also
   stood in this preimage earlier in the version was removed, recorded below.
@@ -916,7 +924,7 @@ size, not gas.
   ran the standard-less ERC-7930 preimage, so this rides that cutover rather than
   adding one.
 
-- **`TokenStandard` numbering is now identity-critical.** The enum's `uint8` is in
+- **`Standard` numbering is now identity-critical.** The enum's `uint8` is in
   the preimage, so renumbering a member re-keys every counterfactual identity
   claimed under it, along with every attestation and reverse pointer naming one.
   Before this version the numbering was event-critical, which tolerated
@@ -925,14 +933,14 @@ size, not gas.
   in [`IERC8217.sol`](./src/interfaces/IERC8217.sol).
 
 - **`registrationHash(address,uint256)` is removed and replaced by the
-  coordinate-form view that is now called `bindingHashFor(TokenStandard,address,uint256)`.**
+  coordinate-form view that is now called `bindingHashFor(Standard,address,uint256)`.**
   It carried the name `registrationHash` for most of this version and was renamed
   with the rest of the terminology, recorded below. The old selector is gone rather
   than kept as an overload, deliberately: a stale caller reverts cleanly instead of
   silently computing a hash that no longer identifies anything.
 
 - **`setWalletUBI` and `setWalletUBIFor` each
-  gain a `TokenStandard` parameter**, immediately before `boundAddress`. Both old
+  gain a `Standard` parameter**, immediately before `boundAddress`. Both old
   selectors are gone, for the same reason. `clearWalletUBI[For]`
   and `walletUBIOf` are unchanged.
 

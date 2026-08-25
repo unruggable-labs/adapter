@@ -60,7 +60,7 @@ contract Adapter8004ContractAdminTest is Test {
     /// contract can no longer create its own binding either.
     function _bindAs(address caller, address boundAddress) internal returns (uint256) {
         vm.prank(caller);
-        return adapter.register(IERC8217.TokenStandard.CONTRACT_ADMIN, boundAddress, 0, "ipfs://admin");
+        return adapter.register(IERC8217.Standard.CONTRACT_ADMIN, boundAddress, 0, "ipfs://admin");
     }
 
     function setUp() external {
@@ -113,11 +113,11 @@ contract Adapter8004ContractAdminTest is Test {
 
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
-        adapter.register(IERC8217.TokenStandard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
+        adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
 
         vm.prank(address(binder));
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), type(uint256).max));
-        adapter.register(IERC8217.TokenStandard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
+        adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
     }
 
     /// @dev The raw-word decode is what makes this a decision rather than a revert. Any non-zero word
@@ -145,7 +145,7 @@ contract Adapter8004ContractAdminTest is Test {
 
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(binder), 1));
-        adapter.register(IERC8217.TokenStandard.CONTRACT_ADMIN, address(binder), 1, "ipfs://x");
+        adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 1, "ipfs://x");
     }
 
     /// @dev The second choke point. A counterfactual emit resolves authority through
@@ -155,7 +155,7 @@ contract Adapter8004ContractAdminTest is Test {
 
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(binder), 3));
-        adapter.counterfactualRegister(IERC8217.TokenStandard.CONTRACT_ADMIN, address(binder), 3, "ipfs://x");
+        adapter.counterfactualRegister(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 3, "ipfs://x");
     }
 
     /// @dev This standard has no delegate.xyz route, so it is not a member of the owner-and-delegate

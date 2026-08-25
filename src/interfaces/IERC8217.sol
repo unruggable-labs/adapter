@@ -44,7 +44,7 @@ interface IERC8217 {
     /// delegator to name, since the role is a membership predicate that many addresses can satisfy
     /// and none can enumerate.
     /// @dev Identity-critical numbering: append only, never renumber or reorder. See the note above.
-    enum TokenStandard {
+    enum Standard {
         ERC721,
         ERC1155,
         ERC6909,
@@ -56,7 +56,7 @@ interface IERC8217 {
     }
 
     struct Binding {
-        TokenStandard standard;
+        Standard standard;
         address boundAddress;
         uint256 tokenId;
     }

@@ -6,7 +6,7 @@ import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
 /// @dev A binder that is not a token at all: no ERC-20/721/1155/6909 interface, no `ownerOf`, no
-/// `balanceOf`, no supply, no holders, no `owner()`. It exists to show that `TokenStandard.ACCOUNT`
+/// `balanceOf`, no supply, no holders, no `owner()`. It exists to show that `Standard.ACCOUNT`
 /// binds a contract identity rather than a token, so a plain service contract can hold an agent with
 /// nothing for the adapter to probe. Its only state is unrelated bookkeeping.
 contract MockContractBinder {
@@ -27,12 +27,12 @@ contract MockContractBinder {
     // ---------------------------------------------------------------
 
     function register(uint256 tokenId) external returns (uint256) {
-        return ADAPTER.register(IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent");
+        return ADAPTER.register(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent");
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
         return ADAPTER.counterfactualRegister(
-            IERC8217.TokenStandard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent"
+            IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent"
         );
     }
 

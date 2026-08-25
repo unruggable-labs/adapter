@@ -47,7 +47,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         // The mock (and the real registry) set agentWallet = msg.sender during
         // register; the adapter must clear it as step 7 of register.
@@ -67,7 +67,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         IERC8217.Binding memory beforeBinding = adapter.bindingOf(agentId);
 
@@ -102,7 +102,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         vm.prank(holder);
         uint256 agentId =
-            adapter.register(IERC8217.TokenStandard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         bytes memory stored = registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY());
         bytes memory expected = abi.encodePacked(address(adapter));
@@ -173,7 +173,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
 
         vm.expectRevert(bytes("metadata write disabled"));
-        failing.register(IERC8217.TokenStandard.ERC721, address(token721), 99, "", metadata);
+        failing.register(IERC8217.Standard.ERC721, address(token721), 99, "", metadata);
 
         // Nothing persisted. The registry issued id 0 and the adapter wrote `_bindings[0]` before
         // the failure arrived, so this is the assertion that the revert rolled that write back.

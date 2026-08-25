@@ -10,7 +10,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 ///
 /// The Universal Binding Identifier, or UBI, is the hash of a binding, derived as
 /// `keccak256(abi.encode(bindingContractInteroperableAddress, standard, boundAddress, tokenId))`
-/// using `abi.encode` and never `abi.encodePacked`. `standard` is the `TokenStandard` enum as its
+/// using `abi.encode` and never `abi.encodePacked`. `standard` is the `Standard` enum as its
 /// `uint8`. The authority rules for each standard are documented on that enum in
 /// `IERC8217`.
 ///
@@ -18,7 +18,7 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// without being performed, and the UBI is the same value whether or not the binding is ever
 /// performed.
 ///
-/// Every counterfactual event carries the `TokenStandard` as its first non-indexed field, so one log
+/// Every counterfactual event carries the `Standard` as its first non-indexed field, so one log
 /// line is verifiable on its own without looking up the claim that created the identity. The three
 /// indexed fields are `(ubi, boundAddress, tokenId)` on every event.
 ///
@@ -33,7 +33,7 @@ interface IERC8004AdapterCounterfactual {
     /// coordinates alone determine the value and `bindingHashOf(agentId)` returns the same value for
     /// a registered agent. `standard` selects the identity: the same `(boundAddress, tokenId)` under
     /// two standards yields two different hashes.
-    function bindingHashFor(IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function bindingHashFor(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         view
         returns (bytes32);
@@ -44,7 +44,7 @@ interface IERC8004AdapterCounterfactual {
     /// `emitter = boundAddress`, and the same authority may re-emit any number of times.
     /// @return bindingHash The identity claimed, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualRegister(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI,
@@ -54,7 +54,7 @@ interface IERC8004AdapterCounterfactual {
     /// @notice Convenience overload equivalent to `counterfactualRegister(...)` with an empty metadata array.
     /// @return bindingHash The identity claimed, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualRegister(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata agentURI
@@ -65,7 +65,7 @@ interface IERC8004AdapterCounterfactual {
     /// supported single-owner id has no current owner.
     /// @return bindingHash The identity updated, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetAgentURI(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata newURI
@@ -77,7 +77,7 @@ interface IERC8004AdapterCounterfactual {
     /// single-owner id has no current owner.
     /// @return bindingHash The identity written to, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetMetadata(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         string calldata metadataKey,
@@ -91,7 +91,7 @@ interface IERC8004AdapterCounterfactual {
     /// @return bindingHash The single identity every entry lands on, matching
     /// `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetMetadataBatch(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
@@ -103,7 +103,7 @@ interface IERC8004AdapterCounterfactual {
     /// single-owner id has no current owner.
     /// @return bindingHash The identity updated, matching `bindingHashFor(standard, boundAddress, tokenId)`.
     function counterfactualSetAgentWallet(
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address boundAddress,
         uint256 tokenId,
         address newWallet
@@ -118,7 +118,7 @@ interface IERC8004AdapterCounterfactual {
     /// existing designation on the caller is overwritten.
     /// @return bindingHash The identity named, matching
     /// `bindingHashFor(standard, boundAddress, tokenId)` and the hash both emitted events carry.
-    function counterfactualSetAgentWalletAndUBI(IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function counterfactualSetAgentWalletAndUBI(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash);
 
@@ -127,7 +127,7 @@ interface IERC8004AdapterCounterfactual {
     /// controller may call it, as may the token contract itself while a supported single-owner id has
     /// no current owner.
     /// @return bindingHash The identity cleared, matching `bindingHashFor(standard, boundAddress, tokenId)`.
-    function counterfactualUnsetAgentWallet(IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function counterfactualUnsetAgentWallet(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash);
 
@@ -169,7 +169,7 @@ interface IERC8004AdapterCounterfactual {
     // believe. The agent-id half was also the less checkable, returning a bare number no consumer
     // could verify without already knowing the registry, while the adapter had verified nothing.
 
-    /// @notice `standard` is the `TokenStandard` folded into the UBI. It is carried here
+    /// @notice `standard` is the `Standard` folded into the UBI. It is carried here
     /// because `(boundAddress, tokenId)` alone does not name an identity, so a reader can recompute
     /// the hash from this one log line. See `IERC8004AdapterCounterfactual`.
     event WalletUBISet(
@@ -177,7 +177,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address boundAddress,
         uint256 tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address indexed setBy
     );
     event WalletUBICleared(address indexed account, address indexed clearedBy);
@@ -189,7 +189,7 @@ interface IERC8004AdapterCounterfactual {
     /// self-assertion and is not proof: nothing here checks that the caller holds the token or would
     /// pass that standard's authority probe, so a consumer must verify the claim reciprocally before
     /// treating it as identity. Emits `WalletUBISet` and returns the derived hash.
-    function setWalletUBI(IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBI(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 ubi);
 
@@ -197,7 +197,7 @@ interface IERC8004AdapterCounterfactual {
     /// caller is the account itself, its `owner()` or `getOwner()`, or a holder of its
     /// `DEFAULT_ADMIN_ROLE`, and reverts `NotAccountController` otherwise. An account that misreports
     /// its controller can only affect its own entry.
-    function setWalletUBIFor(address account, IERC8217.TokenStandard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBIFor(address account, IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 ubi);
 
@@ -216,7 +216,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         string agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
@@ -228,7 +228,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         string newURI,
         address emitter
     );
@@ -239,7 +239,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         string metadataKey,
         bytes metadataValue,
         address emitter
@@ -252,7 +252,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         IERC8004IdentityRegistry.MetadataEntry[] metadata,
         address emitter
     );
@@ -263,7 +263,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address newWallet,
         address emitter
     );
@@ -274,7 +274,7 @@ interface IERC8004AdapterCounterfactual {
         bytes32 indexed ubi,
         address indexed boundAddress,
         uint256 indexed tokenId,
-        IERC8217.TokenStandard standard,
+        IERC8217.Standard standard,
         address emitter
     );
 }

@@ -161,10 +161,10 @@ contract Adapter8004AttestationTest is Test {
 
         // The ubi side, pinned by hashing it against the published view.
         bytes memory ubiPreimage =
-            abi.encode(adapterAddress, IERC8217.TokenStandard.ERC721, address(token), uint256(42));
+            abi.encode(adapterAddress, IERC8217.Standard.ERC721, address(token), uint256(42));
         assertEq(
             keccak256(ubiPreimage),
-            adapter.bindingHashFor(IERC8217.TokenStandard.ERC721, address(token), 42),
+            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token), 42),
             "premise: this is the preimage the contract hashes for a ubi"
         );
 
@@ -346,7 +346,7 @@ contract Adapter8004AttestationTest is Test {
         // Premise: the store really does simulate being inside a guarded frame.
         vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
         vm.prank(alice);
-        adapter.counterfactualRegister(IERC8217.TokenStandard.ERC721, address(token), 1, "ipfs://cf");
+        adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token), 1, "ipfs://cf");
 
         vm.recordLogs();
         vm.startPrank(alice);
