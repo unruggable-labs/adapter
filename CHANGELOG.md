@@ -378,6 +378,60 @@ Recorded under Removed below.
   fixture tables keep the terminology of the scheme they document, because renaming
   them would misdescribe history rather than clarify it.
 
+- **`ACCOUNT` bindings accept a delegate.xyz route.** Authority under `ACCOUNT`
+  was exactly `msg.sender == boundAddress`; it is now that, or a hot wallet
+  holding a wallet-wide delegation from the bound address. The `0.0.16` entry
+  below recorded the opposite rule, which was correct at that version.
+
+  **The API is `checkDelegateForAll(account, boundAddress, DELEGATE_RIGHTS)`,
+  not `checkDelegateForContract`.** delegate.xyz v2 grants come in three shapes:
+  ALL delegates everything a vault holds, CONTRACT delegates what it holds inside
+  one contract, and the token-scoped forms delegate a single asset. An `ACCOUNT`
+  binding names an address acting as itself rather than assets it holds anywhere,
+  so only the ALL shape expresses the grant. Passing `boundAddress` as both
+  delegator and `contract_` to `checkDelegateForContract` asks whether the hot
+  wallet may manage the bound address's holdings inside the contract at that same
+  address, which is a category error for an externally owned account and the wrong
+  question for a contract. It would also have silently accepted a CONTRACT-scoped
+  grant naming the bound address, which is a different and narrower authorization
+  than the account intended, so the check is not merely imprecise but wider than
+  the grant.
+
+  A contract-scoped or token-scoped delegation naming the bound address therefore
+  confers nothing, and there is a test for each shape. Delegated authority is read
+  live on every call, so revocation ends it inside the same transaction, and the
+  check fails closed to the bound address alone when the registry has no code on
+  the chain.
+
+  **The revocability objection was considered and accepted, not overlooked.**
+  `0.0.16` excluded `ACCOUNT` partly on the ground that an address delegating on its
+  own behalf cannot revoke without the same executor it used to delegate. That
+  holds: a bound contract that delegates and later loses the ability to transact
+  leaves its delegate as a permanent controller, and the revocation test only covers
+  a grantor that can still transact. Under the old rule that same contract froze its
+  identity outright, so the trade is a surviving controller against a dead one. Do
+  not re-raise this as a defect.
+
+  **`_controlsAccount` deliberately does not get the same treatment.** It gates
+  `setWalletUBIFor` and `clearWalletUBIFor`, which is a different question:
+  `_hasBindingControl` asks who may manage the identity bound to an address, while
+  `_controlsAccount` asks who may make an assertion on that address's own behalf
+  about which identity speaks for it. Its existing routes, `owner()`, `getOwner()`
+  and `DEFAULT_ADMIN_ROLE`, exist because a contract account cannot conveniently
+  call itself; an externally owned account always can. Adding a delegation route
+  there would let a hot wallet author a self-assertion the account never made, and
+  the wallet-pointer surface is emit-only, so the authority check is the only thing
+  making that log trustworthy. The asymmetry is also not new: `CONTRACT_ADMIN` has
+  no delegation route in `_hasBindingControl` yet is accepted by `_controlsAccount`.
+
+  Nothing is lost by the omission. A delegate that manages an `ACCOUNT` identity
+  calls `counterfactualSetAgentWalletAndUBI`, which names the caller as the wallet,
+  so the delegate designates itself and the loop still closes without anyone
+  asserting on the account's behalf.
+
+  No storage layout change: slots, offsets, labels and types are identical before
+  and after. Runtime size 16,985 to 17,146 bytes, up 161, margin 7,591 to 7,430.
+
 - **`IERCAgentBindings` is renamed `IERC8217`**, and
   `src/interfaces/IERCAgentBindings.sol` moves to `src/interfaces/IERC8217.sol`.
   The type qualifiers move with it, so `IERCAgentBindings.Standard` is now

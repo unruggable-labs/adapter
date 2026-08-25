@@ -56,10 +56,9 @@ contract Adapter8004 is
 
     /// @notice Canonical immutable delegate.xyz v2 registry, identical on Ethereum, Base, and Sepolia.
     /// A delegated hot wallet can drive single-owner ERC-721/ERC-1155F/ERC-6909F bound agents while
-    /// the token stays in cold storage, and CONTRACT_OWNABLE agents through a contract-scoped
-    /// delegation from the live owner. ACCOUNT grants no delegation route, because the bound address
-    /// is the sole controller. Authorization fails closed to direct ownership when the registry has
-    /// no code.
+    /// the token stays in cold storage, CONTRACT_OWNABLE agents through a contract-scoped delegation
+    /// from the live owner, and ACCOUNT agents through a wallet-wide delegation from the bound
+    /// address itself. Authorization fails closed to direct authority when the registry has no code.
     address public constant DELEGATE_REGISTRY = 0x00000000000000447e69651d841bD8D104Bed493;
 
     /// @notice Rights identifier a cold wallet delegates to scope a hot wallet to Adapter8004 management
@@ -358,11 +357,7 @@ contract Adapter8004 is
     // `IERC8004AdapterCounterfactual` states that consumers key on the UBI.
     // -----------------------------------------------------------------
 
-    function bindingHashFor(Standard standard, address boundAddress, uint256 tokenId)
-        external
-        view
-        returns (bytes32)
-    {
+    function bindingHashFor(Standard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {
         return _bindingHash(standard, boundAddress, tokenId);
     }
 
@@ -394,12 +389,11 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualRegister(
-        Standard standard,
-        address boundAddress,
-        uint256 tokenId,
-        string calldata agentURI
-    ) external nonReentrant returns (bytes32 bindingHash) {
+    function counterfactualRegister(Standard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
+        external
+        nonReentrant
+        returns (bytes32 bindingHash)
+    {
         return _counterfactualRegisterImpl(
             standard, boundAddress, tokenId, agentURI, new IERC8004IdentityRegistry.MetadataEntry[](0)
         );
@@ -431,12 +425,11 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualSetAgentURI(
-        Standard standard,
-        address boundAddress,
-        uint256 tokenId,
-        string calldata newURI
-    ) external nonReentrant returns (bytes32 bindingHash) {
+    function counterfactualSetAgentURI(Standard standard, address boundAddress, uint256 tokenId, string calldata newURI)
+        external
+        nonReentrant
+        returns (bytes32 bindingHash)
+    {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -503,12 +496,11 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualSetAgentWallet(
-        Standard standard,
-        address boundAddress,
-        uint256 tokenId,
-        address newWallet
-    ) external nonReentrant returns (bytes32 bindingHash) {
+    function counterfactualSetAgentWallet(Standard standard, address boundAddress, uint256 tokenId, address newWallet)
+        external
+        nonReentrant
+        returns (bytes32 bindingHash)
+    {
         // 1. Reject an unusable bound address and reject the registry itself so the
         //    revert taxonomy matches `register`.
         _requireValidBoundAddress(standard, boundAddress);
@@ -848,13 +840,17 @@ contract Adapter8004 is
         //    controller and the adapter asks it nothing: `ownerOf` and both `balanceOf` shapes go
         //    unprobed, and `tokenId` is pinned to 0 at the choke points above. Whatever the address
         //    exposes, an `owner()`, a balance or a role, carries authority elsewhere rather than
-        //    here, as do the adapter admin and any delegate.xyz delegate, which
-        //    `testAccountGrantsNoDelegationRoute` pins. This authority is permanent, because there is
-        //    no token whose ownership could change hands, so the bound address stays the controller
-        //    of the agents it binds and its latest write to a mutable registry field wins. It sits
+        //    here, as does the adapter admin. The bound address may also authorize a hot wallet
+        //    through a wallet-wide delegate.xyz delegation, checked with `checkDelegateForAll`
+        //    because the binding names the address acting as itself rather than assets it holds
+        //    inside a contract. Direct authority is permanent, since no token can change hands, while
+        //    delegated authority is read live and ends the moment the delegation is revoked. It sits
         //    outside `_isSingleOwnerStandard`, so it gets no ownerless-window probe.
         if (standard == Standard.ACCOUNT) {
-            return account == boundAddress;
+            if (account == boundAddress) {
+                return true;
+            }
+            return _isAccountDelegate(account, boundAddress);
         }
 
         // 2. `CONTRACT_OWNABLE` resolves the contract's live `owner()` and accepts that owner acting
@@ -919,13 +915,12 @@ contract Adapter8004 is
     /// @dev The three standards that name a contract rather than a token within it. They share the
     /// canonical `tokenId == 0` coordinate and none of them is a single-owner token standard.
     function _isAccountStandard(Standard standard) internal pure returns (bool) {
-        return standard == Standard.ACCOUNT || standard == Standard.CONTRACT_OWNABLE
-            || standard == Standard.CONTRACT_ADMIN;
+        return
+            standard == Standard.ACCOUNT || standard == Standard.CONTRACT_OWNABLE || standard == Standard.CONTRACT_ADMIN;
     }
 
     function _isSingleOwnerStandard(Standard standard) internal pure returns (bool) {
-        return
-            standard == Standard.ERC721 || standard == Standard.ERC1155F || standard == Standard.ERC6909F;
+        return standard == Standard.ERC721 || standard == Standard.ERC1155F || standard == Standard.ERC6909F;
     }
 
     /// @dev Fail-closed EIP-173 owner probe for the opt-in `CONTRACT_OWNABLE` standard. The typed
@@ -948,6 +943,19 @@ contract Adapter8004 is
         }
 
         return address(uint160(ownerWord));
+    }
+
+    /// @dev Consults the delegate.xyz v2 registry for a wallet-wide delegation from `boundAddress`
+    /// to `account`. `checkDelegateForAll` is the right check because an `ACCOUNT` binding names the
+    /// address acting as itself, not assets it holds inside some contract, and only an ALL-type grant
+    /// expresses that. Fails closed: if the registry has no code on this chain, only the bound
+    /// address itself authorizes.
+    function _isAccountDelegate(address account, address boundAddress) private view returns (bool) {
+        if (DELEGATE_REGISTRY.code.length == 0) {
+            return false;
+        }
+
+        return IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForAll(account, boundAddress, DELEGATE_RIGHTS);
     }
 
     /// @dev Consults the delegate.xyz v2 registry for a contract-scoped delegation from the bound

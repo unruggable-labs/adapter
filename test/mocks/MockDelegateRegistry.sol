@@ -61,6 +61,15 @@ contract MockDelegateRegistry {
         return false;
     }
 
+    /// @notice ALL-type delegations only, matching v2: a contract- or token-scoped grant does not
+    /// satisfy this check.
+    function checkDelegateForAll(address to, address from, bytes32 rights) external view returns (bool) {
+        if (_allLevel[keccak256(abi.encode(to, from, bytes32(0)))]) {
+            return true;
+        }
+        return rights != bytes32(0) && _allLevel[keccak256(abi.encode(to, from, rights))];
+    }
+
     function _matchesContract(address to, address from, address contract_, bytes32 rights)
         private
         view

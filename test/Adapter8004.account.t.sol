@@ -85,9 +85,7 @@ contract Adapter8004AccountTest is Test {
         vm.prank(eoa);
         bytes32 ubi = adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://cf");
         assertEq(
-            ubi,
-            adapter.bindingHashFor(IERC8217.Standard.ACCOUNT, eoa, 0),
-            "hash is the ACCOUNT identity for this pair"
+            ubi, adapter.bindingHashFor(IERC8217.Standard.ACCOUNT, eoa, 0), "hash is the ACCOUNT identity for this pair"
         );
         // Inverted from the pre-`0.0.17` assertion, which required this to equal the hash for any
         // other standard at the same pair. The standard is in the preimage now, so `(eoa, 0)` claimed
@@ -236,30 +234,29 @@ contract Adapter8004AccountTest is Test {
         }
     }
 
-    // --- negatives: ACCOUNT is offered no delegation route ---
+    // --- ACCOUNT accepts a wallet-wide delegation and nothing narrower ---
 
-    /// @dev `ACCOUNT` authority is exactly `msg.sender == boundAddress`, and the absence of a
-    /// delegate.xyz route is a decision rather than an omission. An account that granted a delegation
-    /// for some unrelated purpose would otherwise be handing that delegate permanent control of its
-    /// agent identity, because a binding is immutable and could never withdraw it. Every delegation
-    /// shape the adapter honors for the other standards is checked here. The blanket wallet-level grant
-    /// is the one that matters most, since it is the shape most likely to already exist.
-    function testAccountGrantsNoDelegationRoute() external {
+    /// @dev `ACCOUNT` authority is the bound address itself or a wallet-wide delegate.xyz delegation
+    /// from it. Only an ALL-type grant qualifies, because the binding names the address acting as
+    /// itself rather than assets it holds inside a contract, so a contract-scoped or token-scoped
+    /// grant naming the bound address is the wrong shape and confers nothing.
+    function testAccountAcceptsOnlyAWalletWideDelegationRoute() external {
         MockDelegateRegistry delegateRegistry = _installDelegateRegistry();
         bytes32 rights = adapter.DELEGATE_RIGHTS();
 
         vm.prank(eoa);
         uint256 agentId = adapter.register(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://agent");
+        _assertHotHasNoAuthority(agentId, "premise: no delegation yet");
 
         delegateRegistry.delegateAll(hot, eoa, rights, true);
-        _assertHotHasNoAuthority(agentId, "wallet-level ALL");
+        _assertHotHasAuthority(agentId, "wallet-level ALL scoped to the adapter rights");
         delegateRegistry.delegateAll(hot, eoa, rights, false);
 
-        // Empty rights is honored for every other standard, so it is the widest grant available here.
         delegateRegistry.delegateAll(hot, eoa, bytes32(0), true);
-        _assertHotHasNoAuthority(agentId, "wallet-level ALL with empty rights");
+        _assertHotHasAuthority(agentId, "wallet-level ALL with empty rights");
         delegateRegistry.delegateAll(hot, eoa, bytes32(0), false);
 
+        // Narrower shapes are the wrong kind of grant for an address acting as itself.
         delegateRegistry.delegateContract(hot, eoa, eoa, rights, true);
         _assertHotHasNoAuthority(agentId, "contract-scoped on the bound address");
         delegateRegistry.delegateContract(hot, eoa, eoa, rights, false);
@@ -268,19 +265,56 @@ contract Adapter8004AccountTest is Test {
         _assertHotHasNoAuthority(agentId, "token-scoped on the bound address at the canonical id");
     }
 
-    /// @dev The same rule before any binding exists. A delegation cannot be used to claim the identity
-    /// of the address that granted it, on either the on-chain or the counterfactual path.
-    function testAccountDelegateCannotClaimTheAccountIdentity() external {
+    /// @dev Delegated authority is read on every call, never cached, so revoking ends it inside the
+    /// same transaction rather than at some later block.
+    function testAccountDelegationRevocationTakesEffectInTheSameTransaction() external {
+        MockDelegateRegistry delegateRegistry = _installDelegateRegistry();
+
+        vm.prank(eoa);
+        uint256 agentId = adapter.register(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://agent");
+
+        delegateRegistry.delegateAll(hot, eoa, adapter.DELEGATE_RIGHTS(), true);
+        vm.prank(hot);
+        adapter.setAgentURI(agentId, "ipfs://by-delegate");
+        assertTrue(adapter.isController(agentId, hot), "premise: the delegate had authority");
+
+        delegateRegistry.delegateAll(hot, eoa, adapter.DELEGATE_RIGHTS(), false);
+        assertFalse(adapter.isController(agentId, hot), "revocation is visible immediately");
+        vm.prank(hot);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, agentId));
+        adapter.setAgentURI(agentId, "ipfs://after-revocation");
+    }
+
+    /// @dev The registry is consulted, never assumed. With no code at the canonical address the
+    /// delegation check fails closed and only the bound address itself authorizes.
+    function testAccountDelegationFailsClosedWhenTheRegistryHasNoCode() external {
+        MockDelegateRegistry delegateRegistry = _installDelegateRegistry();
+        delegateRegistry.delegateAll(hot, eoa, adapter.DELEGATE_RIGHTS(), true);
+
+        vm.prank(eoa);
+        uint256 agentId = adapter.register(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://agent");
+        assertTrue(adapter.isController(agentId, hot), "premise: the delegation is live");
+
+        vm.etch(adapter.DELEGATE_REGISTRY(), "");
+        _assertHotHasNoAuthority(agentId, "registry absent on this chain");
+        assertTrue(adapter.isController(agentId, eoa), "the bound address still authorizes");
+    }
+
+    /// @dev A delegation still cannot be used to claim the identity of the address that granted it
+    /// before any binding exists, because claiming runs the same authority check: the delegate is
+    /// authorized to act for `eoa`, so it claims the identity of `eoa` rather than one of its own.
+    function testAccountDelegateClaimsTheGrantorIdentityNotItsOwn() external {
         MockDelegateRegistry delegateRegistry = _installDelegateRegistry();
         delegateRegistry.delegateAll(hot, eoa, adapter.DELEGATE_RIGHTS(), true);
 
         vm.prank(hot);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
-        adapter.register(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://hot");
+        uint256 agentId = adapter.register(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://hot");
+        assertEq(adapter.bindingOf(agentId).boundAddress, eoa, "the binding names the grantor");
 
+        // The delegate has no route to an identity for its own address.
         vm.prank(hot);
         vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
-        adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://hot");
+        adapter.register(IERC8217.Standard.ACCOUNT, address(0xD00D), 0, "ipfs://elsewhere");
     }
 
     /// @dev Extends the sentinel invariant past `register`. Under every standard other than `ACCOUNT`
@@ -325,6 +359,15 @@ contract Adapter8004AccountTest is Test {
         MockDelegateRegistry impl = new MockDelegateRegistry();
         vm.etch(adapter.DELEGATE_REGISTRY(), address(impl).code);
         return MockDelegateRegistry(adapter.DELEGATE_REGISTRY());
+    }
+
+    function _assertHotHasAuthority(uint256 agentId, string memory shape) private {
+        assertTrue(adapter.isController(agentId, hot), shape);
+
+        vm.prank(hot);
+        adapter.setAgentURI(agentId, "ipfs://by-delegate");
+        vm.prank(hot);
+        adapter.setMetadata(agentId, "k", bytes("v"));
     }
 
     function _assertHotHasNoAuthority(uint256 agentId, string memory shape) private {

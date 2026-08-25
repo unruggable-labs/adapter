@@ -38,11 +38,11 @@ interface IERC8217 {
     /// since authority compares the adapter's immediate caller. Minting closes that window and a
     /// later burn can reopen it, because no historical-existence bit is stored.
     ///
-    /// `ACCOUNT` and `CONTRACT_ADMIN` are offered no delegation route. For `ACCOUNT` the delegator
-    /// would be the bound address itself, and an address delegating on its own behalf cannot revoke
-    /// without the same executor it used to delegate. For `CONTRACT_ADMIN` there is no single
-    /// delegator to name, since the role is a membership predicate that many addresses can satisfy
-    /// and none can enumerate.
+    /// `ACCOUNT` accepts a wallet-wide delegate.xyz delegation from the bound address, checked with
+    /// `checkDelegateForAll` because the binding names the address acting as itself rather than
+    /// assets it holds inside a contract. `CONTRACT_ADMIN` is offered no delegation route, since a
+    /// role is a membership predicate that many addresses can satisfy and none can enumerate, so
+    /// there is no single delegator to name.
     /// @dev Identity-critical numbering: append only, never renumber or reorder. See the note above.
     enum Standard {
         ERC721,

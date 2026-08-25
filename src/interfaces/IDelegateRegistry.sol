@@ -16,6 +16,13 @@ interface IDelegateRegistry {
         view
         returns (bool);
 
+    /// @notice Returns true when `to` holds a wallet-wide delegation from `from`. It considers only
+    /// ALL-type delegations, so it does not accept a contract-scoped or token-scoped grant. That is
+    /// what makes it the right check for a binding that names an address acting as itself rather than
+    /// assets the address holds inside some contract. The same blanket-delegation rule as below
+    /// applies to `rights`.
+    function checkDelegateForAll(address to, address from, bytes32 rights) external view returns (bool);
+
     /// @notice Returns true when `to` holds a delegation from `from` covering the whole contract, or
     /// the whole wallet. It does not consider token-scoped delegations, which is what makes it the
     /// right check for a binding that names a contract rather than a token within it. The same
