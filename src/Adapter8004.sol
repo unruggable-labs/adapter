@@ -50,13 +50,7 @@ contract Adapter8004 is
     IInteroperableAddressView,
     IERC8004AdapterAttestation
 {
-    /// @notice The one reserved metadata key, rejected on every write path that accepts caller
-    /// metadata, because this contract writes it itself and an unreserved key would let a caller
-    /// forge a record the adapter authors.
-    /// @dev `cf-registration` was reserved here until `0.0.17` and deliberately is not any more: no
-    /// path writes it so there is no authored record to forge, `bindingHashOf` derives an
-    /// agent's identifier rather than storing it so it cannot be spoofed, and reserving one spelling
-    /// stops nobody who can write `ubi` instead. Do not re-add it as a consistency fix.
+    /// @notice The one reserved metadata key, rejected on every caller-metadata write path so callers cannot forge it.
     string public constant BINDING_METADATA_KEY = "agent-binding";
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
