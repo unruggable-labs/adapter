@@ -26,16 +26,8 @@ interface IOwnableContract {
     function owner() external view returns (address);
 }
 
-/// @notice Upgrade target for the active Adapter8004 proxies.
-/// @dev Regular storage ends at slot 1 and is append-only, with slot 0 dead and reserved forever
-/// because every live proxy physically holds the old registry address there, so a live proxy
-/// upgrades with empty `upgradeToAndCall` data and no reinitializer. Counterfactual identities are keyed by
-/// `keccak256(abi.encode(interoperableAddress(proxy), uint8 standard, boundAddress, tokenId))`, the
-/// adapter address plus exactly the stored `Binding`, and a different preimage from the one live
-/// proxies compute today, so upgrading one is a hard cutover for any indexer reading counterfactual
-/// events, detailed in CHANGELOG.md. That envelope comes from OpenZeppelin's `draft-` prefixed
-/// `InteroperableAddress`, which carries no encoding stability guarantee, so read
-/// `testOpenZeppelinEncodingIsFrozen` before bumping the submodule.
+/// @notice Lets an external NFT, account, or contract control an ERC-8004 identity record while this
+/// proxy remains the on-chain owner of the identity token.
 /// @custom:version 0.0.17
 contract Adapter8004 is
     Initializable,
@@ -55,47 +47,27 @@ contract Adapter8004 is
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
     /// @notice Canonical immutable delegate.xyz v2 registry, identical on Ethereum, Base, and Sepolia.
-    /// A delegated hot wallet can drive single-owner ERC-721/ERC-1155F/ERC-6909F bound agents while
-    /// the token stays in cold storage, CONTRACT_OWNABLE agents through a contract-scoped delegation
-    /// from the live owner, and ACCOUNT agents through a wallet-wide delegation from the bound
-    /// address itself. Authorization fails closed to direct authority when the registry has no code.
+    /// Delegation is accepted for ERC-721, ERC-1155F, ERC-6909F, CONTRACT_OWNABLE and ACCOUNT.
     address public constant DELEGATE_REGISTRY = 0x00000000000000447e69651d841bD8D104Bed493;
 
-    /// @notice Rights identifier a cold wallet delegates to scope a hot wallet to Adapter8004 management
-    /// only. delegate.xyz v2 also accepts empty/full delegations when this nonzero rights value is checked.
+    /// @notice A scope used for delegating Adapter8004 management; delegate.xyz also honors unscoped grants.
     bytes32 public constant DELEGATE_RIGHTS = keccak256("adapter8004.manage");
 
-    /// @notice Thrown when the address a binding names is unusable: the zero address under any
-    /// standard, or an address with no runtime code under any standard except `ACCOUNT`.
+    /// @notice Thrown for a zero bound address, or a codeless one under any standard but `ACCOUNT`.
     error InvalidBoundAddress();
-    /// @notice Thrown when a single-owner token's `ownerOf(tokenId)` call succeeds but does not
-    /// return exactly one canonical ABI-encoded address word. Malformed success responses fail
-    /// closed rather than opening the ownerless collection-authority window.
+    /// @notice Thrown when `ownerOf` succeeds but does not return exactly one canonical address word.
     error InvalidOwnerOfResponse(address boundAddress, uint256 tokenId);
-    /// @notice Thrown when a binding attempts to set `boundAddress` to the ERC-8004 identity registry
-    /// itself. Permitted-and-then-bound, the agent would be permanently uncontrollable because
-    /// `ownerOf(tokenId)` on the registry resolves to the adapter post-bind, locking the only path
-    /// through `_hasBindingControl`.
+    /// @notice Thrown when a binding names the ERC-8004 registry itself, which would leave the agent uncontrollable.
     error BoundAddressIsRegistry();
-    /// @notice Thrown by any `ACCOUNT`, `CONTRACT_OWNABLE` or `CONTRACT_ADMIN` operation called with a nonzero
-    /// `tokenId`. This covers registration and the emit-only counterfactual calls
-    /// alike, since all of them pass through the same authority choke points. An account-level binding names the address
-    /// itself rather than a token within it, so it has exactly one canonical coordinate, `tokenId ==
-    /// 0`. The nonzero id is rejected rather than coerced so the caller's binding or emitted claim,
-    /// its UBI, and any pointer derived from it can never disagree with the id the
-    /// caller submitted.
+    /// @notice Thrown when an `ACCOUNT`, `CONTRACT_OWNABLE` or `CONTRACT_ADMIN` call passes a nonzero `tokenId`.
     error NonZeroTokenIdForAccount(address boundAddress, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
-    /// @notice Thrown when `setWalletUBIFor` / `clearWalletUBIFor` is called by an address that is
-    /// neither the account itself, the account's `owner()` / `getOwner()`, nor a holder of its
-    /// `DEFAULT_ADMIN_ROLE`.
+    /// @notice Thrown when the caller is not the account, its `owner()`/`getOwner()`, or a `DEFAULT_ADMIN_ROLE` holder.
     error NotAccountController(address account, address caller);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
-    /// @notice Thrown when an upgrade target was constructed with a different ERC-8004 registry than
-    /// the one this implementation carries. The registry is set once for the life of the proxy, so
-    /// an upgrade that would move it is refused rather than silently repointing every future write.
+    /// @notice Thrown when an upgrade target carries a different ERC-8004 registry than this implementation.
     error RegistryMismatch();
 
     event AgentBound(
@@ -112,30 +84,17 @@ contract Adapter8004 is
     event AgentWalletUnset(uint256 indexed agentId, address indexed updatedBy);
 
     /// @notice The ERC-8004 registry every adapter write forwards into, fixed at construction.
-    /// @dev Immutable, so it lives in this implementation's own runtime code rather than in proxy
-    /// storage. That is what lets `_authorizeUpgrade` read the incoming implementation's value
-    /// directly and refuse an upgrade that would repoint the proxy. A storage variable could not be
-    /// checked that way, because the same call on an implementation address reads its own uninitialized slot.
     IERC8004IdentityRegistry public immutable identityRegistry;
 
-    /// @dev **SLOT 0 IS DEAD AND MUST NEVER BE REUSED.** It held `identityRegistry` until `0.0.17`
-    /// made that field immutable, which freed the slot but not the bytes, so every live proxy still
-    /// has a real registry address sitting there and anything declared into this slot would read
-    /// that address as its initial value. Never remove this placeholder, never repurpose it, and
-    /// never declare state before it.
-    /// @dev **The rule, so the next removal applies it correctly: reserve a slot that holds live
-    /// data, and do not reserve one that was merely declared in a build nobody deployed.** Slot 0
-    /// qualifies; the wallet mappings removed at `0.0.17` did not, so their slots were reclaimed
-    /// rather than reserved and regular storage now ends at slot 1. The full reasoning is in
-    /// `docs/fixtures/adapter-v014-storage-layout.md`.
+    /// @dev **SLOT 0 IS DEAD, NEVER REUSE IT.** It held `identityRegistry` until `0.0.17` made that
+    /// field immutable, so every live proxy still holds a real registry address here and anything
+    /// declared into this slot would read that address as its initial value. Never remove this
+    /// placeholder and never declare state before it. See `docs/fixtures/adapter-v014-storage-layout.md`.
     uint256 private __deadRegistrySlot;
 
     mapping(uint256 agentId => Binding binding) private _bindings;
 
     /// @notice Bakes the ERC-8004 registry into this implementation and locks it there.
-    /// @dev Every implementation carries its own registry, so an upgrade that would move the proxy
-    /// to a different one is refusable, which is what `_authorizeUpgrade` does. Deploying an
-    /// implementation for an existing proxy therefore means passing that proxy's current registry.
     /// @custom:oz-upgrades-unsafe-allow constructor state-variable-immutable
     constructor(address identityRegistry_) {
         if (identityRegistry_ == address(0)) {
@@ -145,15 +104,12 @@ contract Adapter8004 is
         _disableInitializers();
     }
 
-    /// @notice Initializes a newly deployed proxy.
-    /// @dev Do not call during an upgrade of an existing proxy. The registry is no longer a
-    /// parameter here, because it is fixed at construction. An active proxy already has its owner
-    /// set and its bindings at slot 1, the two mappings at slots 2 and 3 are meant to begin empty,
-    /// and there is no reinitializer, so an upgrade carries empty `upgradeToAndCall` data.
+    /// @notice Initializes a newly deployed proxy; do not call during an upgrade of an existing one.
     function initialize(address initialOwner) external initializer {
         __Ownable_init(initialOwner);
     }
 
+    /// @notice Registers an ERC-8004 identity bound to `boundAddress`, with initial metadata entries.
     function register(
         Standard standard,
         address boundAddress,
@@ -164,6 +120,7 @@ contract Adapter8004 is
         return _register(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
+    /// @notice Registers an ERC-8004 identity bound to `boundAddress`, with no initial metadata.
     function register(Standard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
         external
         nonReentrant
