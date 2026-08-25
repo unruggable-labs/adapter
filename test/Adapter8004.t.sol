@@ -76,6 +76,24 @@ contract Adapter8004Test is Test {
         assertEq(address(adapter.identityRegistry()), address(registry));
     }
 
+    /// @dev A fresh proxy has never held the pre-0.0.17 storage-backed registry in slot 0. The
+    /// getter and forwarding target therefore have to come from the implementation's immutable;
+    /// an implementation that read slot 0 instead would report address(0) here.
+    function testFreshProxyGetsRegistryFromImmutableWhileSlotZeroIsEmpty() external view {
+        assertEq(vm.load(address(adapter), bytes32(uint256(0))), bytes32(0), "fresh proxy slot 0 starts empty");
+        assertEq(address(adapter.identityRegistry()), address(registry), "immutable supplies the registry");
+    }
+
+    /// @dev Direct calls to an implementation are exactly what `_authorizeUpgrade` uses for the
+    /// incoming-registry check. Its own slot 0 is empty, while the immutable getter still returns
+    /// the constructor value from runtime code.
+    function testImplementationGetterDoesNotDependOnItsOwnEmptySlotZero() external {
+        Adapter8004 implementation = new Adapter8004(address(registry));
+
+        assertEq(vm.load(address(implementation), bytes32(uint256(0))), bytes32(0));
+        assertEq(address(implementation.identityRegistry()), address(registry));
+    }
+
     function testRegisters721AndClearsInitialAdapterWallet() external {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "name", metadataValue: bytes("alpha")});

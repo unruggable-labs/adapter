@@ -126,6 +126,19 @@ contract Adapter8004StorageV014Test is Test {
         _assertSlotsTwoAndThreeEmpty(proxy);
     }
 
+    /// @dev Demonstrates why the incoming implementation cannot expose a storage-backed registry
+    /// getter for the upgrade guard to call directly. The proxy has the initialized registry in
+    /// slot 0, but the implementation account has independent, empty storage and returns zero.
+    function testStorageBackedRegistryGetterIsZeroOnImplementationAddress() external {
+        Adapter8004MainnetBaseBaseline implementation = new Adapter8004MainnetBaseBaseline();
+        Adapter8004LiveBaseline baseline = _deployBaseline(implementation);
+
+        assertEq(address(baseline.identityRegistry()), address(registry), "proxy storage is initialized");
+        assertEq(vm.load(address(baseline), bytes32(uint256(0))), bytes32(uint256(uint160(address(registry)))));
+        assertEq(address(implementation.identityRegistry()), address(0), "implementation storage is independent");
+        assertEq(vm.load(address(implementation), bytes32(uint256(0))), bytes32(0));
+    }
+
     /// @dev Appending `ACCOUNT` and `CONTRACT_OWNABLE` to `Standard` must not renumber the values
     /// already persisted in live `Binding` rows. Pins `ERC6909F == 4` as the stored byte on both sides
     /// of the upgrade and checks the upgraded implementation still routes it down the single-owner path.

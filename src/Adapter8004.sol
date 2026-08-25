@@ -84,6 +84,7 @@ contract Adapter8004 is
     event AgentWalletUnset(uint256 indexed agentId, address indexed updatedBy);
 
     /// @notice The ERC-8004 registry every adapter write forwards into, fixed at construction.
+    /// @dev Immutable since `0.0.17`, when it moved out of storage; that is why slot 0 is now dead.
     IERC8004IdentityRegistry public immutable identityRegistry;
 
     /// @dev **SLOT 0 IS DEAD, NEVER REUSE IT.** It held `identityRegistry` until `0.0.17` made that
@@ -217,10 +218,7 @@ contract Adapter8004 is
         emit MetadataSet(agentId, metadataKey, metadataValue, msg.sender);
     }
 
-    /// @notice Write several metadata entries for one agent, in the order given. The caller must
-    /// control the bound token, and no entry may target the reserved `agent-binding` key.
-    /// @dev Each entry emits its own `MetadataSet`. There is no batch event, so a batch is
-    /// indistinguishable from a run of individual writes.
+    /// @notice Writes metadata entries for one agent in the order given, each emitting its own `MetadataSet`.
     function setMetadataBatch(uint256 agentId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)
         external
         nonReentrant
@@ -231,9 +229,7 @@ contract Adapter8004 is
         // 2. Prevent callers from forging the canonical binding record.
         _requireNoReservedBindingKey(metadata);
 
-        // 3. Replay each write through the ERC-8004 registry. The emit sits inside the loop rather
-        //    than after it so each adapter event lands next to the registry write it describes,
-        //    which is what an indexer applying events in log order depends on.
+        // 3. Replay each write through the registry, emitting inside the loop so events stay in log order.
         uint256 length = metadata.length;
         for (uint256 i; i < length; ++i) {
             identityRegistry.setMetadata(agentId, metadata[i].metadataKey, metadata[i].metadataValue);
@@ -266,13 +262,12 @@ contract Adapter8004 is
         emit AgentWalletUnset(agentId, msg.sender);
     }
 
+    /// @inheritdoc IERC8217
     function bindingOf(uint256 agentId) external view returns (Binding memory) {
         return _knownBinding(agentId);
     }
 
-    /// @dev Loads a binding and rejects unknown agents, so every caller that needs a real binding
-    /// agrees on what unknown means. A zero `boundAddress` is the unbound sentinel, which is why the
-    /// zero address is refused at every write entry point.
+    /// @dev Loads a binding, reverting on unknown ids. A zero `boundAddress` is the unbound sentinel.
     function _knownBinding(uint256 agentId) private view returns (Binding memory binding) {
         binding = _bindings[agentId];
         if (binding.boundAddress == address(0)) {
@@ -280,13 +275,7 @@ contract Adapter8004 is
         }
     }
 
-    /// @notice Whether `account` may act for `agentId` right now, the same check every adapter write
-    /// performs.
-    /// @dev Authority resolves live from the bound token on every call, so the answer can change in
-    /// the same block a token transfers or a bound contract's `owner()` changes, and a consumer must
-    /// treat it as uncacheable. `_hasBindingControl` carries the per-standard rules. A blanket
-    /// delegate.xyz delegation, one naming no rights at all, is accepted, because the registry offers
-    /// no way to ask for a scoped-only match.
+    /// @notice Returns true when `account` currently controls `agentId`, and false for an unknown agent.
     function isController(uint256 agentId, address account) external view returns (bool) {
         // 1. Load the binding that defines who controls this agent.
         Binding memory binding = _bindings[agentId];
@@ -296,10 +285,11 @@ contract Adapter8004 is
             return false;
         }
 
-        // 3. Re-evaluate control against the current bound-token ownership state.
+        // 3. Resolve control under the binding's standard, against current ownership.
         return _hasBindingControl(binding, account);
     }
 
+    /// @notice Accepts ERC-721 transfers, which the adapter must do to hold the ERC-8004 identity tokens it registers.
     function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
         // 1. Return the standard receiver selector so safe ERC-721 transfers to the adapter succeed.
         return IERC721Receiver.onERC721Received.selector;
@@ -308,10 +298,14 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     // COUNTERFACTUAL FUNCTIONS
     // -----------------------------------------------------------------
-    // Emit-only mirrors of the on-chain register surface, writing no adapter storage and making no
-    // ERC-8004 registry calls, so a later event supersedes a claim rather than withdrawing it.
-    // Authority matches the on-chain surface plus the ownerless-collection route documented below.
-    // `IERC8004AdapterCounterfactual` states that consumers key on the UBI.
+    // An alternative to full ERC-8004 registration that costs far less gas: these functions emit an
+    // event and nothing else, so a claim is a log rather than a registry write and a storage slot.
+    // The caller still proves the same authority the on-chain surface requires, plus the
+    // ownerless-collection route documented below.
+    //
+    // An agent gets an identity without ever being registered, because its UBI derives from the
+    // binding alone and `bindingHashFor` will compute it for anyone. Consumers key on that UBI, and a
+    // later event supersedes an earlier claim rather than withdrawing it.
     // -----------------------------------------------------------------
 
     function bindingHashFor(Standard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {

@@ -2,48 +2,11 @@
 pragma solidity ^0.8.24;
 
 interface IERC8217 {
-    /// @dev **APPEND ONLY. NEVER RENUMBER, NEVER REORDER, NEVER REMOVE A MEMBER.** These numbers are
-    /// identity-critical, not merely descriptive. The `uint8` of this enum sits in the preimage of
-    /// every UBI, so renumbering a member silently re-keys every
-    /// counterfactual identity claimed under it and every attestation and reverse pointer that names
-    /// one. That is unrecoverable: nothing on chain records the old value, and the identities do not
-    /// move with it. The numbers are also persisted inside each stored `Binding` and emitted in
-    /// `AgentBound` and every counterfactual event, so a renumbering would reinterpret stored
-    /// bindings and indexed history as well.
-    ///
-    /// Before this constraint existed the numbering was only event-critical, which tolerated
-    /// renumbering with a re-index. It no longer does. Add new standards at the end.
-    ///
-    /// Values 0-4 name a token *within* a contract, so the binding coordinate is `(boundAddress,
-    /// tokenId)`. The three account standards name an address itself: there is no token to
-    /// identify, so the binding has exactly one canonical coordinate, `tokenId == 0`. They differ
-    /// only in who is authorized, and no two of them overlap. `ACCOUNT` grants authority to the
-    /// named address and nobody else. `CONTRACT_OWNABLE` grants it to the current canonical nonzero
-    /// address returned by `owner()`, and to a delegate.xyz delegate of that owner, but not to the
-    /// contract. `CONTRACT_ADMIN` grants it to any holder of the contract's `DEFAULT_ADMIN_ROLE`,
-    /// which suits an AccessControl contract that exposes no `owner()`.
-    ///
-    /// `ACCOUNT` is the only standard that accepts an address with no runtime code, because it is
-    /// the only one that never calls the address it names. `CONTRACT_OWNABLE` and `CONTRACT_ADMIN`
-    /// require code, since `owner()` and `hasRole` must be callable, as do values 0-4, which
-    /// need `ownerOf` or `balanceOf`. Under EIP-7702 an externally-owned account can carry code, so
-    /// `ACCOUNT` authority is precisely whoever can cause a call to originate from that address,
-    /// which is the key holder plus, if a delegation is installed, whoever can drive it. Installing
-    /// a delegation after binding permanently widens that set, and on an immutable binding that
-    /// cannot be undone.
-    ///
-    /// Values 0-4 additionally grant temporary authority to the bound token contract itself while
-    /// `ownerOf(tokenId)` reports no current owner, which lets a collection claim an identity before
-    /// mint. The contract must call the adapter directly rather than through a router or forwarder,
-    /// since authority compares the adapter's immediate caller. Minting closes that window and a
-    /// later burn can reopen it, because no historical-existence bit is stored.
-    ///
-    /// `ACCOUNT` accepts a wallet-wide delegate.xyz delegation from the bound address, checked with
-    /// `checkDelegateForAll` because the binding names the address acting as itself rather than
-    /// assets it holds inside a contract. `CONTRACT_ADMIN` is offered no delegation route, since a
-    /// role is a membership predicate that many addresses can satisfy and none can enumerate, so
-    /// there is no single delegator to name.
-    /// @dev Identity-critical numbering: append only, never renumber or reorder. See the note above.
+    /// @dev **APPEND ONLY. NEVER RENUMBER, REORDER, OR REMOVE A MEMBER.** The `uint8` of this enum
+    /// sits in the preimage of every binding hash, so renumbering silently re-keys every identity
+    /// claimed under it and nothing on chain records the old value. Values 0-4 name a token within a
+    /// contract; the three account standards name an address itself and pin `tokenId` to 0. Per
+    /// standard authority rules are documented on `Adapter8004._hasBindingControl`.
     enum Standard {
         ERC721,
         ERC1155,
@@ -61,18 +24,15 @@ interface IERC8217 {
         uint256 tokenId;
     }
 
+    /// @notice The stored `Binding` for `agentId`, reverting `UnknownAgent` when the id carries none.
+    /// @dev ERC-8217 mandates this function on this interface.
     function bindingOf(uint256 agentId) external view returns (Binding memory);
 
-    /// @notice Hashing a binding produces a uniform identifier for the bound object, unique to it
-    /// and resolvable on any chain or entirely offchain. That identifier is the Universal Binding
-    /// Identifier (UBI), derived as
+    /// @notice The globally unique identifier of the bound object, called the Universal Binding
+    /// Identifier (UBI) in the ERC, derived as
     /// `keccak256(abi.encode(bindingContractInteroperableAddress, standard, boundAddress, tokenId))`.
-    /// Because a binding is immutable, an agent's UBI holds unchanged for the life of the identity.
-    /// Querying an id that carries no binding reverts `UnknownAgent`.
-    /// @dev ERC-8217 mandates this function on this interface, which is why it sits beside
-    /// `bindingOf`: that returns the `Binding`, this returns the hash of the same thing, and the
-    /// pair explains itself without a reader having to look up an acronym first. The two names do
-    /// different jobs on purpose. `bindingHash` names the mechanism and is what the code calls it;
-    /// UBI names the value that mechanism produces and is what the ERC and the prose call it.
+    /// A binding is immutable, so it holds for the life of the identity. Reverts `UnknownAgent` when
+    /// the id carries no binding.
+    /// @dev ERC-8217 mandates this function on this interface.
     function bindingHashOf(uint256 agentId) external view returns (bytes32);
 }
