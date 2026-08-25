@@ -55,9 +55,11 @@ contract Adapter8004 is
     bytes32 private constant BINDING_METADATA_KEY_HASH = keccak256(bytes(BINDING_METADATA_KEY));
 
     /// @notice Canonical immutable delegate.xyz v2 registry, identical on Ethereum, Base, and Sepolia.
-    /// A delegated hot wallet authorized here can drive single-owner ERC-721/ERC-1155F/ERC-6909F
-    /// bound agents while the token stays in cold storage. Authorization fails closed to direct
-    /// ownership when the registry has no code.
+    /// A delegated hot wallet can drive single-owner ERC-721/ERC-1155F/ERC-6909F bound agents while
+    /// the token stays in cold storage, and CONTRACT_OWNABLE agents through a contract-scoped
+    /// delegation from the live owner. ACCOUNT grants no delegation route, because the bound address
+    /// is the sole controller. Authorization fails closed to direct ownership when the registry has
+    /// no code.
     address public constant DELEGATE_REGISTRY = 0x00000000000000447e69651d841bD8D104Bed493;
 
     /// @notice Rights identifier a cold wallet delegates to scope a hot wallet to Adapter8004 management
