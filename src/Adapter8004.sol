@@ -304,11 +304,12 @@ contract Adapter8004 is
     // ownerless-collection route documented below.
     //
     // An agent gets an identity without ever being registered, because its UBI derives from the
-    // binding alone and `bindingHashFor` will compute it for anyone. Consumers key on that UBI, and a
+    // binding alone and `hashBinding` will compute it for anyone. Consumers key on that UBI, and a
     // later event supersedes an earlier claim rather than withdrawing it.
     // -----------------------------------------------------------------
 
-    function bindingHashFor(Standard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {
+    /// @notice Convenience helper that derives a UBI from user supplied arguments.
+    function hashBinding(Standard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {
         return _bindingHash(standard, boundAddress, tokenId);
     }
 
@@ -328,7 +329,7 @@ contract Adapter8004 is
         return _chainIdentifier();
     }
 
-    /// @inheritdoc IERC8004AdapterCounterfactual
+    /// @notice Claims an identity for a bound address without registering it, returning the UBI claimed.
     function counterfactualRegister(
         Standard standard,
         address boundAddress,
@@ -339,7 +340,7 @@ contract Adapter8004 is
         return _counterfactualRegisterImpl(standard, boundAddress, tokenId, agentURI, metadata);
     }
 
-    /// @inheritdoc IERC8004AdapterCounterfactual
+    /// @notice Claims an identity for a bound address without registering it, with no metadata entries.
     function counterfactualRegister(Standard standard, address boundAddress, uint256 tokenId, string calldata agentURI)
         external
         nonReentrant
@@ -536,19 +537,22 @@ contract Adapter8004 is
         _clearWalletUBI(account);
     }
 
-    /// @dev Validates the coordinates before deriving from them, so this path cannot name an identity
-    /// no forward claim could ever match. The designation itself is emit-only: this checks that the
-    /// caller holds the authority to make it and then records that fact in the log, which is all a
-    /// reader needs, since the identifier is derived from coordinates rather than stored. Placed here
-    /// rather than in the two entry points so a future caller stays covered.
+    /// @dev Validates `standard`, `boundAddress` and `tokenId` before hashing them, so this cannot name
+    /// an identity no real binding could match.
     function _setWalletUBI(address account, Standard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 bindingHash)
     {
+        // 1. Reject an unusable bound address.
         _requireValidBoundAddress(standard, boundAddress);
+
+        // 2. Reject a nonzero token id under the three account standards.
         _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
+        // 3. Derive the UBI these arguments name.
         bindingHash = _bindingHash(standard, boundAddress, tokenId);
+
+        // 4. Emit the designation, which is the only record this function produces.
         emit WalletUBISet(account, bindingHash, boundAddress, tokenId, standard, msg.sender);
     }
 
@@ -559,13 +563,19 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
     //  ATTESTATIONS
     // -----------------------------------------------------------------
-    // Emit-only statements about counterfactual identities, so the layout still ends at slot 3. The
-    // caller is always the attester, and a controller participates by causing the account itself to
-    // call. These functions make no external call, so they carry no `nonReentrant`, and a test holds
-    // them callable inside a guarded frame. `AttestationType` numbering is identity-critical because
-    // the `uint8` sits in the identifier preimage, with the rule on the enum in
-    // `IERC8004AdapterAttestation` and the semantics in
-    // `docs/specs/attestation-type-registry-v1.md`.
+    // Emit-only statements about counterfactual identities. The caller is always the attester, so a
+    // controller attests by having the account itself make the call. Nothing here calls out to
+    // another contract, so none of these need `nonReentrant`.
+    //
+    // An attestation's identifier covers the attester, the identity, the type, the block number,
+    // `variant` and `data`, so in practice it is unique. The one way to repeat it is for the same
+    // attester to make a byte-identical statement twice in the same block. An attester that needs
+    // every statement to carry its own identifier can change `variant` to force a different one.
+    //
+    // Each `AttestationType` has a number, and that number goes into the hash that identifies an
+    // attestation. Changing it would give every attestation already made under that type a different
+    // identifier. The rule is on the enum in `IERC8004AdapterAttestation`, and what each type means is
+    // in `docs/specs/attestation-type-registry-v1.md`.
     // -----------------------------------------------------------------
 
     /// @inheritdoc IERC8004AdapterAttestation
@@ -585,22 +595,18 @@ contract Adapter8004 is
         _revoke(attestationId);
     }
 
-    /// @dev The single attest path, so both guards live in exactly one place. Both are sentinel
-    /// rules against default-initialized calldata, not validation: a nonzero garbage `ubi` passes on
-    /// purpose, because attesting to an identity before its first counterfactual claim is emitted is
-    /// a supported use and no set of "real" hashes exists to check against. Type validity needs no
-    /// check at all now that the type is an enum, because the decoder enforces the range.
+    /// @dev The single attest path. Both guards reject uninitialized calldata rather than validating:
+    /// a nonzero but meaningless `ubi` passes on purpose, since attesting to an identity before its
+    /// first claim is a supported use.
     function _attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes calldata data) private {
         // 1. Reject the two uninitialized-input sentinels, so a forgotten field fails loudly rather
         //    than recording a statement of no stated type or against the zero identity.
         if (attestationType == AttestationType.UNSPECIFIED) revert AttestationTypeZero();
         if (ubi == bytes32(0)) revert AttestationTargetZero();
 
-        // 2. Derive the identifier. `block.number` keeps identical statements in different blocks
-        //    distinct, so revoking one of a monitor's repeated pings erases that ping and leaves the
-        //    rest of its history, and `variant` is the caller's opt-in within-block counterpart. The
-        //    interoperable address binds the identifier to this adapter on this chain, exactly as
-        //    the UBI binds.
+        // 2. Derive the identifier. `block.number` separates identical statements made in different
+        //    blocks, `variant` does the same within one block, and the interoperable address binds the
+        //    identifier to this adapter on this chain.
         bytes32 attestationId = keccak256(
             abi.encode(
                 _interoperableAddress(address(this)), msg.sender, ubi, attestationType, block.number, variant, data
@@ -608,25 +614,19 @@ contract Adapter8004 is
         );
 
         // 3. Emit, which is the only record this function produces. The identifier is carried so
-        //    integrators never have to recompute it, and is derived rather than stored.
+        //    callers never have to recompute it.
         emit Attested(msg.sender, attestationType, ubi, attestationId, variant, data);
     }
 
-    /// @dev The single revoke path. It checks nothing, the zero identifier included, and that is a
-    /// decision rather than an omission. An unset identifier field revokes a statement that was
-    /// never made, which is a recorded no-op under projection rule three and harms nothing, whereas
-    /// an unset type or target field would file a real statement in the wrong place. Whether a
-    /// revocation counts at all is projection rule four, which an emit-only contract cannot check:
-    /// it stores nothing that would let it invert an identifier back to its attester.
+    /// @dev Checks nothing, deliberately. Revoking an identifier that was never attested is a harmless
+    /// no-op, and whether a revocation counts is decided by indexers, since this contract stores
+    /// nothing that would let it match an identifier back to its attester.
     function _revoke(bytes32 attestationId) private {
         emit AttestationRevoked(attestationId, msg.sender);
     }
-    /// @dev True when `caller` controls `account`: the account itself, its `owner()` / `getOwner()`,
-    /// or a `DEFAULT_ADMIN_ROLE` (`0x00`) holder. Contract checks are best-effort static calls that
-    /// tolerate accounts (including EOAs) that do not implement them; the low-level path avoids
-    /// reverting on non-conforming return data. A contract that misreports its controller can only
-    /// affect its own mapping entry, so the checks are account-scoped and safe.
-
+    /// @dev True when `caller` controls `account`: the account itself, its `owner()` or `getOwner()`,
+    /// or a `DEFAULT_ADMIN_ROLE` holder. The probes are best-effort static calls, so an account that
+    /// does not implement them simply fails to match.
     function _controlsAccount(address account, address caller) private view returns (bool) {
         if (caller == account) return true;
 
@@ -638,22 +638,18 @@ contract Adapter8004 is
         return _hasDefaultAdminRole(account, caller);
     }
 
-    /// @dev Fail-closed AccessControl probe for `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, shared
-    /// by the account-control check above and the `CONTRACT_ADMIN` standard so both agree on what
-    /// holding the role means. The result is read as a raw word rather than decoded as a `bool`,
-    /// because `abi.decode(ret, (bool))` reverts on a word outside `0` and `1` and would let a
-    /// non-conforming contract break the check rather than fail it. Any non-zero word grants the
-    /// role. A missing `hasRole`, or an answer of the wrong length, grants nobody.
+    /// @dev Fail-closed `DEFAULT_ADMIN_ROLE` probe. The answer is read as a raw word rather than
+    /// decoded as a `bool`, because decoding reverts on anything outside 0 and 1 and would let a
+    /// non-conforming contract break the check instead of failing it. Missing or wrong-length grants
+    /// nobody.
     function _hasDefaultAdminRole(address target, address account) private view returns (bool) {
         (bool ok, bytes memory ret) =
             target.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), account));
         return ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0;
     }
 
-    /// @dev Static-call `account` with `callData` and return true iff it yields exactly a clean
-    /// 32-byte address word equal to `expected`. Malformed return data (wrong length, or dirty high
-    /// bits that would make `abi.decode(_, (address))` revert) is treated as no match rather than
-    /// propagating, so a non-conforming or hostile account cannot brick or grief the control check.
+    /// @dev True only when `account` returns exactly one clean address word equal to `expected`.
+    /// Malformed data counts as no match, so a hostile account cannot break the control check.
     function _staticReturnsAddress(address account, bytes memory callData, address expected)
         private
         view
@@ -665,10 +661,9 @@ contract Adapter8004 is
         return word <= type(uint160).max && address(uint160(word)) == expected;
     }
 
-    /// @dev `upgradeToAndCall` runs against the current implementation, so the outgoing one gets to
-    /// inspect the incoming one before the switch. Because the registry is immutable it is baked
-    /// into each implementation's runtime code, so calling the getter on the incoming address
-    /// returns its own value rather than a proxy slot. That is what makes repointing refusable here.
+    /// @dev Runs against the outgoing implementation, so it can inspect the incoming one first. The
+    /// registry is immutable and therefore in each implementation's own code, which is what lets this
+    /// read the incoming value at all.
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
         // 1. Restrict upgrades to the adapter owner, enforced by the modifier.
         // 2. Refuse any implementation that would move the proxy to a different ERC-8004 registry.
@@ -677,13 +672,10 @@ contract Adapter8004 is
         }
     }
 
-    /// @dev Validates the bound address. Runtime code is required under every standard except
-    /// `ACCOUNT`, whose authority is the single comparison `account == boundAddress` and so never
-    /// calls the address, which is what lets a contract bind itself as `ACCOUNT` from its own
-    /// constructor. The zero address is rejected under every standard, because `_bindings` uses a
-    /// zero `boundAddress` as its unbound sentinel. The identity registry is rejected because
-    /// binding it would let `_hasBindingControl` resolve to the adapter post-bind and lock the agent
-    /// away from any external controller.
+    /// @dev Code is required under every standard but `ACCOUNT`, which never calls the address it
+    /// names, so a contract can bind itself from its own constructor. Zero is rejected everywhere,
+    /// since `_bindings` uses it as the unbound sentinel, and the registry is rejected because binding
+    /// it would lock the agent away from any controller.
     function _requireValidBoundAddress(Standard standard, address boundAddress) internal view {
         if (boundAddress == address(0)) {
             revert InvalidBoundAddress();
@@ -720,14 +712,9 @@ contract Adapter8004 is
         }
     }
 
-    /// @dev Authorizes registration and every unsigned counterfactual write through one of two modes:
-    /// the current-controller model, which for account-level bindings resolves the authority that
-    /// standard defines, or temporary collection authority when the direct caller is the
-    /// ERC-721/ERC-1155F/ERC-6909F token contract and `ownerOf(tokenId)` reports no current owner.
-    /// That window reopens after a burn, since closing it would require historical-existence storage.
-    /// Every mode compares the adapter's immediate EVM caller, so a router, forwarder or multicall
-    /// that calls the adapter acts as itself. `delegatecall` into this contract is unsupported and
-    /// dangerous, because it is a UUPS implementation with its own storage layout.
+    /// @dev Two ways to pass: current control under the binding's standard, or the collection itself
+    /// calling directly while `ownerOf(tokenId)` reports no owner, a window that reopens after a burn.
+    /// Both compare the adapter's immediate caller, so a router or forwarder acts as itself.
     function _requireTokenAuthority(Standard standard, address boundAddress, uint256 tokenId, address account)
         internal
         view
@@ -743,21 +730,17 @@ contract Adapter8004 is
         _requireBindingControl(standard, boundAddress, tokenId, account);
     }
 
-    /// @dev The three account-level standards name the address itself rather than a token within it,
-    /// so each has exactly one canonical coordinate, `tokenId == 0`. Enforced in
-    /// `_requireTokenAuthority`, which every write passes through, and again in
-    /// `_requireBindingControl` so a future direct caller stays covered. A nonzero id reverts rather
-    /// than being coerced, since coercion would hand the caller a binding and a UBI
-    /// that do not match the id they submitted.
+    /// @dev The three account standards name an address rather than a token within it, so `tokenId`
+    /// must be 0. A nonzero id reverts rather than being coerced, which would hand back a binding and
+    /// a UBI that do not match what the caller submitted.
     function _requireCanonicalTokenId(Standard standard, address boundAddress, uint256 tokenId) internal pure {
         if (_isAccountStandard(standard) && tokenId != 0) {
             revert NonZeroTokenIdForAccount(boundAddress, tokenId);
         }
     }
 
-    /// @dev Probes `ownerOf` without assuming a universal nonexistent-token revert selector.
-    /// Revert and canonical zero mean no current owner; canonical nonzero means owned. A successful
-    /// response of any other shape fails closed.
+    /// @dev Probes `ownerOf` without assuming a particular nonexistent-token revert. A revert or a
+    /// zero owner means no owner; any other successful shape fails closed.
     function _hasNoCurrentOwner(address boundAddress, uint256 tokenId) private view returns (bool) {
         (bool success, bytes memory result) =
             boundAddress.staticcall(abi.encodeCall(ISingleOwnerToken.ownerOf, (tokenId)));
@@ -787,16 +770,9 @@ contract Adapter8004 is
         view
         returns (bool)
     {
-        // 1. An account-level binding names `boundAddress` itself, so the bound address is the sole
-        //    controller and the adapter asks it nothing: `ownerOf` and both `balanceOf` shapes go
-        //    unprobed, and `tokenId` is pinned to 0 at the choke points above. Whatever the address
-        //    exposes, an `owner()`, a balance or a role, carries authority elsewhere rather than
-        //    here, as does the adapter admin. The bound address may also authorize a hot wallet
-        //    through a wallet-wide delegate.xyz delegation, checked with `checkDelegateForAll`
-        //    because the binding names the address acting as itself rather than assets it holds
-        //    inside a contract. Direct authority is permanent, since no token can change hands, while
-        //    delegated authority is read live and ends the moment the delegation is revoked. It sits
-        //    outside `_isSingleOwnerStandard`, so it gets no ownerless-window probe.
+        // 1. `ACCOUNT` names the address itself, so the adapter asks it nothing: no `ownerOf`, no
+        //    balance, no role. Its own authority is permanent, since no token can change hands, and it
+        //    can also grant a hot wallet a wallet-wide delegation, read live and revocable.
         if (standard == Standard.ACCOUNT) {
             if (account == boundAddress) {
                 return true;
@@ -804,15 +780,9 @@ contract Adapter8004 is
             return _isAccountDelegate(account, boundAddress);
         }
 
-        // 2. `CONTRACT_OWNABLE` resolves the contract's live `owner()` and accepts that owner acting
-        //    directly or a delegate of that owner, while the bound contract itself carries authority
-        //    only under `ACCOUNT`. The owner probe is a fail-closed STATICCALL, so a revert, a
-        //    wrong-length response, dirty upper bits or a zero owner grants nobody, which is why
-        //    `renounceOwnership()` permanently freezes such an identity. Resolving live means a
-        //    former owner's delegation stops conferring authority in the same transaction ownership
-        //    moves. The delegation check is contract-scoped, because a contract binding pins
-        //    `tokenId` to 0 and a token-scoped check would let a delegation covering token id 0
-        //    confer authority over the whole contract.
+        // 2. `CONTRACT_OWNABLE` accepts the live `owner()` or a delegate of that owner. A zero owner
+        //    grants nobody, so `renounceOwnership()` freezes the identity for good. The delegation is
+        //    contract-scoped, since a token-scoped one covering id 0 would cover the whole contract.
         if (standard == Standard.CONTRACT_OWNABLE) {
             address contractOwner = _currentContractOwner(boundAddress);
             if (contractOwner == address(0)) {
@@ -824,23 +794,16 @@ contract Adapter8004 is
             return _isOwnerDelegate(account, contractOwner, boundAddress);
         }
 
-        // 3. `CONTRACT_ADMIN` suits an AccessControl contract that exposes no `owner()`. Authority
-        //    belongs to holders of `DEFAULT_ADMIN_ROLE`, read on every call, so revoking the role
-        //    removes authority immediately. It matches `_controlsAccount`, which has always accepted
-        //    an admin, closing an asymmetry where an admin could set a contract's wallet agent id but
-        //    not manage an identity bound to it. Direct authority only: a role is a membership
-        //    predicate that many addresses satisfy and none can enumerate, so there is no
-        //    well-defined delegator for delegate.xyz to name.
+        // 3. `CONTRACT_ADMIN` suits an AccessControl contract with no `owner()`. Any holder of
+        //    `DEFAULT_ADMIN_ROLE` qualifies, read live, so revoking the role removes authority at once.
+        //    No delegation: many addresses can hold a role and none can be named as the delegator.
         if (standard == Standard.CONTRACT_ADMIN) {
             return _hasDefaultAdminRole(boundAddress, account);
         }
 
-        // 4. Single-owner standards are the other three members of the owner-and-delegate pattern.
-        //    Control means current token ownership, or a valid delegate.xyz delegation from the
-        //    current owner. Direct ownership is checked first so current owners never incur a
-        //    registry call. A zero owner short-circuits to nobody, matching `CONTRACT_OWNABLE`, so
-        //    the delegation check always names a real delegator rather than resting on delegate.xyz
-        //    refusing to record one from the zero address.
+        // 4. Single-owner standards mean current ownership, or a delegation from the current owner.
+        //    Ownership is checked first so owners never pay for a registry call, and a zero owner
+        //    grants nobody, so the delegation check always names a real delegator.
         if (_isSingleOwnerStandard(standard)) {
             address owner = ISingleOwnerToken(boundAddress).ownerOf(tokenId);
             if (owner == address(0)) {
@@ -874,11 +837,8 @@ contract Adapter8004 is
         return standard == Standard.ERC721 || standard == Standard.ERC1155F || standard == Standard.ERC6909F;
     }
 
-    /// @dev Fail-closed EIP-173 owner probe for the opt-in `CONTRACT_OWNABLE` standard. The typed
-    /// interface pins `owner()` as `view`, and the low-level `staticcall` makes that read-only at the
-    /// EVM level. Only exactly one clean ABI address word is accepted. Returns the zero address when
-    /// the contract reports no usable owner, which every caller reads as nobody, so the delegation
-    /// check always runs with a real delegator.
+    /// @dev Fail-closed `owner()` probe. Only one clean address word is accepted; anything else
+    /// returns the zero address, which every caller reads as nobody.
     function _currentContractOwner(address boundAddress) private view returns (address) {
         (bool success, bytes memory result) = boundAddress.staticcall(abi.encodeCall(IOwnableContract.owner, ()));
         if (!success || result.length != 32) {
@@ -896,11 +856,9 @@ contract Adapter8004 is
         return address(uint160(ownerWord));
     }
 
-    /// @dev Consults the delegate.xyz v2 registry for a wallet-wide delegation from `boundAddress`
-    /// to `account`. `checkDelegateForAll` is the right check because an `ACCOUNT` binding names the
-    /// address acting as itself, not assets it holds inside some contract, and only an ALL-type grant
-    /// expresses that. Fails closed: if the registry has no code on this chain, only the bound
-    /// address itself authorizes.
+    /// @dev Wallet-wide delegation from `boundAddress`. `checkDelegateForAll` is the right check
+    /// because an `ACCOUNT` binding names the address acting as itself, not assets it holds inside a
+    /// contract. Fails closed to the bound address alone when the registry has no code.
     function _isAccountDelegate(address account, address boundAddress) private view returns (bool) {
         if (DELEGATE_REGISTRY.code.length == 0) {
             return false;
@@ -909,9 +867,8 @@ contract Adapter8004 is
         return IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForAll(account, boundAddress, DELEGATE_RIGHTS);
     }
 
-    /// @dev Consults the delegate.xyz v2 registry for a contract-scoped delegation from the bound
-    /// contract's current `owner` to `account`. Fails closed in the same way as the token-scoped
-    /// check: if the registry has no code on this chain, only direct authority applies.
+    /// @dev Contract-scoped delegation from the bound contract's current `owner`. Fails closed to
+    /// direct authority when the registry has no code.
     function _isOwnerDelegate(address account, address owner, address boundAddress) private view returns (bool) {
         if (DELEGATE_REGISTRY.code.length == 0) {
             return false;
@@ -921,10 +878,9 @@ contract Adapter8004 is
             IDelegateRegistry(DELEGATE_REGISTRY).checkDelegateForContract(account, owner, boundAddress, DELEGATE_RIGHTS);
     }
 
-    /// @dev Consults the immutable delegate.xyz v2 registry for an ERC-721 delegation from the current
-    /// `owner` (the vault) to `account` (the hot wallet). `checkDelegateForERC721` already folds in
-    /// token-level, contract-level, and all-wallet delegations, so no separate calls are needed.
-    /// Fails closed: if the registry has no code on this chain, only direct ownership authorizes.
+    /// @dev Token-scoped delegation from the current owner. `checkDelegateForERC721` already covers
+    /// token, contract and wallet-wide grants. Fails closed to direct ownership when the registry has
+    /// no code.
     function _isERC721Delegate(address account, address owner, address boundAddress, uint256 tokenId)
         internal
         view
@@ -941,10 +897,8 @@ contract Adapter8004 is
         );
     }
 
-    /// @dev Rejects any metadata entry targeting `agent-binding`, the canonical binding record that
-    /// only this contract writes. Used on every adapter write path that accepts a metadata array,
-    /// meaning `register`, `setMetadataBatch` and the counterfactual surface, so a caller cannot forge
-    /// a record the adapter authors.
+    /// @dev Rejects any entry targeting `agent-binding`, so a caller cannot forge the record this
+    /// contract writes itself. Runs on every path that accepts caller metadata.
     function _requireNoReservedBindingKey(IERC8004IdentityRegistry.MetadataEntry[] memory metadata) internal pure {
         uint256 length = metadata.length;
         for (uint256 i; i < length; ++i) {
@@ -988,14 +942,9 @@ contract Adapter8004 is
         return _erc7930AddressFor(chainId, account, true);
     }
 
-    /// @dev ERC-7930 v1 encoding, delegated to OpenZeppelin's `InteroperableAddress`. The output is
-    /// byte-identical to the encoders this contract carried before `0.0.17`, which are frozen as
-    /// oracles in `test/Adapter8004.erc7930.t.sol`, and every published fixture vector is asserted
-    /// against this path. The library's file is `draft-` prefixed and carries no encoding stability
-    /// guarantee, so a submodule bump that changed it would re-key every identity; read the note on
-    /// `testOpenZeppelinEncodingIsFrozen` first. The zero-chain-id rejection stays here because
-    /// `block.chainid` never returns zero, so this contract refuses to mint an identity nothing could
-    /// own.
+    /// @dev ERC-7930 v1 encoding, delegated to OpenZeppelin's `InteroperableAddress`. That library is
+    /// `draft-` prefixed and promises no encoding stability, so a submodule bump that changed it would
+    /// give every identity a different hash; read `testOpenZeppelinEncodingIsFrozen` before bumping.
     function _erc7930AddressFor(uint256 chainId, address account, bool includeAddress)
         private
         pure
@@ -1007,11 +956,8 @@ contract Adapter8004 is
             : InteroperableAddress.formatEvmV1(chainId);
     }
 
-    /// @dev The canonical UBI is
-    /// `keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))`, with
-    /// `standard` encoded as the `Standard` enum's `uint8`. Always `abi.encode`, never
-    /// `abi.encodePacked`: the interoperable address is dynamic, and packing it would let a different
-    /// (address, standard) pair produce the same preimage bytes.
+    /// @dev Always `abi.encode`, never `abi.encodePacked`: the interoperable address is dynamic, and
+    /// packing it would let a different address and standard pair hash to the same value.
     function _bindingHashFrom(
         bytes memory adapterInteroperableAddress,
         Standard standard,

@@ -89,7 +89,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     /// property that made the five worth changing. `counterfactualRegister` and the two wallet-id
     /// setters already did; these five now join them.
     function testEveryCounterfactualFunctionAgreesOnTheIdentity() external {
-        bytes32 published = adapter.bindingHashFor(STD, address(token), 1);
+        bytes32 published = adapter.hashBinding(STD, address(token), 1);
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
         vm.startPrank(alice);
@@ -119,10 +119,10 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         vm.stopPrank();
         uint256 accountAgent = binder.register(0);
 
-        assertEq(adapter.bindingHashOf(erc721Agent), adapter.bindingHashFor(STD, address(other), 7), "ERC721");
+        assertEq(adapter.bindingHashOf(erc721Agent), adapter.hashBinding(STD, address(other), 7), "ERC721");
         assertEq(
             adapter.bindingHashOf(accountAgent),
-            adapter.bindingHashFor(IERC8217.Standard.ACCOUNT, address(binder), 0),
+            adapter.hashBinding(IERC8217.Standard.ACCOUNT, address(binder), 0),
             "ACCOUNT"
         );
         assertTrue(
@@ -152,7 +152,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         assertEq(token.ownerOf(1), wallet, "premise: the token moved");
 
         assertEq(adapter.bindingHashOf(agentId), before, "the identity is unchanged");
-        assertEq(before, adapter.bindingHashFor(STD, address(token), 1), "and still the coordinate form");
+        assertEq(before, adapter.hashBinding(STD, address(token), 1), "and still the coordinate form");
     }
 
     // ----------------------------------------------------------------
@@ -166,7 +166,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     /// @dev `ubi` is the first indexed field on every counterfactual event, so
     /// `topics[1]` is the identity the log carries.
     function _assertPinnedAgainst(bytes32 returned, Vm.Log[] memory logs) private view {
-        assertEq(returned, adapter.bindingHashFor(STD, address(token), 1), "matches the published derivation");
+        assertEq(returned, adapter.hashBinding(STD, address(token), 1), "matches the published derivation");
         assertEq(logs[0].topics[1], returned, "matches the identity its own event carries");
     }
 }

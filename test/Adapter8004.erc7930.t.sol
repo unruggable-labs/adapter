@@ -303,7 +303,7 @@ contract Adapter8004ERC7930Test is Test {
         bytes32[] memory seen = new bytes32[](uint256(max) + 1);
 
         for (uint8 i; i <= max; ++i) {
-            seen[i] = harness.bindingHashFor(IERC8217.Standard(i), VECTOR_TOKEN, 0);
+            seen[i] = harness.hashBinding(IERC8217.Standard(i), VECTOR_TOKEN, 0);
             for (uint8 j; j < i; ++j) {
                 assertTrue(seen[i] != seen[j], "two standards must never alias onto one identity");
             }
@@ -320,8 +320,8 @@ contract Adapter8004ERC7930Test is Test {
         vm.assume(a != b);
 
         assertTrue(
-            harness.bindingHashFor(IERC8217.Standard(a), boundAddress, tokenId)
-                != harness.bindingHashFor(IERC8217.Standard(b), boundAddress, tokenId)
+            harness.hashBinding(IERC8217.Standard(a), boundAddress, tokenId)
+                != harness.hashBinding(IERC8217.Standard(b), boundAddress, tokenId)
         );
     }
 
@@ -523,7 +523,7 @@ contract Adapter8004ERC7930Test is Test {
         bytes memory identifier = adapter.chainIdentifier();
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
         bytes memory tokenAddress = adapter.interoperableAddress(token);
-        bytes32 actual = adapter.bindingHashFor(IERC8217.Standard.CONTRACT_OWNABLE, token, tokenId);
+        bytes32 actual = adapter.hashBinding(IERC8217.Standard.CONTRACT_OWNABLE, token, tokenId);
 
         assertEq(actual, keccak256(abi.encode(adapterAddress, standard, token, tokenId)), "canonical");
         // The four components are exactly the adapter envelope plus the stored binding. Appending a

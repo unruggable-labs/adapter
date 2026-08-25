@@ -53,7 +53,7 @@ contract Adapter8004InterfacesTest is Test {
         vm.prank(alice);
         assertEq(
             cf.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1),
             "reachable through the interface cast"
         );
         assertEq(
@@ -108,7 +108,7 @@ contract Adapter8004InterfacesTest is Test {
         vm.prank(alice);
         assertEq(
             adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1)
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1)
         );
         vm.prank(alice);
         adapter.clearWalletUBI();
@@ -204,8 +204,8 @@ contract Adapter8004InterfacesTest is Test {
     function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(
-            cf.bindingHashFor(IERC8217.Standard.ERC721, alice, 7),
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, alice, 7)
+            cf.hashBinding(IERC8217.Standard.ERC721, alice, 7),
+            adapter.hashBinding(IERC8217.Standard.ERC721, alice, 7)
         );
 
         IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
@@ -238,7 +238,7 @@ contract Adapter8004InterfacesTest is Test {
     /// implemented, and both must name the same identity for the same coordinates.
     function testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() external {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
-        bytes32 expected = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1);
+        bytes32 expected = adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1);
 
         vm.prank(alice);
         bytes32 withoutMetadata =
@@ -265,7 +265,7 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(bindings.bindingHashOf(agentId), adapter.bindingHashOf(agentId), "same answer");
         assertEq(
             bindings.bindingHashOf(agentId),
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1),
             "and it is the coordinate form of the stored binding"
         );
 

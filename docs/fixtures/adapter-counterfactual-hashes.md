@@ -78,7 +78,7 @@ would move if the enum were ever renumbered:
 
 ```ts
 import { encodeAbiParameters, keccak256 } from 'viem'
-export function bindingHashFor(
+export function hashBinding(
   adapterInteroperableAddress: `0x${string}`,
   standard: number,
   boundAddress: `0x${string}`,

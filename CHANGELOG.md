@@ -107,7 +107,7 @@ Recorded under Removed below.
   into one identifier that a single revocation erases. `variant` is the caller's
   opt-in within-block counterpart. There is deliberately **no domain constant**:
   nothing here is signed, and the interoperable address already binds the
-  preimage to this adapter on this chain, exactly as `bindingHashFor` binds.
+  preimage to this adapter on this chain, exactly as `hashBinding` binds.
   The two schemes cannot collide, because for one adapter the counterfactual
   preimage is a fixed 224 bytes and this one is at least 320.
 
@@ -209,12 +209,12 @@ Recorded under Removed below.
 - **`bindingHashOf(uint256 agentId)`**, a view returning the counterfactual
   identity of an agent already registered through this adapter. It loads the
   stored binding and derives the identifier from those coordinates, so one call
-  replaces `bindingOf` followed by `bindingHashFor` and the answer is the same
+  replaces `bindingOf` followed by `hashBinding` and the answer is the same
   value. Unknown agents revert `UnknownAgent` rather than returning zero, sharing
   one definition of unknown with `bindingOf` through a new private
   `_knownBinding` helper that both use, and which `_requireController` now uses
   too. No storage is added and no new copy of the formula exists; the derivation
-  is the same internal helper `bindingHashFor` calls.
+  is the same internal helper `hashBinding` calls.
 
   It exists because attestations target counterfactual identifiers, and an
   integrator holding a registered `agentId` had to make two calls to find the one
@@ -263,6 +263,12 @@ Recorded under Removed below.
   declared in an interface at all.
 
 ### Changed
+
+- **`bindingHashFor` is renamed to `hashBinding`.** The selector moves from
+  `0x3723bc92` to `0x8e77275c`, so any caller holding the old one breaks. The name
+  now reads as the verb it is, and no longer collides on sight with
+  `bindingHashOf(uint256)` (`0x30b7f986`), which is the ERC-8217 function and is
+  unchanged. Runtime size is unaffected.
 
 - **`TokenStandard` is renamed to `Standard`.** Three of the eight members are not
   token standards: `ACCOUNT` is a plain address, and `CONTRACT_OWNABLE` and
@@ -337,13 +343,13 @@ Recorded under Removed below.
   | Original | Intermediate | Final | Selector |
   |---|---|---|---|
   | `registrationHashOf(uint256)` | `ubiOf(uint256)` | `bindingHashOf(uint256)` | `0xda1b4b75` → `0x509e06dd` → `0x30b7f986` |
-  | `registrationHash(uint8,address,uint256)` | `ubiFor(uint8,address,uint256)` | `bindingHashFor(uint8,address,uint256)` | `0xdb667f67` → `0x266224ca` → `0x3723bc92` |
+  | `registrationHash(uint8,address,uint256)` | `ubiFor(uint8,address,uint256)` | `hashBinding(uint8,address,uint256)` | `0xdb667f67` → `0x266224ca` → `0x3723bc92` |
 
   Only the final column ships; the intermediate names never left this branch and
   are recorded so a reviewer reading the branch history can follow it.
 
   `bindingHashOf` takes an agent id and answers for a registered agent;
-  `bindingHashFor` takes raw coordinates and answers for anything, registered or
+  `hashBinding` takes raw coordinates and answers for anything, registered or
   not. They return the same value for the same binding, which is the point. The
   internal helpers moved with them, to `_bindingHash` and `_bindingHashFrom`.
 
@@ -762,7 +768,7 @@ cost depends on the chain reference length:
 | --- | ---: | ---: | ---: |
 | `attest`, small payload | 7,581 | 7,581 | 7,581 |
 | `confirmAdditionalAccount` | 6,916 | 6,916 | 6,916 |
-| `bindingHashFor` | 5,749 | 5,749 | 5,749 |
+| `hashBinding` | 5,749 | 5,749 | 5,749 |
 | `revoke` | 1,889 | 1,889 | 1,889 |
 
 Flat across chains, which is itself the effect of the OpenZeppelin adoption: its
@@ -834,7 +840,7 @@ size, not gas.
   `test/Adapter8004.erc7930-frozen.t.sol` exists to make that loud: 26 tests
   pinning exact bytes for twelve chain ids on both shapes, three-way agreement
   across all 32 reference lengths, round trips through `parseEvmV1`, and the
-  published identities asserted end to end through `bindingHashFor`, the
+  published identities asserted end to end through `hashBinding`, the
   attestation identifier and a real counterfactual emission. One test,
   `testOpenZeppelinEncodingIsFrozen`, exists solely to fail on an upstream
   encoding change and says in its own comment that editing it is never the fix.
@@ -916,7 +922,7 @@ size, not gas.
   | --- | ---: | ---: | ---: |
   | `attest`, small payload | 13,387 | 6,385 | −7,002 |
   | `confirmAdditionalAccount` | 12,904 | 5,902 | −7,002 |
-  | `bindingHashFor` | 9,647 | 2,645 | −7,002 |
+  | `hashBinding` | 9,647 | 2,645 | −7,002 |
   | `revoke` | 1,889 | 1,889 | 0 |
 
   Exactly one derivation's worth in each case.
@@ -987,7 +993,7 @@ size, not gas.
   in [`IERC8217.sol`](./src/interfaces/IERC8217.sol).
 
 - **`registrationHash(address,uint256)` is removed and replaced by the
-  coordinate-form view that is now called `bindingHashFor(Standard,address,uint256)`.**
+  coordinate-form view that is now called `hashBinding(Standard,address,uint256)`.**
   It carried the name `registrationHash` for most of this version and was renamed
   with the rest of the terminology, recorded below. The old selector is gone rather
   than kept as an overload, deliberately: a stale caller reverts cleanly instead of

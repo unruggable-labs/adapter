@@ -477,7 +477,7 @@ Functions:
 - `counterfactualSetMetadataBatch(standard, boundAddress, tokenId, entries) -> bytes32`
 - `counterfactualSetAgentWallet(standard, boundAddress, tokenId, newWallet) -> bytes32` (no signature because no ERC-8004 wallet binding is created)
 - `counterfactualUnsetAgentWallet(standard, boundAddress, tokenId) -> bytes32`
-- `bindingHashFor(standard, boundAddress, tokenId)` (view)
+- `hashBinding(standard, boundAddress, tokenId)` (view)
 - `bindingHashOf(agentId)` (view) returns the same identity for an agent registered through this
   adapter, derived from its stored binding, and reverts `UnknownAgent` for an id that was never
   registered
@@ -683,7 +683,7 @@ Counterfactual (emit-only) functions:
 - `counterfactualSetMetadataBatch(Standard standard, address boundAddress, uint256 tokenId, MetadataEntry[] metadata) -> bytes32`
 - `counterfactualSetAgentWallet(Standard standard, address boundAddress, uint256 tokenId, address newWallet) -> bytes32`
 - `counterfactualUnsetAgentWallet(Standard standard, address boundAddress, uint256 tokenId) -> bytes32`
-- `bindingHashFor(Standard standard, address boundAddress, uint256 tokenId)`
+- `hashBinding(Standard standard, address boundAddress, uint256 tokenId)`
 - `bindingHashOf(uint256 agentId)`
 - `interoperableAddress(address account)`
 - `chainIdentifier()`

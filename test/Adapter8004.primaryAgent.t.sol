@@ -90,7 +90,7 @@ contract Adapter8004PrimaryAgentTest is Test {
     }
 
     function testEventsCarryTypedValuesAndCoordinates() external {
-        bytes32 hash = adapter.bindingHashFor(STD, token, 7);
+        bytes32 hash = adapter.hashBinding(STD, token, 7);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit WalletUBISet(alice, hash, token, 7, STD, alice);
         vm.prank(alice);
@@ -108,7 +108,7 @@ contract Adapter8004PrimaryAgentTest is Test {
         bytes32 asAccount = adapter.setWalletUBI(IERC8217.Standard.ACCOUNT, token, 0);
 
         assertTrue(asToken != asAccount, "one pair under two standards must be two identities");
-        assertEq(asAccount, adapter.bindingHashFor(IERC8217.Standard.ACCOUNT, token, 0));
+        assertEq(asAccount, adapter.hashBinding(IERC8217.Standard.ACCOUNT, token, 0));
     }
 
     function testCounterfactualHashZeroIsRepresentable() external {
@@ -132,16 +132,16 @@ contract Adapter8004PrimaryAgentTest is Test {
     function testOwnerAndDefaultAdminControlTheForSurface() external {
         PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletUBISet(address(owned), adapter.bindingHashFor(STD, token, 1), token, 1, STD, alice);
+        emit WalletUBISet(address(owned), adapter.hashBinding(STD, token, 1), token, 1, STD, alice);
         vm.prank(alice);
-        assertEq(adapter.setWalletUBIFor(address(owned), STD, token, 1), adapter.bindingHashFor(STD, token, 1));
+        assertEq(adapter.setWalletUBIFor(address(owned), STD, token, 1), adapter.hashBinding(STD, token, 1));
 
         PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
         access.grant(bob);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletUBISet(address(access), adapter.bindingHashFor(STD, token, 2), token, 2, STD, bob);
+        emit WalletUBISet(address(access), adapter.hashBinding(STD, token, 2), token, 2, STD, bob);
         vm.prank(bob);
-        assertEq(adapter.setWalletUBIFor(address(access), STD, token, 2), adapter.bindingHashFor(STD, token, 2));
+        assertEq(adapter.setWalletUBIFor(address(access), STD, token, 2), adapter.hashBinding(STD, token, 2));
     }
 
     /// @dev A clear from a different authorized party than the one that set is honoured, because

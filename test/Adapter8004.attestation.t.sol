@@ -164,7 +164,7 @@ contract Adapter8004AttestationTest is Test {
             abi.encode(adapterAddress, IERC8217.Standard.ERC721, address(token), uint256(42));
         assertEq(
             keccak256(ubiPreimage),
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token), 42),
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token), 42),
             "premise: this is the preimage the contract hashes for a ubi"
         );
 

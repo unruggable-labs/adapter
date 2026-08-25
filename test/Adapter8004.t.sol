@@ -130,7 +130,7 @@ contract Adapter8004Test is Test {
         assertEq(agentId, 0);
         assertEq(adapter.bindingOf(agentId).boundAddress, address(token721), "agent 0 is a real binding");
         assertEq(
-            adapter.bindingHashOf(agentId), adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1)
+            adapter.bindingHashOf(agentId), adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1)
         );
     }
 
@@ -543,7 +543,7 @@ contract Adapter8004Test is Test {
     }
 
     function testRegistrationHashViewMatchesEncodingAndCounterfactualEventTopic() external {
-        bytes32 viewHash = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1);
+        bytes32 viewHash = adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1);
         bytes32 expectedHash = keccak256(
             abi.encode(
                 adapter.interoperableAddress(address(adapter)),
@@ -855,9 +855,9 @@ contract Adapter8004Test is Test {
     }
 
     function testCounterfactualRegistrationHashChangesWithChainId() external {
-        bytes32 atDefaultChain = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1);
+        bytes32 atDefaultChain = adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1);
         vm.chainId(424242);
-        bytes32 atOtherChain = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1);
+        bytes32 atOtherChain = adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1);
         assertTrue(atDefaultChain != atOtherChain);
         vm.prank(alice);
         bytes32 onAltChain = adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "u");
@@ -869,13 +869,13 @@ contract Adapter8004Test is Test {
         // standard is both a preimage field and a parameter, so one token resolves to one hash *per
         // standard*, not to one hash overall. The hybrid-contract test covers the claim path.
         assertEq(
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1),
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1),
             "same standard, same pair, same identity"
         );
         assertTrue(
-            adapter.bindingHashFor(IERC8217.Standard.ERC721, address(token721), 1)
-                != adapter.bindingHashFor(IERC8217.Standard.ERC1155, address(token721), 1),
+            adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1)
+                != adapter.hashBinding(IERC8217.Standard.ERC1155, address(token721), 1),
             "different standard, same pair, different identity"
         );
     }
@@ -889,8 +889,8 @@ contract Adapter8004Test is Test {
         hybrid.mint721(alice, 77);
         hybrid.mint1155(alice, 77, 1);
 
-        bytes32 h721 = adapter.bindingHashFor(IERC8217.Standard.ERC721, address(hybrid), 77);
-        bytes32 h1155 = adapter.bindingHashFor(IERC8217.Standard.ERC1155, address(hybrid), 77);
+        bytes32 h721 = adapter.hashBinding(IERC8217.Standard.ERC721, address(hybrid), 77);
+        bytes32 h1155 = adapter.hashBinding(IERC8217.Standard.ERC1155, address(hybrid), 77);
 
         vm.startPrank(alice);
         bytes32 cf721 =
