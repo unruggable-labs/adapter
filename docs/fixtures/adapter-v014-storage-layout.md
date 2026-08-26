@@ -16,7 +16,9 @@ bytes, so anything declared into that slot would read the address as its initial
 Removing that placeholder is not a tidy-up; it is a corruption. Verified with
 `forge inspect Adapter8004 storageLayout` rather than reasoned about: without it `_bindings` moves
 to slot 0 and every existing binding would be read against the old registry address.
-`testLayoutIsThreeSlotsAndSlotZeroStaysDead` fails if that ever happens.
+`testDirectUpgradeFromMainnetBaseLiveBaselinePreservesSlotsZeroAndOne` fails if that ever happens: it
+seeds a binding on a live-baseline proxy, upgrades it, and asserts slot 0 still holds the registry
+address and the binding still reads back.
 
 ## The rule for removing a slot
 
