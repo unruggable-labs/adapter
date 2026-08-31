@@ -120,7 +120,7 @@ contract Adapter8004StorageV014Test is Test {
         // nothing past it. The baseline never wrote slots 2 or 3, and now nothing ever will.
         vm.record();
         vm.prank(account);
-        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token), 41);
+        adapter.setWalletUBID(IERC8217.Standard.ERC721, address(token), 41);
         (, bytes32[] memory writes) = vm.accesses(proxy);
         assertEq(writes.length, 0, "the designation writes no storage on a live proxy either");
         _assertSlotsTwoAndThreeEmpty(proxy);

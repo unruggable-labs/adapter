@@ -52,13 +52,13 @@ contract Adapter8004InterfacesTest is Test {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         vm.prank(alice);
         assertEq(
-            cf.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1),
+            cf.setWalletUBID(IERC8217.Standard.ERC721, address(token721), 1),
             adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1),
             "reachable through the interface cast"
         );
         assertEq(
-            IERC8004AdapterCounterfactual.setWalletUBI.selector,
-            bytes4(keccak256("setWalletUBI(uint8,address,uint256)"))
+            IERC8004AdapterCounterfactual.setWalletUBID.selector,
+            bytes4(keccak256("setWalletUBID(uint8,address,uint256)"))
         );
         (bool oldNonceGetter,) = address(adapter).staticcall(abi.encodeWithSignature("nonces(address)", alice));
         assertFalse(oldNonceGetter);
@@ -107,11 +107,11 @@ contract Adapter8004InterfacesTest is Test {
         // whole wallet-pointer family went away.
         vm.prank(alice);
         assertEq(
-            adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1),
+            adapter.setWalletUBID(IERC8217.Standard.ERC721, address(token721), 1),
             adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1)
         );
         vm.prank(alice);
-        adapter.clearWalletUBI();
+        adapter.clearWalletUBID();
     }
 
     /// @dev The wallet-id surface was renamed at `0.0.17`. Every old selector must be gone, not merely
@@ -149,18 +149,18 @@ contract Adapter8004InterfacesTest is Test {
         // Positive control: the renamed surface works, so the assertions above cannot pass because
         // the whole family disappeared.
         vm.prank(alice);
-        assertTrue(adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1) != bytes32(0));
+        assertTrue(adapter.setWalletUBID(IERC8217.Standard.ERC721, address(token721), 1) != bytes32(0));
         vm.prank(alice);
-        adapter.clearWalletUBI();
+        adapter.clearWalletUBID();
     }
 
     /// @dev The renamed events must not still carry their old topic0 values.
     function testRenamedWalletIdEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1);
+        adapter.setWalletUBID(IERC8217.Standard.ERC721, address(token721), 1);
         vm.prank(alice);
-        adapter.clearWalletUBI();
+        adapter.clearWalletUBID();
 
         bytes32[4] memory oldTopics = [
             keccak256("PrimaryAgentSet(address,uint256,address)"),
@@ -183,9 +183,9 @@ contract Adapter8004InterfacesTest is Test {
     function testRemovedSignedPrimaryAgentEventTopicsAreUnused() external {
         vm.recordLogs();
         vm.prank(alice);
-        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1);
+        adapter.setWalletUBID(IERC8217.Standard.ERC721, address(token721), 1);
         vm.prank(alice);
-        adapter.clearWalletUBI();
+        adapter.clearWalletUBID();
 
         bytes32 setWithSig = keccak256("PrimaryAgentSetWithSig(address,uint256,address,uint256)");
         bytes32 clearedWithSig = keccak256("PrimaryAgentClearedWithSig(address,address,uint256)");
@@ -197,7 +197,7 @@ contract Adapter8004InterfacesTest is Test {
         assertEq(logs.length, 2, "the plain set and clear events still fire");
     }
 
-    /// @dev The coordinate-form `ubi` stays on the counterfactual interface, because a
+    /// @dev The coordinate-form `ubid` stays on the counterfactual interface, because a
     /// counterfactual identity has no agent id and the coordinates are its only derivation. The
     /// ERC-7930 encoding moved to `IInteroperableAddressView`, which carries no identity meaning and
     /// is depended on by the counterfactual and attestation surfaces alike.
@@ -223,8 +223,8 @@ contract Adapter8004InterfacesTest is Test {
         // implementations exactly; `counterfactualRegister` is overloaded, so `.selector` is
         // ambiguous on it and both of its overloads are exercised by call below instead.
         assertEq(
-            IERC8004AdapterCounterfactual.counterfactualSetAgentWalletAndUBI.selector,
-            bytes4(keccak256("counterfactualSetAgentWalletAndUBI(uint8,address,uint256)"))
+            IERC8004AdapterCounterfactual.counterfactualSetAgentWalletAndUBID.selector,
+            bytes4(keccak256("counterfactualSetAgentWalletAndUBID(uint8,address,uint256)"))
         );
         assertEq(
             IERC8004AdapterCounterfactual.counterfactualUnsetAgentWallet.selector,
@@ -281,8 +281,8 @@ contract Adapter8004InterfacesTest is Test {
 
     function testPrimaryEventTopicsAreSystemSpecific() external pure {
         assertEq(
-            IERC8004AdapterCounterfactual.WalletUBISet.selector,
-            keccak256("WalletUBISet(address,bytes32,address,uint256,uint8,address)")
+            IERC8004AdapterCounterfactual.WalletUBIDSet.selector,
+            keccak256("WalletUBIDSet(address,bytes32,address,uint256,uint8,address)")
         );
     }
 

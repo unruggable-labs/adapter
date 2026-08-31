@@ -19,7 +19,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// This contract used to carry its own ERC-7930 encoder. At `0.0.17` it adopted OpenZeppelin's
 /// `InteroperableAddress`. That swap is safe only for as long as OpenZeppelin's output stays
 /// byte-identical to what the old encoders produced, because this encoding is the preimage of every
-/// UBI and every `attestationId` this contract has ever issued.
+/// UBID and every `attestationId` this contract has ever issued.
 ///
 /// The exposure is real and specific. The library's file is `draft-` prefixed, so OpenZeppelin owes
 /// no encoding stability across releases, and the dependency is a git submodule that somebody will
@@ -38,9 +38,9 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
     /// @dev The published ERC-721 counterfactual identity for `(VECTOR_TOKEN, 42)` on Ethereum, from
     /// `docs/fixtures/adapter-counterfactual-hashes.md`.
-    bytes32 internal constant PUBLISHED_UBI_MAINNET = 0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
-    bytes32 internal constant PUBLISHED_UBI_BASE = 0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3;
-    bytes32 internal constant PUBLISHED_UBI_SEPOLIA = 0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
+    bytes32 internal constant PUBLISHED_UBID_MAINNET = 0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
+    bytes32 internal constant PUBLISHED_UBID_BASE = 0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3;
+    bytes32 internal constant PUBLISHED_UBID_SEPOLIA = 0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
 
     /// @dev Vector 1 from `docs/fixtures/adapter-attestation-ids.md`.
     bytes32 internal constant PUBLISHED_ATTESTATION_ID =
@@ -159,7 +159,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     /// The library is `draft-` prefixed, so OpenZeppelin does not owe us encoding stability, and a
     /// routine dependency bump is the realistic way this breaks.
     ///
-    /// The values below are the encoding every UBI and every
+    /// The values below are the encoding every UBID and every
     /// `attestationId` this contract has ever issued was derived from. If the new library produces
     /// anything else, then adopting it would re-key every one of those identities silently — no
     /// revert, nothing visibly wrong, just a different agent named by the same inputs from that
@@ -439,18 +439,18 @@ contract Adapter8004Erc7930FrozenTest is Test {
         vm.chainId(1);
         assertEq(
             fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_UBI_MAINNET,
-            "published Ethereum ubi"
+            PUBLISHED_UBID_MAINNET,
+            "published Ethereum ubid"
         );
         vm.chainId(8453);
         assertEq(
-            fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBI_BASE, "published Base ubi"
+            fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBID_BASE, "published Base ubid"
         );
         vm.chainId(11155111);
         assertEq(
             fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_UBI_SEPOLIA,
-            "published Sepolia ubi"
+            PUBLISHED_UBID_SEPOLIA,
+            "published Sepolia ubid"
         );
     }
 
@@ -462,7 +462,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.recordLogs();
         vm.prank(ALICE);
-        IERC8004AdapterAttestation(VECTOR_ADAPTER).confirmAdditionalAccount(PUBLISHED_UBI_MAINNET);
+        IERC8004AdapterAttestation(VECTOR_ADAPTER).confirmAdditionalAccount(PUBLISHED_UBID_MAINNET);
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(logs.length, 1);
@@ -489,8 +489,8 @@ contract Adapter8004Erc7930FrozenTest is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(logs.length, 1);
         assertEq(logs[0].topics[0], IERC8004AdapterCounterfactual.CounterfactualAgentRegistered.selector);
-        assertEq(logs[0].topics[1], PUBLISHED_UBI_MAINNET, "the indexed identity is the published one");
-        assertEq(returned, PUBLISHED_UBI_MAINNET, "and so is the returned value");
+        assertEq(logs[0].topics[1], PUBLISHED_UBID_MAINNET, "the indexed identity is the published one");
+        assertEq(returned, PUBLISHED_UBID_MAINNET, "and so is the returned value");
     }
 
     // ----------------------------------------------------------------

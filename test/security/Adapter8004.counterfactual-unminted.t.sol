@@ -198,7 +198,7 @@ contract CounterfactualReentrantOwnerCollection {
 /// window and restores the ordinary owner/delegate controller model.
 contract CounterfactualUnmintedTest is Test {
     event CounterfactualAgentURISet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -206,7 +206,7 @@ contract CounterfactualUnmintedTest is Test {
         address emitter
     );
     event CounterfactualMetadataSet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -215,7 +215,7 @@ contract CounterfactualUnmintedTest is Test {
         address emitter
     );
     event CounterfactualMetadataBatchSet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -223,7 +223,7 @@ contract CounterfactualUnmintedTest is Test {
         address emitter
     );
     event CounterfactualAgentWalletSet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -231,7 +231,7 @@ contract CounterfactualUnmintedTest is Test {
         address emitter
     );
     event CounterfactualAgentWalletUnset(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,

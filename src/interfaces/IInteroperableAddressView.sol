@@ -8,7 +8,7 @@ pragma solidity ^0.8.24;
 /// have to carry an encoding concern.
 ///
 /// The values are what every identifier this contract issues is built on, so they are effectively
-/// frozen. `interoperableAddress(address(this))` is the first component of every UBI and of
+/// frozen. `interoperableAddress(address(this))` is the first component of every UBID and of
 /// every attestation identifier, which means a change to this encoding
 /// re-keys both. The production implementation delegates to OpenZeppelin's `draft-` prefixed
 /// `InteroperableAddress`, which owes no encoding stability across releases; the exact bytes are

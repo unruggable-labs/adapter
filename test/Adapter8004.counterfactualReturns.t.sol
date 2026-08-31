@@ -14,7 +14,7 @@ import {MockContractBinder} from "./mocks/MockContractBinder.sol";
 /// @notice Every counterfactual function that derives an identity returns it.
 ///
 /// Each test pins the returned hash against two independent things: the published derivation
-/// `ubi` exposes, and the identity that function's own event carries. Checking it
+/// `ubid` exposes, and the identity that function's own event carries. Checking it
 /// against only one of those would leave the return value able to agree with itself and nothing
 /// else, which is the failure this file exists to rule out.
 contract Adapter8004CounterfactualReturnsTest is Test {
@@ -99,8 +99,8 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         assertEq(adapter.counterfactualSetMetadataBatch(STD, address(token), 1, empty), published, "setMetadataBatch");
         assertEq(adapter.counterfactualSetAgentWallet(STD, address(token), 1, wallet), published, "setAgentWallet");
         assertEq(adapter.counterfactualUnsetAgentWallet(STD, address(token), 1), published, "unsetAgentWallet");
-        assertEq(adapter.counterfactualSetAgentWalletAndUBI(STD, address(token), 1), published, "setAgentWalletAndID");
-        assertEq(adapter.setWalletUBI(STD, address(token), 1), published, "setWalletUBI");
+        assertEq(adapter.counterfactualSetAgentWalletAndUBID(STD, address(token), 1), published, "setAgentWalletAndID");
+        assertEq(adapter.setWalletUBID(STD, address(token), 1), published, "setWalletUBID");
         uint256 agentId = adapter.register(STD, address(token), 1, "ipfs://agent");
         vm.stopPrank();
 
@@ -163,7 +163,7 @@ contract Adapter8004CounterfactualReturnsTest is Test {
         _assertPinnedAgainst(returned, vm.getRecordedLogs());
     }
 
-    /// @dev `ubi` is the first indexed field on every counterfactual event, so
+    /// @dev `ubid` is the first indexed field on every counterfactual event, so
     /// `topics[1]` is the identity the log carries.
     function _assertPinnedAgainst(bytes32 returned, Vm.Log[] memory logs) private view {
         assertEq(returned, adapter.hashBinding(STD, address(token), 1), "matches the published derivation");

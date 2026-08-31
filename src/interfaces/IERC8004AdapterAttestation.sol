@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @notice Emit-only attestations to counterfactual identities. An attestation is a public
-/// statement about a UBI, recorded in the event log by the account
+/// statement about a UBID, recorded in the event log by the account
 /// that makes it. The caller is always the attester, so the meaning of every statement rests on
 /// who sent the transaction. The contract records the statement and derives its identifier, and
 /// interpretation belongs to indexers: they resolve targets against counterfactual claims, apply
@@ -46,7 +46,7 @@ interface IERC8004AdapterAttestation {
     /// uninitialized-input sentinel so a forgotten field fails instead of recording a statement of no
     /// stated type.
     error AttestationTypeZero();
-    /// @notice Thrown when `ubi` is zero on an attest path. Zero is reserved as the
+    /// @notice Thrown when `ubid` is zero on an attest path. Zero is reserved as the
     /// uninitialized-input sentinel so a forgotten target fails instead of attaching a statement
     /// to the zero identity. Every nonzero value is accepted, including one that matches no claim
     /// yet: attesting ahead of an identity's first counterfactual claim is a supported use.
@@ -54,14 +54,14 @@ interface IERC8004AdapterAttestation {
 
     /// @notice A statement was recorded. `attester` is the account that made it and is the caller
     /// of the recording transaction. `attestationId` is the statement's identifier, derived as
-    /// `keccak256(abi.encode(interoperableAddress(adapter), attester, ubi, attestationType,
+    /// `keccak256(abi.encode(interoperableAddress(adapter), attester, ubid, attestationType,
     /// block.number, variant, data))` with `attestationType` encoded as the enum's `uint8`, and is
     /// recomputable from this event plus its log context. The three indexed fields serve the three
     /// canonical query axes: reverse by attester, forward by target, and filter by type.
     event Attested(
         address indexed attester,
         AttestationType indexed attestationType,
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         bytes32 attestationId,
         bytes32 variant,
         bytes data
@@ -73,21 +73,21 @@ interface IERC8004AdapterAttestation {
     /// this identifier, which indexers verify against the log, since the contract stores nothing.
     event AttestationRevoked(bytes32 indexed attestationId, address indexed revoker);
 
-    /// @notice Record a statement of `attestationType` about the counterfactual identity `ubi`,
+    /// @notice Record a statement of `attestationType` about the counterfactual identity `ubid`,
     /// with `data` carrying the type's payload. The caller is the attester. `variant` separates
     /// otherwise byte-identical statements made within one block and is zero when a single
     /// statement per block is enough; across blocks, `block.number` in the identifier already
     /// keeps identical statements distinct. Emits `Attested` with the derived identifier. Reverts
     /// `AttestationTypeZero` or `AttestationTargetZero` on an `UNSPECIFIED` type or a zero target.
     /// A value outside the enum never reaches this function: the ABI decoder rejects it first.
-    function attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes calldata data) external;
+    function attest(AttestationType attestationType, bytes32 ubid, bytes32 variant, bytes calldata data) external;
 
-    /// @notice Record that the caller is an additional account of the agent `ubi` identifies.
-    /// Equivalent to `attest(AttestationType.CONFIRM_ACCOUNT, ubi, 0, "")`. This is the reciprocal half of the
+    /// @notice Record that the caller is an additional account of the agent `ubid` identifies.
+    /// Equivalent to `attest(AttestationType.CONFIRM_ACCOUNT, ubid, 0, "")`. This is the reciprocal half of the
     /// ERC-8048 `account` metadata list: the confirmation verifies while the agent's current
     /// forward metadata names the caller, checked live by the reader. Reverts
     /// `AttestationTargetZero` on a zero target.
-    function confirmAdditionalAccount(bytes32 ubi) external;
+    function confirmAdditionalAccount(bytes32 ubid) external;
 
     /// @notice Record a revocation of the statement identified by `attestationId`. The caller is
     /// the revoker. The revocation withdraws the statement when the caller is its attester, and is

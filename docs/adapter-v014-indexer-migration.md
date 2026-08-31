@@ -30,11 +30,17 @@ is not a substitute and does not prove the mapping is empty, for the reason set 
 
 At the cutover block:
 
-- start a wallet UBI projection. There is no wallet agent id projection: that surface was removed at
+- start a wallet UBID projection. There is no wallet agent id projection: that surface was removed at
   `0.0.17`, because an agent id is meaningful only inside the registry that issued it and a
   reverse-resolution surface keyed on one contradicted ERC-8217;
-- subscribe to the `WalletUBISet` / `WalletUBICleared` family. These were named `Primary*` in an
-  earlier build and both topic0 values changed with the rename;
+- subscribe to the `WalletUBIDSet` / `WalletUBIDCleared` family. These were named `Primary*` in an
+  earlier build, then `WalletUBISet` / `WalletUBICleared`, before the acronym rename from UBI to
+  UBID. `topic0` is the keccak of the full event signature, so it changed at every one of those
+  renames: an indexer keying on the `WalletUBISet` topic0 must move to the `WalletUBIDSet` topic0
+  (and likewise `WalletUBICleared` to `WalletUBIDCleared`). Take the new values from the
+  regenerated hash fixture
+  <!-- TODO: confirm the regenerated WalletUBIDSet / WalletUBIDCleared topic0 values land in
+  adapter-counterfactual-hashes.md before publishing this cutover -->;
 - validate every counterfactual indexed hash as
   `keccak256(abi.encode(adapterInteroperableAddress, uint8 standard, boundAddress, tokenId))`,
   with the dynamic adapter bytes carrying the full chain plus proxy address, `boundAddress` kept as a
@@ -47,7 +53,7 @@ At the cutover block:
 
 Counterfactual event topic0 values change as well as their indexed hash values. Every counterfactual
 event gained a non-indexed `bytes32 extraData` at `0.0.15`; at `0.0.17` the five update events and
-`WalletUBISet` each gained a non-indexed `uint8 standard`, and then `extraData` was
+`WalletUBIDSet` each gained a non-indexed `uint8 standard`, and then `extraData` was
 dropped from all seven. Every counterfactual topic0 therefore differs from `0.0.15`, including
 `CounterfactualAgentRegistered`, so subscriptions must be rewritten rather than reused. The current
 values are tabulated in

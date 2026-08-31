@@ -303,12 +303,12 @@ contract Adapter8004 is
     // The caller still proves the same authority the on-chain surface requires, plus the
     // ownerless-collection route documented below.
     //
-    // An agent gets an identity without ever being registered, because its UBI derives from the
-    // binding alone and `hashBinding` will compute it for anyone. Consumers key on that UBI, and a
+    // An agent gets an identity without ever being registered, because its UBID derives from the
+    // binding alone and `hashBinding` will compute it for anyone. Consumers key on that UBID, and a
     // later event supersedes an earlier claim rather than withdrawing it.
     // -----------------------------------------------------------------
 
-    /// @notice Convenience helper that derives a UBI from user supplied arguments.
+    /// @notice Convenience helper that derives a UBID from user supplied arguments.
     function hashBinding(Standard standard, address boundAddress, uint256 tokenId) external view returns (bytes32) {
         return _bindingHash(standard, boundAddress, tokenId);
     }
@@ -329,7 +329,7 @@ contract Adapter8004 is
         return _chainIdentifier();
     }
 
-    /// @notice Claims an identity for a bound address without registering it, returning the UBI claimed.
+    /// @notice Claims an identity for a bound address without registering it, returning the UBID claimed.
     function counterfactualRegister(
         Standard standard,
         address boundAddress,
@@ -369,7 +369,7 @@ contract Adapter8004 is
         // 3. Reject user-supplied metadata entries that target reserved counterfactual records.
         _requireNoReservedBindingKey(metadata);
 
-        // 4. Compute the deterministic UBI used as the indexer key for this claim.
+        // 4. Compute the deterministic UBID used as the indexer key for this claim.
         bindingHash = _bindingHash(standard, boundAddress, tokenId);
 
         // 5. Emit the counterfactual claim, which is the only on-chain record this function produces.
@@ -467,7 +467,7 @@ contract Adapter8004 is
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
-    function counterfactualSetAgentWalletAndUBI(Standard standard, address boundAddress, uint256 tokenId)
+    function counterfactualSetAgentWalletAndUBID(Standard standard, address boundAddress, uint256 tokenId)
         external
         nonReentrant
         returns (bytes32 bindingHash)
@@ -485,9 +485,9 @@ contract Adapter8004 is
         );
 
         // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
-        //    reserved-hash guard and emits `WalletUBISet`, and hand back the identity it
+        //    reserved-hash guard and emits `WalletUBIDSet`, and hand back the identity it
         //    derived so the caller does not recompute it.
-        bindingHash = _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
+        bindingHash = _setWalletUBID(msg.sender, standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -510,36 +510,36 @@ contract Adapter8004 is
     }
 
     // -----------------------------------------------------------------
-    //  Wallet UBI (reverse resolution: wallet -> UBI)
+    //  Wallet UBID (reverse resolution: wallet -> UBID)
     // -----------------------------------------------------------------
 
-    function setWalletUBI(Standard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBID(Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash)
     {
-        return _setWalletUBI(msg.sender, standard, boundAddress, tokenId);
+        return _setWalletUBID(msg.sender, standard, boundAddress, tokenId);
     }
 
-    function setWalletUBIFor(address account, Standard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBIDFor(address account, Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash)
     {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        return _setWalletUBI(account, standard, boundAddress, tokenId);
+        return _setWalletUBID(account, standard, boundAddress, tokenId);
     }
 
-    function clearWalletUBI() external {
-        _clearWalletUBI(msg.sender);
+    function clearWalletUBID() external {
+        _clearWalletUBID(msg.sender);
     }
 
-    function clearWalletUBIFor(address account) external {
+    function clearWalletUBIDFor(address account) external {
         if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _clearWalletUBI(account);
+        _clearWalletUBID(account);
     }
 
     /// @dev Validates `standard`, `boundAddress` and `tokenId` before hashing them, so this cannot name
     /// an identity no real binding could match.
-    function _setWalletUBI(address account, Standard standard, address boundAddress, uint256 tokenId)
+    function _setWalletUBID(address account, Standard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 bindingHash)
     {
@@ -549,15 +549,15 @@ contract Adapter8004 is
         // 2. Reject a nonzero token id under the three account standards.
         _requireCanonicalTokenId(standard, boundAddress, tokenId);
 
-        // 3. Derive the UBI these arguments name.
+        // 3. Derive the UBID these arguments name.
         bindingHash = _bindingHash(standard, boundAddress, tokenId);
 
         // 4. Emit the designation, which is the only record this function produces.
-        emit WalletUBISet(account, bindingHash, boundAddress, tokenId, standard, msg.sender);
+        emit WalletUBIDSet(account, bindingHash, boundAddress, tokenId, standard, msg.sender);
     }
 
-    function _clearWalletUBI(address account) private {
-        emit WalletUBICleared(account, msg.sender);
+    function _clearWalletUBID(address account) private {
+        emit WalletUBIDCleared(account, msg.sender);
     }
 
     // -----------------------------------------------------------------
@@ -579,15 +579,15 @@ contract Adapter8004 is
     // -----------------------------------------------------------------
 
     /// @inheritdoc IERC8004AdapterAttestation
-    function attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes calldata data) external {
-        _attest(attestationType, ubi, variant, data);
+    function attest(AttestationType attestationType, bytes32 ubid, bytes32 variant, bytes calldata data) external {
+        _attest(attestationType, ubid, variant, data);
     }
 
     /// @inheritdoc IERC8004AdapterAttestation
-    function confirmAdditionalAccount(bytes32 ubi) external {
+    function confirmAdditionalAccount(bytes32 ubid) external {
         // `msg.data[0:0]` is the empty `bytes calldata`. It keeps `_attest` on calldata for the
         // generic path, where a REVIEW payload would otherwise be copied to memory for no reason.
-        _attest(AttestationType.CONFIRM_ACCOUNT, ubi, bytes32(0), msg.data[0:0]);
+        _attest(AttestationType.CONFIRM_ACCOUNT, ubid, bytes32(0), msg.data[0:0]);
     }
 
     /// @inheritdoc IERC8004AdapterAttestation
@@ -596,26 +596,26 @@ contract Adapter8004 is
     }
 
     /// @dev The single attest path. Both guards reject uninitialized calldata rather than validating:
-    /// a nonzero but meaningless `ubi` passes on purpose, since attesting to an identity before its
+    /// a nonzero but meaningless `ubid` passes on purpose, since attesting to an identity before its
     /// first claim is a supported use.
-    function _attest(AttestationType attestationType, bytes32 ubi, bytes32 variant, bytes calldata data) private {
+    function _attest(AttestationType attestationType, bytes32 ubid, bytes32 variant, bytes calldata data) private {
         // 1. Reject the two uninitialized-input sentinels, so a forgotten field fails loudly rather
         //    than recording a statement of no stated type or against the zero identity.
         if (attestationType == AttestationType.UNSPECIFIED) revert AttestationTypeZero();
-        if (ubi == bytes32(0)) revert AttestationTargetZero();
+        if (ubid == bytes32(0)) revert AttestationTargetZero();
 
         // 2. Derive the identifier. `block.number` separates identical statements made in different
         //    blocks, `variant` does the same within one block, and the interoperable address binds the
         //    identifier to this adapter on this chain.
         bytes32 attestationId = keccak256(
             abi.encode(
-                _interoperableAddress(address(this)), msg.sender, ubi, attestationType, block.number, variant, data
+                _interoperableAddress(address(this)), msg.sender, ubid, attestationType, block.number, variant, data
             )
         );
 
         // 3. Emit, which is the only record this function produces. The identifier is carried so
         //    callers never have to recompute it.
-        emit Attested(msg.sender, attestationType, ubi, attestationId, variant, data);
+        emit Attested(msg.sender, attestationType, ubid, attestationId, variant, data);
     }
 
     /// @dev Checks nothing, deliberately. Revoking an identifier that was never attested is a harmless
@@ -732,7 +732,7 @@ contract Adapter8004 is
 
     /// @dev The three account standards name an address rather than a token within it, so `tokenId`
     /// must be 0. A nonzero id reverts rather than being coerced, which would hand back a binding and
-    /// a UBI that do not match what the caller submitted.
+    /// a UBID that do not match what the caller submitted.
     function _requireCanonicalTokenId(Standard standard, address boundAddress, uint256 tokenId) internal pure {
         if (_isAccountStandard(standard) && tokenId != 0) {
             revert NonZeroTokenIdForAccount(boundAddress, tokenId);

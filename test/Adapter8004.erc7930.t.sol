@@ -93,7 +93,7 @@ library WordAlignedErc7930 {
 /// was built from; deleting either one collapses a three-way agreement into a two-way one, and
 /// deleting both leaves the dependency checked only against itself, which proves nothing.
 ///
-/// This encoding is the preimage of every UBI and every
+/// This encoding is the preimage of every UBID and every
 /// `attestationId`. A one-byte divergence would silently re-key identities rather than revert. If
 /// this ever disagrees with production, the question is which one moved, and every existing identity
 /// depends on the answer.

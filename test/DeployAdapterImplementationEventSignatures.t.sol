@@ -56,9 +56,9 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         );
     }
 
-    function testPrintedWalletUBISignatureMatchesTheContract() external pure {
+    function testPrintedWalletUBIDSignatureMatchesTheContract() external pure {
         _assertSig(
-            SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET, IERC8004AdapterCounterfactual.WalletUBISet.selector, "WalletUBISet"
+            SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET, IERC8004AdapterCounterfactual.WalletUBIDSet.selector, "WalletUBIDSet"
         );
     }
 
@@ -81,7 +81,7 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, address(adapter));
 
         assertEq(
-            _sampleUbi(proxyInteroperableAddress, IERC8217.Standard.ERC721, address(1), 0),
+            _sampleUbid(proxyInteroperableAddress, IERC8217.Standard.ERC721, address(1), 0),
             adapter.hashBinding(IERC8217.Standard.ERC721, address(1), 0),
             "sample preimage must match the contract's"
         );

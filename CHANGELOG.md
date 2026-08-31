@@ -40,7 +40,7 @@ EIP-1967 slot on each chain and calling through each proxy:
   scheme `0.0.14` already supersedes;
 - `interoperableAddress(address)` reverts on the Mainnet and Base proxies, so no
   live implementation has the ERC-7930 surface at all;
-- `walletUBIOf(address)` reverts on all three, so no live
+- `walletUBIDOf(address)` reverts on all three, so no live
   implementation exposes the counterfactual-primary surface and **slot 3, the
   only slot that could hold a counterfactual identifier, is unreachable and has
   never been written on any deployment.** The two deployed source baselines
@@ -77,7 +77,7 @@ Recorded under Removed below.
   revoke(bytes32 attestationId)
   ```
 
-  An attestation is a public statement about a UBI.
+  An attestation is a public statement about a UBID.
   Its meaning rests entirely on who made it, and who made it is always the caller.
   The contract records the statement, derives its identifier, and judges nothing
   else: not the target's existence, not the payload's shape, not the attester's
@@ -170,7 +170,7 @@ Recorded under Removed below.
 
   ```
   setAgentWalletAndID(uint256 agentId, address newWallet, uint256 deadline, bytes signature)
-  counterfactualSetAgentWalletAndUBI(Standard standard, address boundAddress, uint256 tokenId, address newWallet)
+  counterfactualSetAgentWalletAndUBID(Standard standard, address boundAddress, uint256 tokenId, address newWallet)
   ```
 
   Setting an agent's wallet and setting that wallet's id are two halves of one
@@ -199,7 +199,7 @@ Recorded under Removed below.
   consent for the reverse one. A reader who finds the two records agreeing on this
   path therefore learns something real, that one actor was authorized on both
   sides. Naming a wallet other than the caller stays available as
-  `counterfactualSetAgentWallet` plus `setWalletUBIFor`, two calls
+  `counterfactualSetAgentWallet` plus `setWalletUBIDFor`, two calls
   that prove correspondingly less.
 
   The registered `setAgentWalletAndID` keeps its `newWallet` parameter, because
@@ -244,11 +244,11 @@ Recorded under Removed below.
   coordinates name, which is what the code does rather than what the name implies.
 
   This closes the inconsistency where `counterfactualSetAgentWallet` and
-  `counterfactualSetAgentWalletAndUBI` sat next to each other doing the same
+  `counterfactualSetAgentWalletAndUBID` sat next to each other doing the same
   forward write and differed in return type.
 
-  `counterfactualSetAgentWalletAndUBI` returns the `bytes32` identity it derived,
-  matching its sibling `setWalletUBI`. It takes coordinates rather
+  `counterfactualSetAgentWalletAndUBID` returns the `bytes32` identity it derived,
+  matching its sibling `setWalletUBID`. It takes coordinates rather
   than a hash because `_requireTokenAuthority` checks authority against the token
   and keccak is one way, so a contract handed only a hash could not tell whether
   the caller controls what it names; returning the hash gives a caller that has
@@ -294,21 +294,21 @@ Recorded under Removed below.
   | `clearPrimaryAgentFor` | `clearWalletAgentIDFor` |
   | `primaryAgentOf` | `walletAgentIDOf` |
   | `PRIMARY_AGENT_UNSET` | `WALLET_AGENT_ID_UNSET` |
-  | `setPrimaryCounterfactualAgent` | `setWalletUBI` |
-  | `setPrimaryCounterfactualAgentFor` | `setWalletUBIFor` |
-  | `clearPrimaryCounterfactualAgent` | `clearWalletUBI` |
-  | `clearPrimaryCounterfactualAgentFor` | `clearWalletUBIFor` |
-  | `primaryCounterfactualAgentOf` | `walletUBIOf` |
-  | `PRIMARY_COUNTERFACTUAL_AGENT_UNSET` | `WALLET_UBI_UNSET` |
+  | `setPrimaryCounterfactualAgent` | `setWalletUBID` |
+  | `setPrimaryCounterfactualAgentFor` | `setWalletUBIDFor` |
+  | `clearPrimaryCounterfactualAgent` | `clearWalletUBID` |
+  | `clearPrimaryCounterfactualAgentFor` | `clearWalletUBIDFor` |
+  | `primaryCounterfactualAgentOf` | `walletUBIDOf` |
+  | `PRIMARY_COUNTERFACTUAL_AGENT_UNSET` | `WALLET_UBID_UNSET` |
 
   Events, errors, private helpers and storage variables follow the same shape:
   `PrimaryAgentSet` and `PrimaryAgentCleared` become `WalletAgentIDSet` and
   `WalletAgentIDCleared`, `PrimaryCounterfactualAgentSet` and
-  `PrimaryCounterfactualAgentCleared` become `WalletUBISet` and
-  `WalletUBICleared`, `PrimaryAgentIdReserved` becomes
+  `PrimaryCounterfactualAgentCleared` become `WalletUBIDSet` and
+  `WalletUBIDCleared`, `PrimaryAgentIdReserved` becomes
   `WalletAgentIDReserved`, and `PrimaryCounterfactualAgentHashReserved` becomes
-  `WalletUBIReserved`. The two interface files are renamed to
-  `IERC8004AdapterWalletAgentID.sol` and `IERC8004AdapterWalletUBI.sol`.
+  `WalletUBIDReserved`. The two interface files are renamed to
+  `IERC8004AdapterWalletAgentID.sol` and `IERC8004AdapterWalletUBID.sol`.
 
   **Every renamed function's selector and every renamed event's `topic0` changes.
   This is a full indexer and integrator cutover, on top of the one the registration
@@ -329,15 +329,15 @@ Recorded under Removed below.
 
 ### Changed
 
-- **The counterfactual registration hash and the UBI are one concept with one
+- **The counterfactual registration hash and the UBID are one concept with one
   name.** They were always the same value computed by the same formula, and the
   two names hid that. The identifier is determined by the coordinates alone, so it
   exists whether or not an agent is ever registered; registering adds an agent id
-  alongside the UBI rather than creating it. The documentation now reads as one
+  alongside the UBID rather than creating it. The documentation now reads as one
   concept throughout rather than as one concept under two names.
 
   Two views are renamed, so **both selectors change**. They were renamed twice
-  within this version, first onto the UBI vocabulary and then onto the mechanism
+  within this version, first onto the UBID vocabulary and then onto the mechanism
   name they carry now, so the full chain is:
 
   | Original | Intermediate | Final | Selector |
@@ -356,7 +356,7 @@ Recorded under Removed below.
   **The final names split two jobs that one word was doing.** `bindingHash` names
   the mechanism and is what the code calls it, sitting next to `bindingOf` so the
   pair explains itself: one returns the `Binding`, the other returns the hash of
-  the same thing. UBI names the value that mechanism produces and stays the citable
+  the same thing. UBID names the value that mechanism produces and stays the citable
   noun in ERC-8217 and in prose. This is the ENS shape, where `namehash` is the
   mechanism and `node` is the value. The acronym is therefore not retired, it is
   confined to the place where it does work, and the `bytes32 ubi` parameters on
@@ -374,12 +374,12 @@ Recorded under Removed below.
 
   The `bytes32 cfid` parameter on `attest` and `confirmAdditionalAccount` is now
   `bytes32 ubi`, and the indexed `registrationHash` field on the counterfactual and
-  `WalletUBISet` events is now `ubi`. Neither costs anything: parameter
+  `WalletUBIDSet` events is now `ubi`. Neither costs anything: parameter
   names are in no selector and no event `topic0`, so **every event topic is
   unchanged** and the total selector count stays 53.
 
   **Not renamed, deliberately.** The pre-ERC-7930 scheme every live proxy still
-  computes is a genuinely different value, not a UBI, so it keeps the words
+  computes is a genuinely different value, not a UBID, so it keeps the words
   registration hash wherever it is described, here and in the fixture. Superseded
   fixture tables keep the terminology of the scheme they document, because renaming
   them would misdescribe history rather than clarify it.
@@ -419,7 +419,7 @@ Recorded under Removed below.
   not re-raise this as a defect.
 
   **`_controlsAccount` deliberately does not get the same treatment.** It gates
-  `setWalletUBIFor` and `clearWalletUBIFor`, which is a different question:
+  `setWalletUBIDFor` and `clearWalletUBIDFor`, which is a different question:
   `_hasBindingControl` asks who may manage the identity bound to an address, while
   `_controlsAccount` asks who may make an assertion on that address's own behalf
   about which identity speaks for it. Its existing routes, `owner()`, `getOwner()`
@@ -431,7 +431,7 @@ Recorded under Removed below.
   no delegation route in `_hasBindingControl` yet is accepted by `_controlsAccount`.
 
   Nothing is lost by the omission. A delegate that manages an `ACCOUNT` identity
-  calls `counterfactualSetAgentWalletAndUBI`, which names the caller as the wallet,
+  calls `counterfactualSetAgentWalletAndUBID`, which names the caller as the wallet,
   so the delegate designates itself and the loop still closes without anyone
   asserting on the account's behalf.
 
@@ -471,32 +471,32 @@ Recorded under Removed below.
   number it earns the same treatment then, as a deliberate change rather than a
   side effect of this one.
 
-- **The wallet counterfactual id surface is the wallet UBI surface.** A wallet
-  counterfactual id was always the UBI of that wallet, so the whole family is
+- **The wallet counterfactual id surface is the wallet UBID surface.** A wallet
+  counterfactual id was always the UBID of that wallet, so the whole family is
   renamed onto the vocabulary the previous entry settled. Nine ABI members move:
 
   | Before | After | Selector / `topic0` |
   |---|---|---|
-  | `setWalletCounterfactualID(uint8,address,uint256)` | `setWalletUBI(uint8,address,uint256)` | `0x2a0f6858` → `0x4eb8a836` |
-  | `setWalletCounterfactualIDFor(address,uint8,address,uint256)` | `setWalletUBIFor(address,uint8,address,uint256)` | `0x331688ed` → `0x89218f65` |
-  | `clearWalletCounterfactualID()` | `clearWalletUBI()` | `0x511ac302` → `0xa306e20c` |
-  | `clearWalletCounterfactualIDFor(address)` | `clearWalletUBIFor(address)` | `0x4d5d9426` → `0x19bfd9e1` |
-  | `walletCounterfactualIDOf(address)` | `walletUBIOf(address)` | `0x84d1fbec` → `0x8b2d6afc` |
-  | `WALLET_COUNTERFACTUAL_ID_UNSET()` | `WALLET_UBI_UNSET()` | `0x24767def` → `0x56473a07` |
-  | `counterfactualSetAgentWalletAndID(uint8,address,uint256)` | `counterfactualSetAgentWalletAndUBI(uint8,address,uint256)` | `0x134d6bc9` → `0x74dc764c` |
-  | `WalletCounterfactualIDReserved(bytes32)` | `WalletUBIReserved(bytes32)` | `0x11155f3a` → `0x42c8e6e4` |
-  | `WalletCounterfactualIDSet(...)` | `WalletUBISet(...)` | `0xc53d8090…1b56a761` → `0x4daa9328…76a275fe` |
-  | `WalletCounterfactualIDCleared(address,address)` | `WalletUBICleared(address,address)` | `0x0db92d26…a0cfbf28` → `0xd35b287e…0f3d85f9` |
+  | `setWalletCounterfactualID(uint8,address,uint256)` | `setWalletUBID(uint8,address,uint256)` | `0x2a0f6858` → `0x4eb8a836` |
+  | `setWalletCounterfactualIDFor(address,uint8,address,uint256)` | `setWalletUBIDFor(address,uint8,address,uint256)` | `0x331688ed` → `0x89218f65` |
+  | `clearWalletCounterfactualID()` | `clearWalletUBID()` | `0x511ac302` → `0xa306e20c` |
+  | `clearWalletCounterfactualIDFor(address)` | `clearWalletUBIDFor(address)` | `0x4d5d9426` → `0x19bfd9e1` |
+  | `walletCounterfactualIDOf(address)` | `walletUBIDOf(address)` | `0x84d1fbec` → `0x8b2d6afc` |
+  | `WALLET_COUNTERFACTUAL_ID_UNSET()` | `WALLET_UBID_UNSET()` | `0x24767def` → `0x56473a07` |
+  | `counterfactualSetAgentWalletAndID(uint8,address,uint256)` | `counterfactualSetAgentWalletAndUBID(uint8,address,uint256)` | `0x134d6bc9` → `0x74dc764c` |
+  | `WalletCounterfactualIDReserved(bytes32)` | `WalletUBIDReserved(bytes32)` | `0x11155f3a` → `0x42c8e6e4` |
+  | `WalletCounterfactualIDSet(...)` | `WalletUBIDSet(...)` | `0xc53d8090…1b56a761` → `0x4daa9328…76a275fe` |
+  | `WalletCounterfactualIDCleared(address,address)` | `WalletUBIDCleared(address,address)` | `0x0db92d26…a0cfbf28` → `0xd35b287e…0f3d85f9` |
 
   The interface file moved with `git mv` from
-  `IERC8004AdapterWalletCounterfactualID.sol` to `IERC8004AdapterWalletUBI.sol` so
+  `IERC8004AdapterWalletCounterfactualID.sol` to `IERC8004AdapterWalletUBID.sol` so
   history follows, and the internal helpers and the slot-3 storage variable
   followed the same naming.
 
   **`setAgentWalletAndID` keeps its name, deliberately.** Both combined setters
   used to end in `AndID` while meaning different types, a `uint256` agent id on
-  one and a `bytes32` UBI on the other. That collision is what made the suffix
-  ambiguous, and renaming one half removes it: with `AndUBI` in place there is no
+  one and a `bytes32` UBID on the other. That collision is what made the suffix
+  ambiguous, and renaming one half removes it: with `AndUBID` in place there is no
   longer a second `AndID` meaning something else, so the suffix now tells a reader
   which kind of identifier the call sets. `setAgentWalletAndAgentID` would add a
   stutter for no remaining gain. The distinction is recorded on the function
@@ -505,11 +505,11 @@ Recorded under Removed below.
   **What this makes visible.** A wallet can designate either identifier, and the
   choice is the difference between them: `walletAgentIDOf` returns a `uint256`
   that means something only inside the registry that issued it and on the chain
-  hosting that registry, while `walletUBIOf` returns a `bytes32` that means the
-  same thing everywhere, because the UBI carries its own chain and adapter in its
+  hosting that registry, while `walletUBIDOf` returns a `bytes32` that means the
+  same thing everywhere, because the UBID carries its own chain and adapter in its
   preimage. That symmetry was always in the code and was invisible while the two
   halves were named on different principles. It is now stated on
-  `IERC8004AdapterWalletUBI`.
+  `IERC8004AdapterWalletUBID`.
 
 ### Removed
 
@@ -552,7 +552,7 @@ Recorded under Removed below.
   an agent, and `_setWalletAgentID` validated nothing beyond the all-ones sentinel.
 
   **Both wallet mappings are gone and the layout collapses to two slots.**
-  `_walletAgentID` occupied slot 2 and `_walletUBI` slot 3; neither remains,
+  `_walletAgentID` occupied slot 2 and `_walletUBID` slot 3; neither remains,
   because the reverse designation became emit-only in the same change, recorded
   below. Regular storage is now slot 0 reserved and `_bindings` at slot 1,
   confirmed with `forge inspect` against a real build rather than reasoned about.
@@ -568,11 +568,11 @@ Recorded under Removed below.
   The same rule already applied to `_primaryAgentNonces` at slot 4, removed earlier
   in this version without reservation for the same reason.
 
-- **The wallet-to-UBI reverse designation is emit-only.** `_walletUBI`,
-  `walletUBIOf`, `WALLET_UBI_UNSET` and the `WalletUBIReserved` error are all
-  removed. `setWalletUBI` and `setWalletUBIFor` keep their authority checks and
-  their coordinate validation and emit `WalletUBISet`; `clearWalletUBI` and
-  `clearWalletUBIFor` emit `WalletUBICleared`. Nothing is stored.
+- **The wallet-to-UBID reverse designation is emit-only.** `_walletUBID`,
+  `walletUBIDOf`, `WALLET_UBID_UNSET` and the `WalletUBIDReserved` error are all
+  removed. `setWalletUBID` and `setWalletUBIDFor` keep their authority checks and
+  their coordinate validation and emit `WalletUBIDSet`; `clearWalletUBID` and
+  `clearWalletUBIDFor` emit `WalletUBIDCleared`. Nothing is stored.
 
   **Why it costs nothing.** The mapping was read by exactly one thing, its own
   getter. No internal path consumed it, which is precisely the condition under which
@@ -588,13 +588,13 @@ Recorded under Removed below.
   not a question that arises when there is no slot.
 
   **Projection rules, matching the attestation surface's wording.** Applied in log
-  order, per account: the latest `WalletUBISet` wins and `WalletUBICleared` unsets,
+  order, per account: the latest `WalletUBIDSet` wins and `WalletUBIDCleared` unsets,
   where latest means highest block number then highest log index. A clear from a
   different authorized party than the one that set **is** honoured, because both
   functions authorize against the account rather than against whoever wrote last, so
   the account itself, its `owner()` or `getOwner()`, and any `DEFAULT_ADMIN_ROLE`
-  holder may each undo any other. An account with no `WalletUBISet` after its last
-  `WalletUBICleared`, or with none at all, has no designation.
+  holder may each undo any other. An account with no `WalletUBIDSet` after its last
+  `WalletUBIDCleared`, or with none at all, has no designation.
 
   **Gas.** A first-time designation drops from 42,988 to 20,816, a saving of 22,172,
   which is one cold `SSTORE` from zero almost exactly. Overwriting drops 172 and
@@ -602,11 +602,11 @@ Recorded under Removed below.
   it, with `vm.record` and `vm.accesses` asserting zero writes, including once
   against a live-baseline proxy.
 
-- **`IERC8004AdapterWalletUBI.sol` is folded into `IERC8004AdapterCounterfactual`**
+- **`IERC8004AdapterWalletUBID.sol` is folded into `IERC8004AdapterCounterfactual`**
   and deleted. The division that matters is derivable-from-coordinates against
-  requires-an-actual-registration, and the wallet-to-UBI surface sits on the
+  requires-an-actual-registration, and the wallet-to-UBID surface sits on the
   derivable side. Counterfactual here does not mean hypothetical, it means
-  determined in advance: all four inputs exist, so the UBI exists, and performing
+  determined in advance: all four inputs exist, so the UBID exists, and performing
   the binding neither creates nor changes it, exactly as a CREATE2 address is known
   before deployment. No selector or `topic0` moves; the declarations changed file
   only.
@@ -904,7 +904,7 @@ size, not gas.
   existence is far inside both.
 
   **Every identity this contract derives comes through this helper** — every
-  UBI, every `attestationId`, and the EIP-712
+  UBID, every `attestationId`, and the EIP-712
   surface — and a one-byte divergence would silently re-key identities rather than
   revert. So byte-identity is the safety argument, not a nicety. The pre-rewrite
   encoder is kept verbatim as `ReferenceErc7930` in
@@ -951,7 +951,7 @@ size, not gas.
   changes no deployment property at all.
 
 - **The counterfactual identity gains the token standard.** The
-  UBI preimage becomes four components:
+  UBID preimage becomes four components:
 
   ```
   keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
@@ -999,17 +999,17 @@ size, not gas.
   than kept as an overload, deliberately: a stale caller reverts cleanly instead of
   silently computing a hash that no longer identifies anything.
 
-- **`setWalletUBI` and `setWalletUBIFor` each
+- **`setWalletUBID` and `setWalletUBIDFor` each
   gain a `Standard` parameter**, immediately before `boundAddress`. Both old
-  selectors are gone, for the same reason. `clearWalletUBI[For]`
-  and `walletUBIOf` are unchanged.
+  selectors are gone, for the same reason. `clearWalletUBID[For]`
+  and `walletUBIDOf` are unchanged.
 
-- **The five counterfactual update events and `WalletUBISet` gain
+- **The five counterfactual update events and `WalletUBIDSet` gain
   a non-indexed `standard`**, as their first non-indexed field:
   `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
   `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
   `CounterfactualAgentWalletUnset`. This makes a log line verifiable on its own: a
-  reader recomputes the UBI the event names from the event's own
+  reader recomputes the UBID the event names from the event's own
   fields, with no lookup of the claim that created the identity.
   `CounterfactualAgentRegistered` already carried the standard. Every
   counterfactual `topic0` moves in this version, so indexers resubscribe to all
@@ -1017,14 +1017,14 @@ size, not gas.
   [`adapter-counterfactual-hashes.md`](./docs/fixtures/adapter-counterfactual-hashes.md).
 
 - **The reserved `extraData` discriminator is removed**, from the
-  UBI preimage and from every counterfactual event. The preimage
+  UBID preimage and from every counterfactual event. The preimage
   loses its trailing `bytes32` and seven events lose their `bytes32 extraData`
   field, so every counterfactual hash and every counterfactual `topic0` moves
   again within this version. The seven are the six on
   `IERC8004AdapterCounterfactual`, `CounterfactualMetadataBatchSet` included,
-  plus the event this version renamed to `WalletUBISet`. Earlier
+  plus the event this version renamed to `WalletUBIDSet`. Earlier
   revisions of this entry said eight, which counted emit sites rather than
-  events, since `WalletUBISet` is emitted from more than one
+  events, since `WalletUBIDSet` is emitted from more than one
   function.
 
   **Why.** The field preserved no optionality. It was a compile-time constant no
@@ -1334,7 +1334,7 @@ work below; all three ship together in one implementation.
   counterfactual events (`CounterfactualAgentRegistered`,
   `CounterfactualAgentURISet`, `CounterfactualMetadataSet`,
   `CounterfactualMetadataBatchSet`, `CounterfactualAgentWalletSet`,
-  `CounterfactualAgentWalletUnset`) and on `WalletUBISet`, so
+  `CounterfactualAgentWalletUnset`) and on `WalletUBIDSet`, so
   an indexer stores the field before any upgrade begins populating it. Adding a
   field changes each event signature and therefore its `topic0`.
 
@@ -1519,7 +1519,7 @@ read the latest `CounterfactualAgentRegistered.standard` in log order to see whi
 
 ### Storage and migration
 
-- Appended `_walletAgentID` (slot 2), `_walletUBI` (slot 3), and
+- Appended `_walletAgentID` (slot 2), `_walletUBID` (slot 3), and
   `_primaryAgentNonces` (slot 4) directly after the live fields. Slot 4 was
   removed again at `0.0.17`, so the shipped layout ends at slot 3. The unreleased
   0.0.9-0.0.13 layouts consume no

@@ -29,7 +29,7 @@ interface IERC8217 {
     function bindingOf(uint256 agentId) external view returns (Binding memory);
 
     /// @notice The globally unique identifier of the bound object, called the Universal Binding
-    /// Identifier (UBI) in the ERC, derived as
+    /// Identifier (UBID) in the ERC, derived as
     /// `keccak256(abi.encode(bindingContractInteroperableAddress, standard, boundAddress, tokenId))`.
     /// A binding is immutable, so it holds for the life of the identity. Reverts `UnknownAgent` when
     /// the id carries no binding.

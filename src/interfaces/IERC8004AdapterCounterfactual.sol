@@ -8,13 +8,13 @@ import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 /// ERC-8004 registration that records each call in the event log rather than the registry, so a claim
 /// costs a log instead of a registration.
 interface IERC8004AdapterCounterfactual {
-    /// @notice Convenience helper that derives a UBI from user supplied arguments.
+    /// @notice Convenience helper that derives a UBID from user supplied arguments.
     function hashBinding(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         view
         returns (bytes32);
 
-    /// @notice Claims an identity for a bound address without registering it, returning the UBI claimed.
+    /// @notice Claims an identity for a bound address without registering it, returning the UBID claimed.
     function counterfactualRegister(
         IERC8217.Standard standard,
         address boundAddress,
@@ -48,7 +48,7 @@ interface IERC8004AdapterCounterfactual {
         bytes calldata metadataValue
     ) external returns (bytes32 bindingHash);
 
-    /// @notice Records several metadata entries for a counterfactual identity, all on one UBI, in one event.
+    /// @notice Records several metadata entries for a counterfactual identity, all on one UBID, in one event.
     function counterfactualSetMetadataBatch(
         IERC8217.Standard standard,
         address boundAddress,
@@ -68,7 +68,7 @@ interface IERC8004AdapterCounterfactual {
     /// @notice Names the caller as this identity's agent wallet and points the caller's wallet back at
     /// it, in one call. The wallet is always `msg.sender`, which supplies consent for the reverse half,
     /// so no signature is needed and any existing designation on the caller is overwritten.
-    function counterfactualSetAgentWalletAndUBI(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
+    function counterfactualSetAgentWalletAndUBID(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash);
 
@@ -78,42 +78,42 @@ interface IERC8004AdapterCounterfactual {
         returns (bytes32 bindingHash);
 
     // -----------------------------------------------------------------
-    //  Wallet UBI: the reverse claim, wallet to UBI
+    //  Wallet UBID: the reverse claim, wallet to UBID
     // -----------------------------------------------------------------
     //
-    // The UBI a wallet picks for itself, emit-only like the rest of this interface. The adapter
+    // The UBID a wallet picks for itself, emit-only like the rest of this interface. The adapter
     // derives the value from the coordinates rather than taking it from the caller, but the
     // designation itself is only a self-assertion, so a consumer should confirm the identity points
-    // back at the wallet before trusting it. Projecting in log order, the latest `WalletUBISet` per
-    // account wins and `WalletUBICleared` unsets; both authorize against the account, so any
+    // back at the wallet before trusting it. Projecting in log order, the latest `WalletUBIDSet` per
+    // account wins and `WalletUBIDCleared` unsets; both authorize against the account, so any
     // authorized party may undo any other. A wallet-to-agent-id surface sat here until `0.0.17` and should not be
     // re-added; see CHANGELOG 0.0.17 Removed for why.
 
-    /// @notice Records the caller's own wallet UBI. Nothing here checks that the caller holds the token,
+    /// @notice Records the caller's own wallet UBID. Nothing here checks that the caller holds the token,
     /// so a consumer should confirm the identity points back at this wallet before trusting the claim.
-    function setWalletUBI(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBID(IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash);
 
-    /// @notice Records `account`'s wallet UBI on its behalf, reverting `NotAccountController` unless the
+    /// @notice Records `account`'s wallet UBID on its behalf, reverting `NotAccountController` unless the
     /// caller is authorized to act for `account`.
-    function setWalletUBIFor(address account, IERC8217.Standard standard, address boundAddress, uint256 tokenId)
+    function setWalletUBIDFor(address account, IERC8217.Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash);
 
-    /// @notice Clears the caller's own wallet UBI. Calling it more than once, or with nothing set, is
-    /// harmless and still emits `WalletUBICleared`, since the log is the record.
-    function clearWalletUBI() external;
+    /// @notice Clears the caller's own wallet UBID. Calling it more than once, or with nothing set, is
+    /// harmless and still emits `WalletUBIDCleared`, since the log is the record.
+    function clearWalletUBID() external;
 
-    /// @notice Clear `account`'s wallet UBI, under the same authorization rules as
-    /// `setWalletUBIFor`.
-    function clearWalletUBIFor(address account) external;
+    /// @notice Clear `account`'s wallet UBID, under the same authorization rules as
+    /// `setWalletUBIDFor`.
+    function clearWalletUBIDFor(address account) external;
 
-    /// @notice Announces a counterfactual identity claim. Consumers key on `ubi`, never on
+    /// @notice Announces a counterfactual identity claim. Consumers key on `ubid`, never on
     /// `(boundAddress, tokenId)`, which does not name a standard. Later events supersede earlier ones
-    /// per UBI in log order, highest block then highest log index.
+    /// per UBID in log order, highest block then highest log index.
     event CounterfactualAgentRegistered(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -124,7 +124,7 @@ interface IERC8004AdapterCounterfactual {
 
     /// @notice Updates the agent URI for a counterfactual identity.
     event CounterfactualAgentURISet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -134,7 +134,7 @@ interface IERC8004AdapterCounterfactual {
 
     /// @notice Records one metadata entry for a counterfactual identity.
     event CounterfactualMetadataSet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -145,7 +145,7 @@ interface IERC8004AdapterCounterfactual {
 
     /// @notice Records several metadata entries for a counterfactual identity in one event.
     event CounterfactualMetadataBatchSet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -155,7 +155,7 @@ interface IERC8004AdapterCounterfactual {
 
     /// @notice Assigns the agent wallet for a counterfactual identity. No signature is required.
     event CounterfactualAgentWalletSet(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
@@ -165,24 +165,24 @@ interface IERC8004AdapterCounterfactual {
 
     /// @notice Clears the agent wallet on a counterfactual identity.
     event CounterfactualAgentWalletUnset(
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address indexed boundAddress,
         uint256 indexed tokenId,
         IERC8217.Standard standard,
         address emitter
     );
 
-    /// @notice Records a wallet's own UBI designation. `standard` is carried so a reader can recompute
-    /// the UBI from this one log line.
-    event WalletUBISet(
+    /// @notice Records a wallet's own UBID designation. `standard` is carried so a reader can recompute
+    /// the UBID from this one log line.
+    event WalletUBIDSet(
         address indexed account,
-        bytes32 indexed ubi,
+        bytes32 indexed ubid,
         address boundAddress,
         uint256 tokenId,
         IERC8217.Standard standard,
         address indexed setBy
     );
 
-    /// @notice Clears a wallet's own UBI designation.
-    event WalletUBICleared(address indexed account, address indexed clearedBy);
+    /// @notice Clears a wallet's own UBID designation.
+    event WalletUBIDCleared(address indexed account, address indexed clearedBy);
 }

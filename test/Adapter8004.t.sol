@@ -535,11 +535,11 @@ contract Adapter8004Test is Test {
         emit IERC8004AdapterCounterfactual.CounterfactualAgentRegistered(
             expectedHash, address(token721), 1, IERC8217.Standard.ERC721, "ipfs://agent/cf", metadata, alice
         );
-        bytes32 ubi = adapter.counterfactualRegister(
+        bytes32 ubid = adapter.counterfactualRegister(
             IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata
         );
 
-        assertEq(ubi, expectedHash);
+        assertEq(ubid, expectedHash);
     }
 
     function testRegistrationHashViewMatchesEncodingAndCounterfactualEventTopic() external {
@@ -577,10 +577,10 @@ contract Adapter8004Test is Test {
         );
 
         vm.prank(alice);
-        bytes32 ubi =
+        bytes32 ubid =
             adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf");
 
-        assertEq(ubi, expectedHash);
+        assertEq(ubid, expectedHash);
     }
 
     function testCounterfactualRegisterRejectsZeroTokenContract() external {
@@ -883,7 +883,7 @@ contract Adapter8004Test is Test {
     function testHybridTokenContractHashIsStandardSpecific() external {
         // Inverted at `0.0.17`. A hybrid contract exposes token 77 under BOTH ERC-721 and ERC-1155.
         // Because the standard is part of the identity, the two claims resolve to DIFFERENT
-        // UBIs: two identities, each with its own history, and neither supersedes the
+        // UBIDs: two identities, each with its own history, and neither supersedes the
         // other. Before this version they collapsed to one hash and the later claim won.
         HybridERC721ERC1155 hybrid = new HybridERC721ERC1155();
         hybrid.mint721(alice, 77);
@@ -1000,7 +1000,7 @@ contract Adapter8004Test is Test {
         uint256 agentId =
             adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://slots", _emptyMetadata());
         vm.prank(alice);
-        adapter.setWalletUBI(IERC8217.Standard.ERC721, address(token721), 1);
+        adapter.setWalletUBID(IERC8217.Standard.ERC721, address(token721), 1);
 
         assertEq(vm.load(address(adapter), bytes32(uint256(0))), sentinel, "slot 0 must never be touched");
 

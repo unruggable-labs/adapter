@@ -19,7 +19,7 @@ contract ConstructorAccountBinder {
     Adapter8004 private immutable ADAPTER;
 
     uint256 public agentId;
-    bytes32 public ubi;
+    bytes32 public ubid;
     uint256 public codeLengthDuringConstruction;
 
     constructor(Adapter8004 adapter, bool useCounterfactual) {
@@ -27,7 +27,7 @@ contract ConstructorAccountBinder {
         codeLengthDuringConstruction = address(this).code.length;
 
         if (useCounterfactual) {
-            ubi = adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), 0, "ipfs://ctor-cf");
+            ubid = adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), 0, "ipfs://ctor-cf");
         } else {
             agentId = adapter.register(IERC8217.Standard.ACCOUNT, address(this), 0, "ipfs://ctor");
         }
@@ -83,14 +83,14 @@ contract Adapter8004AccountTest is Test {
 
     function testAccountCounterfactualRegisterFromCodelessAddress() external {
         vm.prank(eoa);
-        bytes32 ubi = adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://cf");
+        bytes32 ubid = adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, eoa, 0, "ipfs://cf");
         assertEq(
-            ubi, adapter.hashBinding(IERC8217.Standard.ACCOUNT, eoa, 0), "hash is the ACCOUNT identity for this pair"
+            ubid, adapter.hashBinding(IERC8217.Standard.ACCOUNT, eoa, 0), "hash is the ACCOUNT identity for this pair"
         );
         // Inverted from the pre-`0.0.17` assertion, which required this to equal the hash for any
         // other standard at the same pair. The standard is in the preimage now, so `(eoa, 0)` claimed
         // as `ACCOUNT` and the same pair claimed as `ERC721` are two identities, not one.
-        assertTrue(ubi != adapter.hashBinding(IERC8217.Standard.ERC721, eoa, 0), "hash is standard-specific");
+        assertTrue(ubid != adapter.hashBinding(IERC8217.Standard.ERC721, eoa, 0), "hash is standard-specific");
     }
 
     /// @dev The motivating defect. Before this change the code test was the only gate, so whether an
@@ -209,7 +209,7 @@ contract Adapter8004AccountTest is Test {
 
         assertEq(binder.codeLengthDuringConstruction(), 0, "premise: no runtime code during construction");
         assertEq(
-            binder.ubi(),
+            binder.ubid(),
             adapter.hashBinding(IERC8217.Standard.ACCOUNT, address(binder), 0),
             "hash matches the pair under the standard it claimed"
         );
