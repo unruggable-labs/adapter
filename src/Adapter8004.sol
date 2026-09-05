@@ -604,15 +604,13 @@ contract Adapter8004 is
     function _revoke(bytes32 attestationId) private {
         emit AttestationRevoked(attestationId, msg.sender);
     }
-    /// @dev Fail-closed `DEFAULT_ADMIN_ROLE` probe. The answer is read as a raw word rather than
-    /// decoded as a `bool`, because decoding reverts on anything outside 0 and 1 and would let a
-    /// non-conforming contract break the check instead of failing it. Missing or wrong-length grants
-    /// nobody.
+    /// @dev Accepts only a successful, exactly 32-byte canonical `true` (word 1). Decode as a
+    /// raw word so malformed booleans return false rather than causing a decoding revert.
 
     function _hasDefaultAdminRole(address target, address account) private view returns (bool) {
         (bool ok, bytes memory ret) =
             target.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), account));
-        return ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0;
+        return ok && ret.length == 32 && abi.decode(ret, (uint256)) == 1;
     }
 
     /// @dev **Every future implementation MUST use the same `identityRegistry`.** Not enforced

@@ -37,7 +37,7 @@ contract NoRoleBinder {
 }
 
 /// @notice Returns a word outside 0 and 1 for a `bool` return, which would revert a plain
-/// `abi.decode(ret, (bool))`. The raw-word decode exists so this fails or passes cleanly instead.
+/// `abi.decode(ret, (bool))`. The probe must deny authority without a decoding revert.
 contract DirtyRoleBinder {
     Adapter8004 internal immutable ADAPTER;
 
@@ -120,13 +120,74 @@ contract Adapter8004ContractAdminTest is Test {
         adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
     }
 
-    /// @dev The raw-word decode is what makes this a decision rather than a revert. Any non-zero word
-    /// counts as holding the role.
-    function testDirtyBooleanReturnIsHandled() external {
+    function testDirtyBooleanReturnCannotAuthorizeRegistration() external {
         DirtyRoleBinder binder = new DirtyRoleBinder(adapter);
-        uint256 agentId = _bindAs(stranger, address(binder));
 
-        assertTrue(adapter.isController(agentId, stranger), "a non-zero word counts as holding the role");
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, stranger, type(uint256).max));
+        adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://dirty");
+    }
+
+    function _assertAdminDenied(address binder, uint256 agentId) internal {
+        assertFalse(adapter.isController(agentId, admin), "invalid response must deny without a decoding revert");
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, agentId));
+        adapter.setAgentURI(agentId, "ipfs://denied");
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
+        adapter.counterfactualRegister(IERC8217.Standard.CONTRACT_ADMIN, binder, 0, "ipfs://denied");
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
+        adapter.register(IERC8217.Standard.CONTRACT_ADMIN, binder, 0, "ipfs://denied");
+    }
+
+    function testFuzzRoleResponseOnlyAcceptsCanonicalTrue(uint256 word) external {
+        AdminBinder binder = new AdminBinder(adapter, admin);
+        uint256 agentId = _bindAs(admin, address(binder));
+        vm.mockCall(address(binder), abi.encodeCall(binder.hasRole, (bytes32(0), admin)), abi.encode(word));
+
+        if (word == 1) {
+            assertTrue(adapter.isController(agentId, admin));
+            vm.prank(admin);
+            adapter.setAgentURI(agentId, "ipfs://canonical");
+            assertEq(adapter.tokenURI(agentId), "ipfs://canonical");
+        } else {
+            _assertAdminDenied(address(binder), agentId);
+        }
+    }
+
+    function testMalformedBooleanWordsDenyExistingAdmin() external {
+        AdminBinder binder = new AdminBinder(adapter, admin);
+        uint256 agentId = _bindAs(admin, address(binder));
+        uint256[5] memory words = [uint256(0), 2, 42, 256, type(uint256).max];
+        for (uint256 i; i < words.length; ++i) {
+            vm.mockCall(address(binder), abi.encodeCall(binder.hasRole, (bytes32(0), admin)), abi.encode(words[i]));
+            _assertAdminDenied(address(binder), agentId);
+        }
+    }
+
+    function testFuzzWrongLengthRoleResponseIsDenied(uint8 responseLength) external {
+        vm.assume(responseLength != 32);
+        AdminBinder binder = new AdminBinder(adapter, admin);
+        uint256 agentId = _bindAs(admin, address(binder));
+        bytes memory response = new bytes(responseLength);
+        // Even a canonical true followed by trailing bytes is not an exact boolean response.
+        if (responseLength > 32) response[31] = 0x01;
+        vm.mockCall(address(binder), abi.encodeCall(binder.hasRole, (bytes32(0), admin)), response);
+
+        _assertAdminDenied(address(binder), agentId);
+    }
+
+    function testRevertingRoleProbeDeniesExistingAdmin() external {
+        AdminBinder binder = new AdminBinder(adapter, admin);
+        uint256 agentId = _bindAs(admin, address(binder));
+        // A failed call must be rejected even when its revert data looks like canonical true.
+        vm.mockCallRevert(address(binder), abi.encodeCall(binder.hasRole, (bytes32(0), admin)), abi.encode(uint256(1)));
+
+        _assertAdminDenied(address(binder), agentId);
     }
 
     /// @dev The role is read on every call, so it is not captured at bind time.

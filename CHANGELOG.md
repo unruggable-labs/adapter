@@ -52,6 +52,12 @@ rides the cutover `0.0.14` already forces, and re-keys no stored value.
 
 ## [0.0.17] - Unreleased
 
+**Canonical admin-role responses:** `CONTRACT_ADMIN` now requires `hasRole` to return exactly
+one 32-byte word equal to `1`. Other words, including nonzero malformed booleans, deny authority
+without a boolean-decoding revert. This supersedes the earlier nonzero-word acceptance policy;
+standard `true`/`false` responses are unchanged. Regression and fuzz tests cover word values,
+response lengths, and reverted probes across controller reads, registration, and protected writes.
+
 **Latest wallet-claim simplification:** reverse wallet-to-UBID claims are now strictly
 `msg.sender`-only. Removed `setWalletUBIDFor(address,uint8,address,uint256)`,
 `clearWalletUBIDFor(address)`, `NotAccountController`, `_controlsAccount`, and its otherwise-unused
