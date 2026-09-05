@@ -1,5 +1,10 @@
 # Proposal: Separate reverse-resolution systems for ERC-8004 vs counterfactual
 
+**Latest supersession (`0.0.17`):** wallet UBID claims are now emit-only and caller-only.
+`setWalletUBIDFor`, `clearWalletUBIDFor`, and `_controlsAccount` are removed. Smart wallets
+execute `setWalletUBID` / `clearWalletUBID` themselves. No wallet mappings, getter, or unset
+sentinel remain. The body below is historical; see the current README and changelog.
+
 **Status:** proposal (product intent; implementation plan TBD)  
 **Target release:** `0.0.14` (bundle with primary-system split)  
 **Repo:** `/Users/nxt3d/projects/adapter`  

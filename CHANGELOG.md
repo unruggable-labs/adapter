@@ -52,6 +52,18 @@ rides the cutover `0.0.14` already forces, and re-keys no stored value.
 
 ## [0.0.17] - Unreleased
 
+**Latest wallet-claim simplification:** reverse wallet-to-UBID claims are now strictly
+`msg.sender`-only. Removed `setWalletUBIDFor(address,uint8,address,uint256)`,
+`clearWalletUBIDFor(address)`, `NotAccountController`, `_controlsAccount`, and its otherwise-unused
+`_staticReturnsAddress` helper. The remaining `setWalletUBID` / `clearWalletUBID` calls must be
+executed by the wallet itself, with smart-wallet authorization enforced by that wallet. The
+combined `counterfactualSetAgentWalletAndUBID` path uses the same caller-only private setter.
+`WalletUBIDSet` and `WalletUBIDCleared` retain their existing ABI and topics; their account and
+actor fields now always match. No storage layout or UBID preimage changes. `_hasDefaultAdminRole`
+remains for `CONTRACT_ADMIN` identity management. Earlier entries below describe intermediate
+unreleased designs; their acting-for wallet APIs and authorization policies are superseded by
+this removal.
+
 **This is the version the artifact carries.** `0.0.14` through `0.0.17` are one
 implementation, not four releases. None has been deployed. They are separate
 sections because they group unrelated work, not because they ship separately:

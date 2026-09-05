@@ -24,6 +24,17 @@ contract PrimaryOwnableAccount {
     constructor(address owner_) {
         owner = owner_;
     }
+
+    function execute(address target, bytes calldata data) external returns (bytes memory result) {
+        require(msg.sender == owner, "wallet: not owner");
+        bool ok;
+        (ok, result) = target.call(data);
+        require(ok, "wallet: call failed");
+    }
+
+    function getOwner() external view returns (address) {
+        return owner;
+    }
 }
 
 contract PrimaryAccessControlAccount {
@@ -127,45 +138,72 @@ contract Adapter8004PrimaryAgentTest is Test {
         assertEq(logs[0].topics[2], bytes32(0), "a zero identity is emitted as itself");
     }
 
-    /// @dev The designation is recorded for the named account, not the caller, so the event has to
-    /// carry the account rather than whoever was authorized to act for it.
-    function testOwnerAndDefaultAdminControlTheForSurface() external {
+    /// @dev The wallet's execution policy authorizes its owner. The adapter sees the wallet,
+    /// not that owner or the transaction origin, as both the account and actor in each event.
+    function testSmartWalletExecutesItsOwnSetAndClear() external {
         PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
+        // Even reverting ownership probes cannot affect a wallet's own claim.
+        vm.mockCallRevert(address(owned), abi.encodeWithSignature("owner()"), bytes("no probing"));
+        vm.mockCallRevert(address(owned), abi.encodeWithSignature("getOwner()"), bytes("no probing"));
+        vm.mockCallRevert(
+            address(owned), abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), alice), bytes("no probing")
+        );
+        bytes32 expected = adapter.hashBinding(STD, token, 1);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletUBIDSet(address(owned), adapter.hashBinding(STD, token, 1), token, 1, STD, alice);
+        emit WalletUBIDSet(address(owned), expected, token, 1, STD, address(owned));
         vm.prank(alice);
-        assertEq(adapter.setWalletUBIDFor(address(owned), STD, token, 1), adapter.hashBinding(STD, token, 1));
+        bytes memory result = owned.execute(address(adapter), abi.encodeCall(adapter.setWalletUBID, (STD, token, 1)));
+        assertEq(abi.decode(result, (bytes32)), expected);
 
-        PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
-        access.grant(bob);
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletUBIDSet(address(access), adapter.hashBinding(STD, token, 2), token, 2, STD, bob);
-        vm.prank(bob);
-        assertEq(adapter.setWalletUBIDFor(address(access), STD, token, 2), adapter.hashBinding(STD, token, 2));
+        vm.expectEmit(true, true, false, true, address(adapter));
+        emit WalletUBIDCleared(address(owned), address(owned));
+        vm.prank(alice);
+        owned.execute(address(adapter), abi.encodeCall(adapter.clearWalletUBID, ()));
     }
 
-    /// @dev A clear from a different authorized party than the one that set is honoured, because
-    /// both functions authorize against the account rather than against whoever wrote last. The
-    /// projection rule says so and this is the on-chain half of it.
-    function testAnyAuthorizedPartyMayClearWhatAnotherSet() external {
+    function testRemovedForSelectorsRejectSelfOwnersAdminsAndStrangers() external {
+        PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
         PrimaryAccessControlAccount access = new PrimaryAccessControlAccount();
-        access.grant(alice);
         access.grant(bob);
-
-        vm.prank(alice);
-        adapter.setWalletUBIDFor(address(access), STD, token, 1);
-
-        vm.expectEmit(true, true, true, true, address(adapter));
-        emit WalletUBIDCleared(address(access), bob);
-        vm.prank(bob);
-        adapter.clearWalletUBIDFor(address(access));
+        vm.recordLogs();
+        _assertForSelectorsRemoved(address(owned), alice);
+        _assertForSelectorsRemoved(address(owned), bob);
+        _assertForSelectorsRemoved(address(access), bob);
+        _assertForSelectorsRemoved(address(owned), address(owned));
+        _assertForSelectorsRemoved(alice, alice);
+        _assertForSelectorsRemoved(alice, bob);
+        assertEq(vm.getRecordedLogs().length, 0, "removed entry points emit nothing");
     }
 
-    function testNonControllerRejectedOnTheForSurface() external {
+    function _assertForSelectorsRemoved(address account, address caller) private {
+        vm.prank(caller);
+        (bool setOk,) = address(adapter).call(
+            abi.encodeWithSignature("setWalletUBIDFor(address,uint8,address,uint256)", account, STD, token, 1)
+        );
+        assertFalse(setOk, "setWalletUBIDFor must not resolve");
+        vm.prank(caller);
+        (bool clearOk,) = address(adapter).call(abi.encodeWithSignature("clearWalletUBIDFor(address)", account));
+        assertFalse(clearOk, "clearWalletUBIDFor must not resolve");
+    }
+
+    function testOwnersDirectCallsOnlyNameTheOwner() external {
         PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotAccountController.selector, address(owned), bob));
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit WalletUBIDSet(alice, adapter.hashBinding(STD, token, 1), token, 1, STD, alice);
+        vm.prank(alice);
+        adapter.setWalletUBID(STD, token, 1);
+        vm.expectEmit(true, true, false, true, address(adapter));
+        emit WalletUBIDCleared(alice, alice);
+        vm.prank(alice);
+        adapter.clearWalletUBID();
+        assertTrue(address(owned) != alice);
+    }
+
+    function testUnauthorizedCallerCannotExecuteThroughSmartWallet() external {
+        PrimaryOwnableAccount owned = new PrimaryOwnableAccount(alice);
+        vm.expectRevert(bytes("wallet: not owner"));
         vm.prank(bob);
-        adapter.setWalletUBIDFor(address(owned), STD, token, 1);
+        owned.execute(address(adapter), abi.encodeCall(adapter.setWalletUBID, (STD, token, 1)));
     }
 
     /// @dev Clearing an account that never set one is a recorded no-op, not a revert, so an indexer
@@ -174,6 +212,20 @@ contract Adapter8004PrimaryAgentTest is Test {
         vm.expectEmit(true, true, true, true, address(adapter));
         emit WalletUBIDCleared(alice, alice);
         vm.prank(alice);
+        adapter.clearWalletUBID();
+    }
+
+    function testFuzzWalletEventsAlwaysNameImmediateCaller(address caller, uint256 tokenId) external {
+        vm.assume(caller != address(0));
+        bytes32 expected = adapter.hashBinding(STD, token, tokenId);
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit WalletUBIDSet(caller, expected, token, tokenId, STD, caller);
+        vm.prank(caller);
+        assertEq(adapter.setWalletUBID(STD, token, tokenId), expected);
+
+        vm.expectEmit(true, true, false, true, address(adapter));
+        emit WalletUBIDCleared(caller, caller);
+        vm.prank(caller);
         adapter.clearWalletUBID();
     }
 }

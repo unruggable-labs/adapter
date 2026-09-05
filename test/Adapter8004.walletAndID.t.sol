@@ -93,18 +93,24 @@ contract Adapter8004WalletAndIDTest is Test {
         assertEq(_designationOf(alice), bytes32(0), "no designation recorded");
     }
 
-    /// @dev The `For` variant reaches the same private writer, so it must reject identically rather
-    /// than becoming the way around the guard.
-    function testWalletUBIDForRejectsTheSameCoordinates() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
+    /// @dev The removed selector cannot bypass coordinate validation or emit a claim.
+    function testRemovedWalletUBIDForRejectsInvalidCoordinates() external {
+        vm.recordLogs();
+        vm.prank(alice);
+        (bool nonCanonicalOk,) = address(adapter).call(
+            abi.encodeWithSignature(
+                "setWalletUBIDFor(address,uint8,address,uint256)", alice, IERC8217.Standard.ACCOUNT, address(token), 1
+            )
         );
+        assertFalse(nonCanonicalOk);
         vm.prank(alice);
-        adapter.setWalletUBIDFor(alice, IERC8217.Standard.ACCOUNT, address(token), 1);
-
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        vm.prank(alice);
-        adapter.setWalletUBIDFor(alice, IERC8217.Standard.ERC721, address(0), 1);
+        (bool zeroAddressOk,) = address(adapter).call(
+            abi.encodeWithSignature(
+                "setWalletUBIDFor(address,uint8,address,uint256)", alice, IERC8217.Standard.ERC721, address(0), 1
+            )
+        );
+        assertFalse(zeroAddressOk);
+        assertEq(vm.getRecordedLogs().length, 0);
     }
 
     /// @dev The guard must reject only what the claim paths already reject, so it cannot cost anyone

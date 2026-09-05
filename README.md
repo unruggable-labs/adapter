@@ -141,7 +141,7 @@ Values `0`-`4` name a token *within* a contract, so their binding coordinate is 
 - `tokenId` MUST be `0` for all three values. An account-level binding has exactly one canonical coordinate. Any other id reverts `NonZeroTokenIdForAccount(boundAddress, tokenId)`; the adapter rejects rather than silently coercing to `0`, so the caller's binding and the UBID always match the id submitted. The check runs at both authority choke points, covering `register` and every unsigned counterfactual writer.
 - Under `ACCOUNT` (value `5`), the controller is the bound address itself, and only that address. There is no holder, delegate, owner, or admin route in. A large token balance grants nothing, an optional `owner()` on the bound contract grants nothing, and the adapter admin grants nothing. The adapter makes zero external authority calls on this branch: it probes neither `ownerOf`, `owner()`, nor either `balanceOf` shape. This is the permanent-controller model; the bound address never loses authority.
 - Under `CONTRACT_OWNABLE` (value `6`), authority is the contract's current `owner()` and delegate.xyz delegates of that owner, and **not** the bound `boundAddress` itself. Choosing value `6` is the binding contract's explicit opt-in to that probe. Self-authority is deliberately excluded: any contract with a generic call mechanism, an upgradeable implementation, or an inducible callback could otherwise seize its own identity without the owner acting, while the name of the standard promises the owner controls it. A contract that wants to control its own identity binds as `ACCOUNT` instead.
-- Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. It also closes an asymmetry: `setWalletUBIDFor` has always accepted a `DEFAULT_ADMIN_ROLE` holder, so before this an admin could point a contract's wallet at an identity while being unable to manage an identity bound to it.
+- Under `CONTRACT_ADMIN` (value `7`), authority is any holder of the bound contract's `DEFAULT_ADMIN_ROLE`, which is `bytes32(0)`, and nobody else. It exists for an AccessControl contract that exposes no `owner()`, which could otherwise only bind as `ACCOUNT` and route every identity update through its own code. This authorizes identity management only; a wallet's reverse UBID claim must come from the wallet itself.
 - **`ACCOUNT` accepts any address, with or without runtime code.** It is the only standard that applies no code test, and it can afford not to because it is the only one that never calls the address it names: authority is the single comparison `msg.sender == boundAddress`. Every other standard still requires code, because `ownerOf`, `balanceOf`, `owner()` or `hasRole` must be callable, and a code-less address reverts `InvalidBoundAddress`. The zero address and the identity registry are rejected under every standard, `ACCOUNT` included.
 - **EIP-7702 changes what `ACCOUNT` authority means, and this is worth reading before using it.** A delegation designator puts code behind an externally owned account, so `msg.sender == boundAddress` is not proof of key possession. Authority is precisely *whoever can cause a call to originate from that address*: the key holder, plus anyone able to drive the delegate to make an outbound call if a delegation is installed. **An address bound as `ACCOUNT` can install a delegation afterwards, permanently widening who can act for that identity, and a binding is immutable so this cannot be undone.** Revoking the delegation narrows the set again. This is the same accepted shape as a `CONTRACT_OWNABLE` contract renouncing ownership: an action taken outside the adapter, by the party the standard trusts, that permanently changes who can authorize. Counterfactual claims are less exposed, because they are emit-only and last-event-wins, so a key holder who revokes can re-emit and win again.
 
@@ -309,14 +309,13 @@ function mint(address buyer, uint256 tokenId, string calldata agentURI) external
     );
     _mint(buyer, tokenId);
 
-    // Optional: when this caller is authorized for `buyer` under the wallet-pointer account-control
-    // model, point the buyer's wallet at the identity just claimed.
-    adapter.setWalletUBIDFor(buyer, IERC8217.Standard.ERC721, address(this), tokenId);
+    // The buyer's wallet separately opts into a reverse UBID claim; minting cannot make it for them.
 }
 ```
 
-If the collection cannot authorize `setWalletUBIDFor`, the buyer can set the pointer themselves with
-`setWalletUBID(standard, boundAddress, tokenId)`.
+The buyer's wallet can then call `setWalletUBID(standard, boundAddress, tokenId)` itself.
+A smart wallet executes that call through its own authorization policy, so the adapter sees the
+wallet address as `msg.sender`.
 
 ### 2b. There Is No Way To Bind An Existing Agent
 
@@ -536,21 +535,21 @@ Reserved key on the counterfactual write surface: `agent-binding`, and nothing e
 
 > BREAKING-CHANGE WARNING. Adding, removing, or reordering any field in a counterfactual event changes the event signature, which changes the `keccak256` topic. Indexers watching the old topic stop receiving events on the upgraded implementation. Treat any change to these event ABIs as a hard cutover: bump the implementation, document the cutover block, and require every downstream indexer to subscribe to the new topics from that block forward.
 
-### Independent wallet-id systems
+### Wallet UBID self-claims
 
 A wallet points at one UBID to speak for it. The pointer is needed because `wallet -> agent` is one to many: ERC-8004's `setAgentWallet` makes every agent prove the wallet consented, so many agents can validly list one wallet and the reverse direction is ambiguous. This mapping is how the wallet chooses. It is an account assertion, not proof: consumers must also verify the corresponding counterfactual wallet event.
 
-- `setWalletUBID(standard, boundAddress, tokenId)` / `setWalletUBIDFor(account, standard, boundAddress, tokenId)`
-- `clearWalletUBID()` / `clearWalletUBIDFor(account)`
-- `walletUBIDOf(account) -> bytes32`
+- `setWalletUBID(standard, boundAddress, tokenId)` records a claim for `msg.sender`
+- `clearWalletUBID()` clears only `msg.sender`'s claim
 - `counterfactualSetAgentWalletAndUBID(standard, boundAddress, tokenId) -> bytes32` names the caller
   as the wallet and points that wallet back at the identity in one call, returning the identity it
   derived. No signature is needed because the caller proves control of the token and is the wallet,
   so one actor is authorized on both sides and two agreeing records mean something. Naming a
-  different wallet is still possible through `counterfactualSetAgentWallet` plus `setWalletUBIDFor`,
-  which prove less
-- setters derive the hash; callers cannot store an arbitrary value
-- unset is `WALLET_UBID_UNSET == bytes32(type(uint256).max)`
+  different wallet requires the identity controller to call `counterfactualSetAgentWallet` and
+  that wallet to separately call `setWalletUBID` for itself
+- setters derive the hash; callers cannot supply an arbitrary UBID
+- designation is emit-only: indexers apply `WalletUBIDSet` / `WalletUBIDCleared` in log order;
+  there is no on-chain getter or unset sentinel
 
 **There was a second pointer, wallet to agent id, until `0.0.17`.** It is gone and should not come
 back. An agent id is meaningful only inside the registry that issued it, so a reverse-resolution
@@ -561,7 +560,14 @@ could verify without already knowing the registry, while the adapter had verifie
 genuinely lost is a wallet designating an ERC-8004 agent never bound through this adapter, which is
 out of scope: the adapter can say nothing about such an agent.
 
-`...For` authorization is account self, `owner()` / `getOwner()`, or `DEFAULT_ADMIN_ROLE`. The pointer is set directly by a controller, so it costs the caller gas. An earlier build carried a signed, relayer-submittable variant; it was removed at `0.0.17` before any deployment, and `setWalletUBIDFor` covers the acting-for-an-account case it existed to serve. Adding a gasless path back later is append-only.
+Only the immediate caller may set or clear its reverse claim. `setWalletUBIDFor` and
+`clearWalletUBIDFor` have been removed, together with the owner/getOwner/admin inference helper.
+For an EOA, the wallet sends the transaction. For a smart wallet, its owners/signers authorize the
+wallet to execute the adapter call using the wallet's own rules. An owner, admin, delegate, or relayer
+calling the adapter directly can claim only for its own address, never for another wallet.
+The existing event layouts are unchanged: `account` and `setBy` / `clearedBy` now always equal
+`msg.sender`. This does not change the separate authorization rules for managing a bound identity.
+The signed, relayer-submittable variant was also removed earlier in `0.0.17` before deployment.
 
 This is a hard cutover from unreleased source behavior, not a production storage migration. Neither pointer was ever deployed and the surviving one stores nothing at all, so regular storage is slot 1 alone; slot 0 is the one reserved dead slot, because it is the only one that physically holds data on a live proxy. Old bare-chain-id hashes are invalid. See the [hash vectors](./docs/fixtures/adapter-counterfactual-hashes.md) and the [indexer cutover guide](./docs/adapter-v014-indexer-migration.md).
 
@@ -688,10 +694,7 @@ Counterfactual (emit-only) functions:
 - `interoperableAddress(address account)`
 - `chainIdentifier()`
 - `setWalletUBID(Standard standard, address boundAddress, uint256 tokenId)`
-- `setWalletUBIDFor(address account, Standard standard, address boundAddress, uint256 tokenId)`
 - `clearWalletUBID()`
-- `clearWalletUBIDFor(address account)`
-- `walletUBIDOf(address account)`
 
 ERC-required verification function:
 

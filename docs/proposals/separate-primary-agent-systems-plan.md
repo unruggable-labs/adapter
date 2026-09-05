@@ -1,5 +1,10 @@
 # Implementation plan: separate primary-agent systems and ERC-7930 counterfactual hashes
 
+**Latest supersession (`0.0.17`):** wallet UBID claims are now emit-only and caller-only.
+`setWalletUBIDFor`, `clearWalletUBIDFor`, and `_controlsAccount` are removed. Smart wallets
+execute `setWalletUBID` / `clearWalletUBID` themselves. No wallet mappings, getter, or unset
+sentinel remain. The body below is historical; see the current README and changelog.
+
 **Locked release:** `0.0.14`  
 **Scope:** contracts, interfaces, fixtures, tests, release/deployment documentation  
 **Out of scope:** implementing this plan or changing the underlying full ERC-8004 registry

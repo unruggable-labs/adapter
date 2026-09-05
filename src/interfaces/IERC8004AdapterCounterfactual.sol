@@ -85,8 +85,10 @@ interface IERC8004AdapterCounterfactual {
     // derives the value from the coordinates rather than taking it from the caller, but the
     // designation itself is only a self-assertion, so a consumer should confirm the identity points
     // back at the wallet before trusting it. Projecting in log order, the latest `WalletUBIDSet` per
-    // account wins and `WalletUBIDCleared` unsets; both authorize against the account, so any
-    // authorized party may undo any other. A wallet-to-agent-id surface sat here until `0.0.17` and should not be
+    // account wins and `WalletUBIDCleared` unsets. Only the wallet itself may emit either claim:
+    // the account and actor are always `msg.sender`. Smart wallets execute these calls through
+    // their own authorization policy; the adapter does not probe owners or admins on their behalf.
+    // A wallet-to-agent-id surface sat here until `0.0.17` and should not be
     // re-added; see CHANGELOG 0.0.17 Removed for why.
 
     /// @notice Records the caller's own wallet UBID. Nothing here checks that the caller holds the token,
@@ -95,19 +97,9 @@ interface IERC8004AdapterCounterfactual {
         external
         returns (bytes32 bindingHash);
 
-    /// @notice Records `account`'s wallet UBID on its behalf, reverting `NotAccountController` unless the
-    /// caller is authorized to act for `account`.
-    function setWalletUBIDFor(address account, IERC8217.Standard standard, address boundAddress, uint256 tokenId)
-        external
-        returns (bytes32 bindingHash);
-
     /// @notice Clears the caller's own wallet UBID. Calling it more than once, or with nothing set, is
     /// harmless and still emits `WalletUBIDCleared`, since the log is the record.
     function clearWalletUBID() external;
-
-    /// @notice Clear `account`'s wallet UBID, under the same authorization rules as
-    /// `setWalletUBIDFor`.
-    function clearWalletUBIDFor(address account) external;
 
     /// @notice Announces a counterfactual identity claim. Consumers key on `ubid`, never on
     /// `(boundAddress, tokenId)`, which does not name a standard. Later events supersede earlier ones

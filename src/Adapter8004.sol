@@ -63,8 +63,6 @@ contract Adapter8004 is
     error NonZeroTokenIdForAccount(address boundAddress, uint256 tokenId);
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
-    /// @notice Thrown when the caller is not the account, its `owner()`/`getOwner()`, or a `DEFAULT_ADMIN_ROLE` holder.
-    error NotAccountController(address account, address caller);
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
     /// @notice Thrown when an upgrade target carries a different ERC-8004 registry than this implementation.
@@ -484,10 +482,8 @@ contract Adapter8004 is
             _bindingHash(standard, boundAddress, tokenId), boundAddress, tokenId, standard, msg.sender, msg.sender
         );
 
-        // 4. Point the caller's wallet back at this identity, reusing the setter that carries the
-        //    reserved-hash guard and emits `WalletUBIDSet`, and hand back the identity it
-        //    derived so the caller does not recompute it.
-        bindingHash = _setWalletUBID(msg.sender, standard, boundAddress, tokenId);
+        // 4. Point the caller's own wallet back at this identity and return the derived identifier.
+        bindingHash = _setWalletUBID(standard, boundAddress, tokenId);
     }
 
     /// @inheritdoc IERC8004AdapterCounterfactual
@@ -513,33 +509,22 @@ contract Adapter8004 is
     //  Wallet UBID (reverse resolution: wallet -> UBID)
     // -----------------------------------------------------------------
 
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function setWalletUBID(Standard standard, address boundAddress, uint256 tokenId)
         external
         returns (bytes32 bindingHash)
     {
-        return _setWalletUBID(msg.sender, standard, boundAddress, tokenId);
+        return _setWalletUBID(standard, boundAddress, tokenId);
     }
 
-    function setWalletUBIDFor(address account, Standard standard, address boundAddress, uint256 tokenId)
-        external
-        returns (bytes32 bindingHash)
-    {
-        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        return _setWalletUBID(account, standard, boundAddress, tokenId);
-    }
-
+    /// @inheritdoc IERC8004AdapterCounterfactual
     function clearWalletUBID() external {
-        _clearWalletUBID(msg.sender);
-    }
-
-    function clearWalletUBIDFor(address account) external {
-        if (!_controlsAccount(account, msg.sender)) revert NotAccountController(account, msg.sender);
-        _clearWalletUBID(account);
+        emit WalletUBIDCleared(msg.sender, msg.sender);
     }
 
     /// @dev Validates `standard`, `boundAddress` and `tokenId` before hashing them, so this cannot name
-    /// an identity no real binding could match.
-    function _setWalletUBID(address account, Standard standard, address boundAddress, uint256 tokenId)
+    /// an identity no real binding could match. The claim is always for the immediate caller.
+    function _setWalletUBID(Standard standard, address boundAddress, uint256 tokenId)
         private
         returns (bytes32 bindingHash)
     {
@@ -553,11 +538,7 @@ contract Adapter8004 is
         bindingHash = _bindingHash(standard, boundAddress, tokenId);
 
         // 4. Emit the designation, which is the only record this function produces.
-        emit WalletUBIDSet(account, bindingHash, boundAddress, tokenId, standard, msg.sender);
-    }
-
-    function _clearWalletUBID(address account) private {
-        emit WalletUBIDCleared(account, msg.sender);
+        emit WalletUBIDSet(msg.sender, bindingHash, boundAddress, tokenId, standard, msg.sender);
     }
 
     // -----------------------------------------------------------------
@@ -624,20 +605,6 @@ contract Adapter8004 is
     function _revoke(bytes32 attestationId) private {
         emit AttestationRevoked(attestationId, msg.sender);
     }
-    /// @dev True when `caller` controls `account`: the account itself, its `owner()` or `getOwner()`,
-    /// or a `DEFAULT_ADMIN_ROLE` holder. The probes are best-effort static calls, so an account that
-    /// does not implement them simply fails to match.
-    function _controlsAccount(address account, address caller) private view returns (bool) {
-        if (caller == account) return true;
-
-        // Ownable: owner(), then getOwner() as a fallback.
-        if (_staticReturnsAddress(account, abi.encodeWithSignature("owner()"), caller)) return true;
-        if (_staticReturnsAddress(account, abi.encodeWithSignature("getOwner()"), caller)) return true;
-
-        // AccessControl: DEFAULT_ADMIN_ROLE.
-        return _hasDefaultAdminRole(account, caller);
-    }
-
     /// @dev Fail-closed `DEFAULT_ADMIN_ROLE` probe. The answer is read as a raw word rather than
     /// decoded as a `bool`, because decoding reverts on anything outside 0 and 1 and would let a
     /// non-conforming contract break the check instead of failing it. Missing or wrong-length grants
@@ -646,19 +613,6 @@ contract Adapter8004 is
         (bool ok, bytes memory ret) =
             target.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), account));
         return ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0;
-    }
-
-    /// @dev True only when `account` returns exactly one clean address word equal to `expected`.
-    /// Malformed data counts as no match, so a hostile account cannot break the control check.
-    function _staticReturnsAddress(address account, bytes memory callData, address expected)
-        private
-        view
-        returns (bool)
-    {
-        (bool ok, bytes memory ret) = account.staticcall(callData);
-        if (!ok || ret.length != 32) return false;
-        uint256 word = abi.decode(ret, (uint256));
-        return word <= type(uint160).max && address(uint160(word)) == expected;
     }
 
     /// @dev Runs against the outgoing implementation, so it can inspect the incoming one first. The
