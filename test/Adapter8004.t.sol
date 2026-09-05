@@ -954,19 +954,19 @@ contract Adapter8004Test is Test {
         assertEq(adapter.owner(), admin);
     }
 
-    /// @dev The guard that makes the registry unchangeable across upgrades too, not just within
-    /// one implementation. `upgradeToAndCall` runs against the OUTGOING implementation, so it reads
-    /// the incoming one's baked registry and refuses a mismatch. Without this an owner could repoint
-    /// the proxy by upgrading, which would put audit finding G2-01 straight back.
-    function testUpgradeRejectsAnImplementationBakedWithADifferentRegistry() external {
+    /// @dev Records that repointing across an upgrade is NOT blocked on-chain. The check that once
+    /// did this was removed: it governed only the next upgrade and a hostile implementation could
+    /// spoof it, so it constrained nobody. Keeping the registry constant is an operator commitment,
+    /// documented on `_authorizeUpgrade`. This test exists so that if someone adds a guard back, it
+    /// fails and they read why.
+    function testUpgradeToADifferentRegistryIsNotBlockedOnChain() external {
         Adapter8004V2 wrongRegistry = new Adapter8004V2(address(registry2));
         assertEq(address(wrongRegistry.identityRegistry()), address(registry2), "premise: it carries the other one");
 
         vm.prank(admin);
-        vm.expectRevert(Adapter8004.RegistryMismatch.selector);
         adapter.upgradeToAndCall(address(wrongRegistry), bytes(""));
 
-        assertEq(address(adapter.identityRegistry()), address(registry), "the proxy still names the original");
+        assertEq(address(adapter.identityRegistry()), address(registry2), "the proxy now names the other one");
     }
 
     /// @dev And accepts one baked with the same registry, so the guard rejects the mismatch rather

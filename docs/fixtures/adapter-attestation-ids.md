@@ -4,7 +4,7 @@ Canonical formula:
 
 ```text
 attestationId = keccak256(abi.encode(
-    adapterInteroperableAddress, attester, ubi, attestationType, blockNumber, variant, data
+    adapterInteroperableAddress, attester, ubid, attestationType, blockNumber, variant, data
 ))
 ```
 
@@ -56,11 +56,11 @@ fixture:
 | Caller `alice` | `0x00000000000000000000000000000000000a11ce` |
 | Caller `bob` | `0x0000000000000000000000000000000000000b0b` |
 
-The target UBI used below is a real four-component UBI, computed with the
+The target UBID used below is a real four-component UBID, computed with the
 standard in the preimage:
 
 ```text
-UBI = keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
+UBID = keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
 ```
 
 With the environment above, `boundAddress = 0x2222222222222222222222222222222222222222`, token id
@@ -73,13 +73,13 @@ With the environment above, `boundAddress = 0x2222222222222222222222222222222222
 
 The two rows differ only in the standard and produce different identities, which is why the standard
 is in the preimage. These are the current values from `adapter-counterfactual-hashes.md`; that
-document also lists three superseded UBI schemes, and an implementation reproducing any of those
-for new hashes is behind. The identifier formula itself did not change when the UBI scheme did: the
+document also lists three superseded UBID schemes, and an implementation reproducing any of those
+for new hashes is behind. The identifier formula itself did not change when the UBID scheme did: the
 target is opaque here, so the identifiers below moved only because their target moved.
 
 ## Identifier vectors
 
-All vectors use the `ERC721` UBI `0x8493…15f9` above. `type` names a constant from the table.
+All vectors use the `ERC721` UBID `0x8493…15f9` above. `type` names a constant from the table.
 
 | # | Caller | Type | Block | `variant` | `data` | `attestationId` |
 |---|---|---|---|---|---|---|
@@ -92,7 +92,7 @@ All vectors use the `ERC721` UBI `0x8493…15f9` above. `type` names a constant 
 > **These have now replaced two earlier sets.** The first set moved when the type stopped being a
 > hash-named `bytes32`, whose raw 32 bytes `abi.encode` placed in the preimage, and became an enum,
 > whose `uint8` sits right-aligned in a word. The second moved when the `extraData` discriminator
-> left the UBI preimage, which changed the target rather than the formula. Both superseded sets are
+> left the UBID preimage, which changed the target rather than the formula. Both superseded sets are
 > listed at the end of this document so an implementation can tell which one it reproduces.
 
 Each pair of vectors pins one component's place in the formula. Vectors 1 and 2 differ only in
@@ -103,7 +103,7 @@ import { encodeAbiParameters, keccak256 } from 'viem'
 export function attestationId(
   adapterInteroperableAddress: `0x${string}`,
   attester: `0x${string}`,
-  ubi: `0x${string}`,
+  ubid: `0x${string}`,
   attestationType: number,
   blockNumber: bigint,
   variant: `0x${string}` = `0x${'00'.repeat(32)}`,
@@ -111,7 +111,7 @@ export function attestationId(
 ) {
   return keccak256(encodeAbiParameters(
     [{type:'bytes'}, {type:'address'}, {type:'bytes32'}, {type:'uint8'}, {type:'uint256'}, {type:'bytes32'}, {type:'bytes'}],
-    [adapterInteroperableAddress, attester, ubi, attestationType, blockNumber, variant, data],
+    [adapterInteroperableAddress, attester, ubid, attestationType, blockNumber, variant, data],
   ))
 }
 ```
@@ -120,7 +120,7 @@ Negative vectors that MUST differ include `abi.encodePacked(...)`, any preimage 
 domain constant, the fields in any other order, a naked adapter address in place of the
 Interoperable Address, the implementation address in place of the proxy, the transaction sender's
 relayer or bundler in place of the calling account, and the superseded hash-named type below in
-place of the enum's `uint8`. A target from any superseded UBI scheme also produces a different
+place of the enum's `uint8`. A target from any superseded UBID scheme also produces a different
 identifier, which is what the second superseded table below records.
 
 ## Superseded: identifiers against the pre-removal cfid
@@ -172,8 +172,29 @@ from `attest(bytes32,bytes32,bytes32,bytes)` to `attest(uint8,bytes32,bytes32,by
 For any one adapter the two derivation schemes cannot collide by construction, because the identifier
 preimage is always the longer of the two. Both carry the same adapter Interoperable Address and so
 grow with it in step: writing `A` for that address padded up to a whole number of words and `D` for
-the payload padded the same way, the four-component UBI encoding is `160 + A` bytes and this
+the payload padded the same way, the four-component UBID encoding is `160 + A` bytes and this
 encoding is `288 + A + D`, a gap of at least 128 bytes whatever the adapter address. For the EVM
 adapter in the environment above the concrete figures are 192 bytes against 320. Stating the gap
 rather than two fixed sizes matters, because neither size is fixed: the Solana namespace stress
 adapter in `adapter-counterfactual-hashes.md` gives 224 and 352 instead, and the gap still holds.
+
+## How these tables were produced
+
+Nothing in this document is transcribed from an earlier revision. Regenerated on 2026-08-31 against
+commit `ede1c60`:
+
+- **Every `attestationId`**, current and superseded, is
+  `cast keccak $(cast abi-encode "f(bytes,address,bytes32,uint8,uint256,bytes32,bytes)" …)` over the
+  environment its row states. The hash-named `bytes32` set uses the same call with `bytes32` in the
+  type position, which is exactly what made those identifiers differ.
+- **The two target hashes** in the standard table are recomputed from
+  `abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId)`, not copied from
+  `adapter-counterfactual-hashes.md`; they agree with that document because both derive from the
+  same preimage.
+- **The five defining strings** are `cast keccak` of the literal string in the adjacent column.
+- **The `attest` and `Attested` signatures** come from `forge inspect Adapter8004 methods` and
+  `forge inspect Adapter8004 events`, which read the compiled contract rather than the prose.
+- **No value in this document changed in the UBI → UBID rename.** The acronym appears in the field
+  name only; the preimage is positional, and the target is opaque to this formula. The `attest`
+  selector `0x6e716d2f` and the `Attested` `topic0` `0x04eac8624fe4790da7f0bc49063d2a9258754fd2d793ab4b6824597240f55220`
+  are unchanged, because neither signature string contains the renamed member.

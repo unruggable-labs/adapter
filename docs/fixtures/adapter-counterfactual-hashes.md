@@ -1,4 +1,4 @@
-# Adapter8004 — ERC-7930 UBI fixture
+# Adapter8004 — ERC-7930 UBID fixture
 
 Canonical formula:
 
@@ -14,17 +14,17 @@ keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenI
 > are retained at the end of this document so that a reimplementer can tell which one their output
 > matches. `standard` is a caller-supplied argument, because it selects the identity.
 
-**Identity.** The identity is the UBI, the Universal Binding Identifier, which is the adapter address plus exactly
+**Identity.** The identity is the UBID, the Universal Binding Identifier, which is the adapter address plus exactly
 `(standard, boundAddress, tokenId)`. One coordinate under one standard is one identity, and the same
-coordinate under two standards is two. Key on the UBI; never collapse rows by
+coordinate under two standards is two. Key on the UBID; never collapse rows by
 `(boundAddress, tokenId)`, which does not name a standard.
 
 **What the standard means here.** It records that the claimer passed *that standard's* authority
 probe at claim time. It is not an assertion that the bound contract conforms to the ERC; the adapter
 probes authority, never `supportsInterface`.
 
-**Attestations key on these UBIs.** The attestation identifier scheme in
-[`adapter-attestation-ids.md`](./adapter-attestation-ids.md) takes a UBI from this document as an
+**Attestations key on these UBIDs.** The attestation identifier scheme in
+[`adapter-attestation-ids.md`](./adapter-attestation-ids.md) takes a UBID from this document as an
 opaque target. The two schemes are derived by the same contract from overlapping material and cannot
 collide, because for any one adapter the identifier preimage is always longer than this one. Both
 carry the same adapter Interoperable Address, so both grow with it in step: writing `A` for the
@@ -176,7 +176,7 @@ before the upgrade.
 The counterfactual event signatures changed alongside each scheme, and `topic0` is the keccak of the
 full signature, so it discriminates schema on its own. At v0.0.15 every event gained a non-indexed
 `bytes32 extraData` and the former `uint8 version` field was removed. At v0.0.17 the five
-counterfactual update events and `WalletUBISet` each gained a non-indexed `uint8
+counterfactual update events and `WalletUBIDSet` each gained a non-indexed `uint8
 standard`, and then `extraData` was dropped from all six of those plus `CounterfactualAgentRegistered`
 and `CounterfactualAgentWalletUnset`, so `topic0` moved once more for every counterfactual event. A
 single log line still carries everything needed to recompute the hash it names. The current values
@@ -190,4 +190,48 @@ are:
 | `CounterfactualMetadataBatchSet(bytes32,address,uint256,uint8,(string,bytes)[],address)` | `0xeae9f3081237409ccdb4af04402271802d256ead57b5ca5eefb6b0b61c62715a` |
 | `CounterfactualAgentWalletSet(bytes32,address,uint256,uint8,address,address)` | `0xe8fa73832d285f8d56860e6d330c5b5fd1793f142062ccfa2cd2f9322f96b7e8` |
 | `CounterfactualAgentWalletUnset(bytes32,address,uint256,uint8,address)` | `0x531cc4f9206c5d286ad84b9b965069e88bfd025f84a64b41bb58d9bfb3b503d8` |
-| `WalletUBISet(address,bytes32,address,uint256,uint8,address)` | `0xc53d80905aaf1d8095f570fa85c068ab1a7e1e496c173d5cf3f3d3761b56a761` |
+| `WalletUBIDSet(address,bytes32,address,uint256,uint8,address)` | `0x5b2d80534e25bc5327adef6249134758fecf5241edc7af36df800bfc54b254d8` |
+| `WalletUBIDCleared(address,address)` | `0x603a296842a0937b44f35112604ccde4ee3e0ed612d054988434da8bfccc6506` |
+
+The wallet row is a Set/Cleared pair and both are listed, because projecting the reverse designation
+requires subscribing to both: per account, the latest `WalletUBIDSet` wins and `WalletUBIDCleared`
+unsets, in log order. `WalletUBIDCleared` was previously absent from this table.
+
+### Superseded wallet-event `topic0` values
+
+Retained for identification only. Do not subscribe. The wallet event was renamed three times inside
+the v0.0.17 cycle and never deployed under any of these names, so a reader holding an earlier copy of
+this document can tell which revision it has:
+
+| Superseded signature | `topic0` |
+|---|---|
+| `PrimaryCounterfactualAgentSet(address,bytes32,address,uint256,uint8,address)` | `0xec43bf83cedfd5f2a5c2e9c6636590cd3cb70d6d77aaf59a6d978be9b3f14d15` |
+| `WalletCounterfactualIDSet(address,bytes32,address,uint256,uint8,address)` | `0xc53d80905aaf1d8095f570fa85c068ab1a7e1e496c173d5cf3f3d3761b56a761` |
+| `WalletUBISet(address,bytes32,address,uint256,uint8,address)` | `0x4daa932807bc786b5c92ceb862ccc35774145630a57a729fa56c5fd376a275fe` |
+
+The second of those is worth naming explicitly: until this revision, the table above carried
+`0xc53d8090…b56a761` against the *then-current* signature string. That hash is the keccak of
+`WalletCounterfactualIDSet(…)`. When the event was renamed the label in the table was updated and the
+hash was not recomputed, so the row named one signature and published another's `topic0`. Anyone who
+subscribed from that row heard nothing.
+
+## How these tables were produced
+
+Nothing in this document is transcribed from an earlier revision. Regenerated on 2026-08-31 against
+commit `ede1c60`:
+
+- **Every `topic0`** comes from `forge inspect Adapter8004 events`, which reads the compiled contract,
+  so the signature strings and their hashes cannot disagree with each other or with the source. The
+  superseded values above, whose events no longer exist to be compiled, are `cast keccak` of the
+  stated string.
+- **Every binding hash** — the namespace table, the standard-varying table, and all three superseded
+  schemes — is `cast keccak $(cast abi-encode …)` over the preimage each section states, recomputed
+  from the stated inputs rather than copied forward. The three EVM values in the namespace table are
+  additionally pinned in `test/Adapter8004.erc7930-frozen.t.sol` as `PUBLISHED_UBID_MAINNET`,
+  `PUBLISHED_UBID_BASE` and `PUBLISHED_UBID_SEPOLIA`, asserted against `hashBinding` on a live
+  contract instance.
+- **The UBID values did not change in the UBI → UBID rename** and are byte-identical to every prior
+  revision of this document. The acronym is not in the preimage; the identifier is
+  `hashBinding(standard, boundAddress, tokenId)` under the adapter's Interoperable Address, and no
+  member name enters it. Only the event `topic0` values moved, because a signature string is hashed
+  by name.

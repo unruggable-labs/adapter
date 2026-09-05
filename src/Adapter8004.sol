@@ -66,7 +66,6 @@ contract Adapter8004 is
     error InvalidChainId();
     error UnknownAgent(uint256 agentId);
     /// @notice Thrown when an upgrade target carries a different ERC-8004 registry than this implementation.
-    error RegistryMismatch();
 
     event AgentBound(
         uint256 indexed agentId,
@@ -609,22 +608,19 @@ contract Adapter8004 is
     /// decoded as a `bool`, because decoding reverts on anything outside 0 and 1 and would let a
     /// non-conforming contract break the check instead of failing it. Missing or wrong-length grants
     /// nobody.
+
     function _hasDefaultAdminRole(address target, address account) private view returns (bool) {
         (bool ok, bytes memory ret) =
             target.staticcall(abi.encodeWithSignature("hasRole(bytes32,address)", bytes32(0), account));
         return ok && ret.length == 32 && abi.decode(ret, (uint256)) != 0;
     }
 
-    /// @dev Runs against the outgoing implementation, so it can inspect the incoming one first. The
-    /// registry is immutable and therefore in each implementation's own code, which is what lets this
-    /// read the incoming value at all.
-    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        // 1. Restrict upgrades to the adapter owner, enforced by the modifier.
-        // 2. Refuse any implementation that would move the proxy to a different ERC-8004 registry.
-        if (Adapter8004(newImplementation).identityRegistry() != identityRegistry) {
-            revert RegistryMismatch();
-        }
-    }
+    /// @dev **Every future implementation MUST use the same `identityRegistry`.** Not enforced
+    /// on-chain: any check here is one upgrade from removal and spoofable anyway. `_bindings` is
+    /// written unconditionally, so a different registry restarts its id sequence and overwrites
+    /// existing bindings. That is audit finding G2-01. Change the registry only after guarding that
+    /// write.
+    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {}
 
     /// @dev Code is required under every standard but `ACCOUNT`, which never calls the address it
     /// names, so a contract can bind itself from its own constructor. Zero is rejected everywhere,

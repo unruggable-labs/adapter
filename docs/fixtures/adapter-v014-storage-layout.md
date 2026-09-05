@@ -31,12 +31,12 @@ Two mappings removed at `0.0.17` show both halves of the rule:
 - `identityRegistry`, slot 0: **reserved**, because all three live proxies physically hold the old
   registry address there. Sliding `_bindings` onto it would read every existing binding against a
   dead word.
-- `_walletAgentID` and `_walletUBI`, formerly slots 2 and 3, and `_primaryAgentNonces`, formerly
+- `_walletAgentID` and `_walletUBID`, formerly slots 2 and 3, and `_primaryAgentNonces`, formerly
   slot 4: **not reserved**, because no deployed implementation ever declared any of them, so nothing
   has ever been written there. The deployed Mainnet/Base and Sepolia baselines declare only
   `identityRegistry` and `_bindings`.
 
-The wallet-to-UBI reverse designation became emit-only at `0.0.17`, so it has no slot at all: the
+The wallet-to-UBID reverse designation became emit-only at `0.0.17`, so it has no slot at all: the
 contract verifies that the caller holds the authority to designate and records that fact in the log.
 `testDirectUpgradeFromMainnetBaseLiveBaselinePreservesSlotsZeroAndOne` runs a designation against a
 live-baseline proxy under `vm.record` and requires zero storage writes.
