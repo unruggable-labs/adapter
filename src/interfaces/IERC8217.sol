@@ -6,7 +6,7 @@ interface IERC8217 {
     /// sits in the preimage of every binding hash, so renumbering silently re-keys every identity
     /// claimed under it and nothing on chain records the old value. Values 0-4 name a token within a
     /// contract; the three account standards name an address itself and pin `tokenId` to 0. Per
-    /// standard authority rules are documented on `Adapter8004._hasBindingControl`.
+    /// standard authority rules are documented on `AdapterImplementation._hasBindingControl`.
     enum Standard {
         ERC721,
         ERC1155,

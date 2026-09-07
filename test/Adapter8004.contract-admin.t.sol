@@ -3,17 +3,17 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 
 /// @notice An AccessControl-style contract with no `owner()`, which is the case this standard exists
 /// for. It could otherwise only bind as plain `ACCOUNT`.
 contract AdminBinder {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     mapping(address => bool) internal admins;
 
-    constructor(Adapter8004 adapter, address initialAdmin) {
+    constructor(AdapterImplementation adapter, address initialAdmin) {
         ADAPTER = adapter;
         admins[initialAdmin] = true;
     }
@@ -29,9 +29,9 @@ contract AdminBinder {
 
 /// @notice Implements no `hasRole` at all, so the probe must fail closed rather than revert.
 contract NoRoleBinder {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
 
-    constructor(Adapter8004 adapter) {
+    constructor(AdapterImplementation adapter) {
         ADAPTER = adapter;
     }
 }
@@ -39,9 +39,9 @@ contract NoRoleBinder {
 /// @notice Returns a word outside 0 and 1 for a `bool` return, which would revert a plain
 /// `abi.decode(ret, (bool))`. The probe must deny authority without a decoding revert.
 contract DirtyRoleBinder {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
 
-    constructor(Adapter8004 adapter) {
+    constructor(AdapterImplementation adapter) {
         ADAPTER = adapter;
     }
 
@@ -51,7 +51,7 @@ contract DirtyRoleBinder {
 }
 
 contract Adapter8004ContractAdminTest is Test {
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
 
     address internal admin = makeAddr("admin");
     address internal stranger = makeAddr("stranger");
@@ -65,9 +65,13 @@ contract Adapter8004ContractAdminTest is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        adapter = Adapter8004(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        adapter = AdapterImplementation(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
     }
 
@@ -88,7 +92,7 @@ contract Adapter8004ContractAdminTest is Test {
 
         assertFalse(adapter.isController(agentId, stranger));
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, stranger, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, stranger, agentId));
         adapter.setAgentURI(agentId, "ipfs://evil");
     }
 
@@ -101,7 +105,7 @@ contract Adapter8004ContractAdminTest is Test {
         assertFalse(adapter.isController(agentId, address(binder)));
 
         vm.prank(address(binder));
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(binder), agentId));
         adapter.setAgentURI(agentId, "ipfs://self");
     }
 
@@ -112,11 +116,13 @@ contract Adapter8004ContractAdminTest is Test {
         NoRoleBinder binder = new NoRoleBinder(adapter);
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, admin, type(uint256).max));
         adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
 
         vm.prank(address(binder));
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), type(uint256).max));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(binder), type(uint256).max)
+        );
         adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://norole");
     }
 
@@ -124,7 +130,9 @@ contract Adapter8004ContractAdminTest is Test {
         DirtyRoleBinder binder = new DirtyRoleBinder(adapter);
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, stranger, type(uint256).max));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, stranger, type(uint256).max)
+        );
         adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 0, "ipfs://dirty");
     }
 
@@ -132,15 +140,15 @@ contract Adapter8004ContractAdminTest is Test {
         assertFalse(adapter.isController(agentId, admin), "invalid response must deny without a decoding revert");
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, admin, agentId));
         adapter.setAgentURI(agentId, "ipfs://denied");
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, admin, type(uint256).max));
         adapter.counterfactualRegister(IERC8217.Standard.CONTRACT_ADMIN, binder, 0, "ipfs://denied");
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, admin, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, admin, type(uint256).max));
         adapter.register(IERC8217.Standard.CONTRACT_ADMIN, binder, 0, "ipfs://denied");
     }
 
@@ -205,7 +213,9 @@ contract Adapter8004ContractAdminTest is Test {
         AdminBinder binder = new AdminBinder(adapter, admin);
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(binder), 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NonZeroTokenIdForAccount.selector, address(binder), 1)
+        );
         adapter.register(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 1, "ipfs://x");
     }
 
@@ -215,7 +225,9 @@ contract Adapter8004ContractAdminTest is Test {
         AdminBinder binder = new AdminBinder(adapter, admin);
 
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(binder), 3));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NonZeroTokenIdForAccount.selector, address(binder), 3)
+        );
         adapter.counterfactualRegister(IERC8217.Standard.CONTRACT_ADMIN, address(binder), 3, "ipfs://x");
     }
 

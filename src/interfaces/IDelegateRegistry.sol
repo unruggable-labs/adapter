@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @notice Minimal local view of the immutable delegate.xyz v2 registry.
-/// Only the read functions `Adapter8004` consults are declared here; the full
+/// Only the read functions `AdapterImplementation` consults are declared here; the full
 /// registry surface (write functions, enumeration) is intentionally omitted.
 /// Canonical v2 deployment: `0x00000000000000447e69651d841bD8D104Bed493` on
 /// Ethereum, Base, and Sepolia. See https://docs.delegate.xyz.

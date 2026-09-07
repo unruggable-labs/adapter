@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC8217} from "./IERC8217.sol";
 import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 
-/// @notice Agent creation entry point for `Adapter8004`: registers through an ERC-8004 registry
+/// @notice Agent creation entry point for `AdapterImplementation`: registers through an ERC-8004 registry
 /// after proving authority over an external bound token. Authority is ordinary current control or,
 /// for ERC-721/ERC-1155F/ERC-6909F only, the directly calling token contract while `ownerOf(tokenId)`
 /// reports no current owner. That temporary collection path closes after mint. Plain ERC-1155 and

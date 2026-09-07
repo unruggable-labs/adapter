@@ -8,7 +8,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IDelegateRegistry} from "../src/interfaces/IDelegateRegistry.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
@@ -106,7 +106,7 @@ contract Adapter8004StorageV014Test is Test {
         assertEq(address(uint160(uint256(vm.load(proxy, bytes32(uint256(0)))))), address(registry));
         _assertSlotsTwoAndThreeEmpty(proxy);
 
-        Adapter8004 adapter = _upgrade(baseline);
+        AdapterImplementation adapter = _upgrade(baseline);
 
         assertEq(address(adapter.identityRegistry()), address(registry));
         IERC8217.Binding memory binding = adapter.bindingOf(7);
@@ -154,7 +154,7 @@ contract Adapter8004StorageV014Test is Test {
         bytes32 bindingSlot = keccak256(abi.encode(uint256(7), uint256(1)));
         assertEq(uint8(uint256(vm.load(proxy, bindingSlot))), 4, "pre-upgrade stored standard byte");
 
-        Adapter8004 adapter = _upgrade(baseline);
+        AdapterImplementation adapter = _upgrade(baseline);
 
         assertEq(uint8(uint256(vm.load(proxy, bindingSlot))), 4, "post-upgrade stored standard byte");
         assertEq(uint8(IERC8217.Standard.ERC6909F), 4);
@@ -182,7 +182,7 @@ contract Adapter8004StorageV014Test is Test {
         assertTrue(baseline.isController(7, hot));
         _assertSlotsTwoAndThreeEmpty(address(baseline));
 
-        Adapter8004 adapter = _upgrade(baseline);
+        AdapterImplementation adapter = _upgrade(baseline);
 
         assertEq(adapter.DELEGATE_REGISTRY(), DELEGATE_REGISTRY);
         assertEq(adapter.DELEGATE_RIGHTS(), DELEGATE_RIGHTS);
@@ -201,10 +201,10 @@ contract Adapter8004StorageV014Test is Test {
         );
     }
 
-    function _upgrade(Adapter8004LiveBaseline baseline) private returns (Adapter8004 adapter) {
-        Adapter8004 replacement = new Adapter8004(address(baseline.identityRegistry()));
+    function _upgrade(Adapter8004LiveBaseline baseline) private returns (AdapterImplementation adapter) {
+        AdapterImplementation replacement = new AdapterImplementation(address(baseline.identityRegistry()));
         baseline.upgradeToAndCall(address(replacement), bytes(""));
-        adapter = Adapter8004(address(baseline));
+        adapter = AdapterImplementation(address(baseline));
     }
 
     function _assertSlotsTwoAndThreeEmpty(address proxy) private view {

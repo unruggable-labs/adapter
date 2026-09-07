@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
@@ -35,7 +35,7 @@ contract OwnedErc1271Wallet {
 /// @notice The two combined setters, which close the wallet loop in one call.
 contract Adapter8004WalletAndIDTest is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token;
     OwnedErc1271Wallet internal wallet;
 
@@ -45,10 +45,11 @@ contract Adapter8004WalletAndIDTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        adapter = Adapter8004(
+        adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
@@ -69,23 +70,23 @@ contract Adapter8004WalletAndIDTest is Test {
     function testWalletUBIDRejectsCoordinatesNoClaimCanMatch() external {
         // `ACCOUNT` with a nonzero id: rejected by both claim paths, so it must be rejected here.
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
+            abi.encodeWithSelector(AdapterImplementation.NonZeroTokenIdForAccount.selector, address(token), uint256(1))
         );
         vm.prank(alice);
         adapter.setWalletUBID(IERC8217.Standard.ACCOUNT, address(token), 1);
 
         // The zero address is the unbound sentinel under every standard.
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         vm.prank(alice);
         adapter.setWalletUBID(IERC8217.Standard.ERC721, address(0), 1);
 
         // A code-less address under a code-requiring standard.
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         vm.prank(alice);
         adapter.setWalletUBID(IERC8217.Standard.ERC721, bob, 1);
 
         // The registry itself, which would resolve control to the adapter once bound.
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.BoundAddressIsRegistry.selector));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.BoundAddressIsRegistry.selector));
         vm.prank(alice);
         adapter.setWalletUBID(IERC8217.Standard.ERC721, address(registry), 1);
 
@@ -222,14 +223,14 @@ contract Adapter8004WalletAndIDTest is Test {
     }
 
     function testCounterfactualCombinedRequiresTokenAuthority() external {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, bob, type(uint256).max));
         vm.prank(bob);
         adapter.counterfactualSetAgentWalletAndUBID(IERC8217.Standard.ERC721, address(token), 1);
     }
 
     /// @dev The forward guard runs first, so a rejected bound address leaves no reverse pointer.
     function testCounterfactualForwardFailureLeavesNoReversePointer() external {
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         vm.prank(alice);
         adapter.counterfactualSetAgentWalletAndUBID(IERC8217.Standard.ERC721, address(0), 1);
         assertEq(_designationOf(alice), bytes32(0), "no orphan reverse record");

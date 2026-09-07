@@ -4,19 +4,19 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
 contract OwnerlessRegisterCollection {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     IERC8217.Standard internal immutable STANDARD;
     bool internal immutable MISSING_RETURNS_ZERO;
 
     mapping(uint256 tokenId => address owner) internal _owners;
 
-    constructor(Adapter8004 adapter, IERC8217.Standard standard, bool missingReturnsZero) {
+    constructor(AdapterImplementation adapter, IERC8217.Standard standard, bool missingReturnsZero) {
         ADAPTER = adapter;
         STANDARD = standard;
         MISSING_RETURNS_ZERO = missingReturnsZero;
@@ -43,12 +43,12 @@ contract OwnerlessRegisterCollection {
 }
 
 contract OwnerlessRegisterPlainMultiToken {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     IERC8217.Standard internal immutable STANDARD;
 
     mapping(address account => mapping(uint256 tokenId => uint256 balance)) internal _balances;
 
-    constructor(Adapter8004 adapter, IERC8217.Standard standard) {
+    constructor(AdapterImplementation adapter, IERC8217.Standard standard) {
         ADAPTER = adapter;
         STANDARD = standard;
     }
@@ -64,7 +64,7 @@ contract OwnerlessRegisterPlainMultiToken {
 
 contract OwnerlessRegisterTest is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
 
     address internal admin = makeAddr("admin");
     address internal buyer = makeAddr("buyer");
@@ -72,9 +72,10 @@ contract OwnerlessRegisterTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
     }
 
     function testOwnerlessCollectionsCanRegisterForEverySingleOwnerStandard() external {
@@ -107,7 +108,7 @@ contract OwnerlessRegisterTest is Test {
         collection.mint(buyer, 11);
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.NotController.selector, address(collection), type(uint256).max)
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(collection), type(uint256).max)
         );
         collection.register(11);
 
@@ -146,7 +147,9 @@ contract OwnerlessRegisterTest is Test {
 
     function _assertPlainMultiTokenExcluded(IERC8217.Standard standard, uint256 tokenId) internal {
         OwnerlessRegisterPlainMultiToken token = new OwnerlessRegisterPlainMultiToken(adapter, standard);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(token), type(uint256).max));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(token), type(uint256).max)
+        );
         token.register(tokenId);
     }
 }

@@ -1,9 +1,9 @@
 # ERC-8004 Identity Adapter
 
-Adapter8004 lets a token holder, account, or contract controller manage an ERC-8004 identity.
+AdapterImplementation lets a token holder, account, or contract controller manage an ERC-8004 identity.
 The adapter proxy owns the identity NFT; a binding determines who can update its record.
 
-This README describes the source version in [Adapter8004.sol](./src/Adapter8004.sol), not every deployed implementation.
+This README describes the source version in [AdapterImplementation.sol](./src/AdapterImplementation.sol), not every deployed implementation.
 Check [Deployments](#deployments) before integrating with a live proxy.
 
 ## How it works
@@ -416,7 +416,7 @@ The direct-owner [UpgradeAdapter.s.sol](./script/UpgradeAdapter.s.sol) is not th
 
 ## Source reference
 
-- [Adapter implementation](./src/Adapter8004.sol)
+- [Adapter implementation](./src/AdapterImplementation.sol)
 - [Binding types and views](./src/interfaces/IERC8217.sol)
 - [Registration interface](./src/interfaces/IERC8004AdapterRegistration.sol)
 - [Registry record interface](./src/interfaces/IERC8004IdentityRecord.sol)

@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockERC721} from "../mocks/MockERC721.sol";
@@ -14,11 +14,11 @@ interface IReentrancyGuardErrors {
 
 /// R1 reentrancy was ownerOf STATICCALL. This is a registry write callback into setAgentURI.
 contract ReenterOnSetURI is IERC8004IdentityRegistry {
-    Adapter8004 public adapter;
+    AdapterImplementation public adapter;
     uint256 public nextId;
     string public lastURI;
 
-    function setAdapter(Adapter8004 adapter_) external {
+    function setAdapter(AdapterImplementation adapter_) external {
         adapter = adapter_;
     }
 
@@ -65,10 +65,11 @@ contract GrokR2_12_RegistryReenterWrite is Test {
     /// Success condition: a registry setAgentURI callback reenters and overwrites the URI.
     function test_defense_registryCallbackCannotReenterSetAgentURI() external {
         ReenterOnSetURI evil = new ReenterOnSetURI();
-        Adapter8004 adapter = Adapter8004(
+        AdapterImplementation adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(evil))), abi.encodeCall(Adapter8004.initialize, (makeAddr("admin")))
+                    address(new AdapterImplementation(address(evil))),
+                    abi.encodeCall(AdapterImplementation.initialize, (makeAddr("admin")))
                 )
             )
         );

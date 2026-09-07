@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 import {MockERC1155} from "../mocks/MockERC1155.sol";
@@ -16,7 +16,7 @@ import {MockERC1155} from "../mocks/MockERC1155.sol";
 /// racing the same key. Defended-by-design: multi-holder control is the documented ERC-1155 model.
 contract SdR3_11_MultiHolderMetadataLastWins is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC1155 internal token;
 
     address internal admin = makeAddr("admin");
@@ -26,9 +26,9 @@ contract SdR3_11_MultiHolderMetadataLastWins is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
         token = new MockERC1155();
         token.mint(holderA, TID, 1);
         token.mint(holderB, TID, 1);
@@ -37,10 +37,12 @@ contract SdR3_11_MultiHolderMetadataLastWins is Test {
     /// Success condition: both co-holders can emit competing counterfactual metadata for one UBID.
     function test_twoHoldersBothAuthorizedToWriteSameKey() external {
         vm.prank(holderA);
-        bytes32 ubidA = adapter.counterfactualSetMetadata(IERC8217.Standard.ERC1155, address(token), TID, "k", bytes("A"));
+        bytes32 ubidA =
+            adapter.counterfactualSetMetadata(IERC8217.Standard.ERC1155, address(token), TID, "k", bytes("A"));
 
         vm.prank(holderB);
-        bytes32 ubidB = adapter.counterfactualSetMetadata(IERC8217.Standard.ERC1155, address(token), TID, "k", bytes("B"));
+        bytes32 ubidB =
+            adapter.counterfactualSetMetadata(IERC8217.Standard.ERC1155, address(token), TID, "k", bytes("B"));
 
         assertEq(ubidA, ubidB, "same UBID; last emitted log wins off-chain, chain does not arbitrate");
     }

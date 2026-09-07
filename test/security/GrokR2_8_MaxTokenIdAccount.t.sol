@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
@@ -12,11 +12,11 @@ contract GrokR2_8_MaxTokenIdAccount is Test {
     /// Success condition: ACCOUNT + tokenId=max is claimable and collides with the canonical (addr, 0) UBID.
     function test_defense_maxTokenIdOnAccountRevertsAndDoesNotCollide() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 adapter = Adapter8004(
+        AdapterImplementation adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))),
-                    abi.encodeCall(Adapter8004.initialize, (makeAddr("admin")))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (makeAddr("admin")))
                 )
             )
         );
@@ -27,7 +27,7 @@ contract GrokR2_8_MaxTokenIdAccount is Test {
         assertTrue(phantom != canonical);
 
         vm.prank(victim);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, victim, maxId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NonZeroTokenIdForAccount.selector, victim, maxId));
         adapter.register(IERC8217.Standard.ACCOUNT, victim, maxId, "ipfs://x");
 
         vm.prank(victim);

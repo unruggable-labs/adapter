@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {InteroperableAddress} from "@openzeppelin/contracts/utils/draft-InteroperableAddress.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
@@ -12,7 +12,7 @@ import {Adapter8004HashHarness, ReferenceErc7930, WordAlignedErc7930} from "./Ad
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
-/// @notice Locks the ERC-7930 encoding that `Adapter8004` now takes from OpenZeppelin.
+/// @notice Locks the ERC-7930 encoding that `AdapterImplementation` now takes from OpenZeppelin.
 ///
 /// # Why this file exists
 ///
@@ -38,23 +38,26 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
     /// @dev The published ERC-721 counterfactual identity for `(VECTOR_TOKEN, 42)` on Ethereum, from
     /// `docs/fixtures/adapter-counterfactual-hashes.md`.
-    bytes32 internal constant PUBLISHED_UBID_MAINNET = 0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
+    bytes32 internal constant PUBLISHED_UBID_MAINNET =
+        0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9;
     bytes32 internal constant PUBLISHED_UBID_BASE = 0x7caa0ee523b99d37d2073eef394484c7b7a29c6d8848a531641c6ad59ac675a3;
-    bytes32 internal constant PUBLISHED_UBID_SEPOLIA = 0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
+    bytes32 internal constant PUBLISHED_UBID_SEPOLIA =
+        0xc753b3b34ad2466a045e80c94ee26ac3a47054333762cb429ae7d8f17e12ac0f;
 
     /// @dev Vector 1 from `docs/fixtures/adapter-attestation-ids.md`.
     bytes32 internal constant PUBLISHED_ATTESTATION_ID =
         0x7fde72c738899c71442073381b50194c322b2ea08732ae9b3ea121e57979b58d;
 
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     Adapter8004HashHarness internal harness;
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        adapter = Adapter8004(
+        adapter = AdapterImplementation(
             address(
                 new ERC1967ProxyShim(
-                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (address(this)))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (address(this)))
                 )
             )
         );
@@ -166,7 +169,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     /// block onward.
     ///
     /// So the correct response to a failure here is to **pin the old OpenZeppelin version, or
-    /// reinstate the frozen `WordAlignedErc7930` encoder in `Adapter8004`**, and to treat the
+    /// reinstate the frozen `WordAlignedErc7930` encoder in `AdapterImplementation`**, and to treat the
     /// encoding change as a breaking upstream event that needs a decision. Editing these literals to
     /// match the new output silently accepts the re-keying and destroys the only evidence it
     /// happened. There is no situation in which changing this test is the right fix.
@@ -399,10 +402,10 @@ contract Adapter8004Erc7930FrozenTest is Test {
     // ----------------------------------------------------------------
 
     function testChainIdZeroRevertsOnBothShapes() external {
-        vm.expectRevert(Adapter8004.InvalidChainId.selector);
+        vm.expectRevert(AdapterImplementation.InvalidChainId.selector);
         harness.chainIdentifierFor(0);
 
-        vm.expectRevert(Adapter8004.InvalidChainId.selector);
+        vm.expectRevert(AdapterImplementation.InvalidChainId.selector);
         harness.interoperableAddressFor(0, VECTOR_ADAPTER);
     }
 
@@ -411,7 +414,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     /// returns it, so this contract refuses to mint an identity nothing could ever own; OpenZeppelin
     /// encodes it as a single zero reference byte.
     function testChainIdZeroDivergenceFromOpenZeppelinSurvives() external {
-        vm.expectRevert(Adapter8004.InvalidChainId.selector);
+        vm.expectRevert(AdapterImplementation.InvalidChainId.selector);
         harness.chainIdentifierFor(0);
 
         assertEq(InteroperableAddress.formatEvmV1(uint256(0)), hex"00010000010000", "OZ encodes it");
@@ -434,7 +437,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     /// byte for byte from the contract, on each chain, with the encoder now taken from OpenZeppelin.
     function testRegistrationHashMatchesPublishedVectorsEndToEnd() external {
         _etchAdapterAtVectorAddress();
-        Adapter8004 fx = Adapter8004(VECTOR_ADAPTER);
+        AdapterImplementation fx = AdapterImplementation(VECTOR_ADAPTER);
 
         vm.chainId(1);
         assertEq(
@@ -443,14 +446,10 @@ contract Adapter8004Erc7930FrozenTest is Test {
             "published Ethereum ubid"
         );
         vm.chainId(8453);
-        assertEq(
-            fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBID_BASE, "published Base ubid"
-        );
+        assertEq(fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBID_BASE, "published Base ubid");
         vm.chainId(11155111);
         assertEq(
-            fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42),
-            PUBLISHED_UBID_SEPOLIA,
-            "published Sepolia ubid"
+            fx.hashBinding(IERC8217.Standard.ERC721, VECTOR_TOKEN, 42), PUBLISHED_UBID_SEPOLIA, "published Sepolia ubid"
         );
     }
 
@@ -482,7 +481,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
 
         vm.recordLogs();
         vm.prank(ALICE);
-        bytes32 returned = Adapter8004(VECTOR_ADAPTER).counterfactualRegister(
+        bytes32 returned = AdapterImplementation(VECTOR_ADAPTER).counterfactualRegister(
             IERC8217.Standard.ERC721, VECTOR_TOKEN, 42, "ipfs://cf"
         );
 
@@ -498,7 +497,7 @@ contract Adapter8004Erc7930FrozenTest is Test {
     // ----------------------------------------------------------------
 
     function _etchAdapterAtVectorAddress() private {
-        vm.etch(VECTOR_ADAPTER, address(new Adapter8004(address(adapter.identityRegistry()))).code);
+        vm.etch(VECTOR_ADAPTER, address(new AdapterImplementation(address(adapter.identityRegistry()))).code);
     }
 
     /// @dev Builds a chain id whose shortest big-endian encoding is exactly `l` bytes.

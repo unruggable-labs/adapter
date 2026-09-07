@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC8217} from "./IERC8217.sol";
 import {IERC8004IdentityRegistry} from "./IERC8004IdentityRegistry.sol";
 
-/// @notice Declares the counterfactual functions and events of `Adapter8004`, an alternative to full
+/// @notice Declares the counterfactual functions and events of `AdapterImplementation`, an alternative to full
 /// ERC-8004 registration that records each call in the event log rather than the registry, so a claim
 /// costs a log instead of a registration.
 interface IERC8004AdapterCounterfactual {

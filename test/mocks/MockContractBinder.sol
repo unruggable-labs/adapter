@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 
@@ -10,11 +10,11 @@ import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
 /// binds a contract identity rather than a token, so a plain service contract can hold an agent with
 /// nothing for the adapter to probe. Its only state is unrelated bookkeeping.
 contract MockContractBinder {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
 
     uint256 public callCount;
 
-    constructor(Adapter8004 adapter) {
+    constructor(AdapterImplementation adapter) {
         ADAPTER = adapter;
     }
 
@@ -31,9 +31,8 @@ contract MockContractBinder {
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
-        return ADAPTER.counterfactualRegister(
-            IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent"
-        );
+        return
+            ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://contract-agent");
     }
 
     function setAgentURI(uint256 agentId, string calldata newURI) external {

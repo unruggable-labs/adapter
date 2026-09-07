@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004AdapterCounterfactual} from "../../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
@@ -28,7 +28,7 @@ contract SdR3_9_CounterfactualWalletUnconsentedAssoc is Test {
     );
 
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token;
 
     address internal admin = makeAddr("admin");
@@ -38,9 +38,9 @@ contract SdR3_9_CounterfactualWalletUnconsentedAssoc is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
         token = new MockERC721();
         token.mint(controller, TID);
     }

@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -18,7 +18,7 @@ import {MockContractBinder} from "./mocks/MockContractBinder.sol";
 /// against only one of those would leave the return value able to agree with itself and nothing
 /// else, which is the failure this file exists to rule out.
 contract Adapter8004CounterfactualReturnsTest is Test {
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token;
 
     address internal alice = makeAddr("alice");
@@ -29,10 +29,11 @@ contract Adapter8004CounterfactualReturnsTest is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        adapter = Adapter8004(
+        adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
@@ -133,10 +134,10 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     /// @dev Unknown agents revert rather than answering zero, matching `bindingOf`. A zero answer
     /// would be indistinguishable from a real identity that happened to hash to zero.
     function testRegistrationHashOfRevertsForAnUnknownAgent() external {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(42)));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(42)));
         adapter.bindingHashOf(42);
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
         adapter.bindingHashOf(0);
     }
 

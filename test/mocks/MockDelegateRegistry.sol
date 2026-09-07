@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @notice Test double for the delegate.xyz v2 registry, covering only the read
-/// surface `Adapter8004` consults plus configuration setters. `checkDelegateForERC721`
+/// surface `AdapterImplementation` consults plus configuration setters. `checkDelegateForERC721`
 /// mirrors v2 semantics: it folds in token-level, contract-level, and all-wallet
 /// delegations, and a nonzero `rights` check also accepts an empty/full delegation.
 contract MockDelegateRegistry {

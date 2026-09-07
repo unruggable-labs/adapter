@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
@@ -29,7 +29,7 @@ interface IReentrancyGuardErrors {
 /// says about ownership, or (b) reverts cleanly without corrupting state.
 contract AdversarialAdapter8004Test is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC1155 internal token1155;
     MockERC6909 internal token6909;
 
@@ -40,9 +40,9 @@ contract AdversarialAdapter8004Test is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token1155 = new MockERC1155();
         token6909 = new MockERC6909();
@@ -60,7 +60,7 @@ contract AdversarialAdapter8004Test is Test {
         vm.expectRevert();
         adapter.register(IERC8217.Standard.ERC721, address(rev), 1, "", _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 
@@ -122,7 +122,7 @@ contract AdversarialAdapter8004Test is Test {
         mal.setOwner(1, eve);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, alice, agentId));
         adapter.setMetadata(agentId, "k", bytes("alice again"));
 
         vm.prank(eve);
@@ -157,7 +157,7 @@ contract AdversarialAdapter8004Test is Test {
         vm.expectRevert();
         adapter.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 
@@ -193,12 +193,10 @@ contract AdversarialAdapter8004Test is Test {
         token1155.mint(bob, 7, 1);
 
         vm.prank(bob);
-        uint256 firstAgentId =
-            adapter.register(IERC8217.Standard.ERC1155, address(token1155), 7, "", _emptyMetadata());
+        uint256 firstAgentId = adapter.register(IERC8217.Standard.ERC1155, address(token1155), 7, "", _emptyMetadata());
 
         vm.prank(alice);
-        uint256 secondAgentId =
-            adapter.register(IERC8217.Standard.ERC1155, address(token1155), 7, "", _emptyMetadata());
+        uint256 secondAgentId = adapter.register(IERC8217.Standard.ERC1155, address(token1155), 7, "", _emptyMetadata());
 
         assertTrue(firstAgentId != secondAgentId);
         assertTrue(adapter.isController(firstAgentId, alice));
@@ -212,12 +210,10 @@ contract AdversarialAdapter8004Test is Test {
         token6909.mint(bob, 7, 1);
 
         vm.prank(bob);
-        uint256 firstAgentId =
-            adapter.register(IERC8217.Standard.ERC6909, address(token6909), 7, "", _emptyMetadata());
+        uint256 firstAgentId = adapter.register(IERC8217.Standard.ERC6909, address(token6909), 7, "", _emptyMetadata());
 
         vm.prank(alice);
-        uint256 secondAgentId =
-            adapter.register(IERC8217.Standard.ERC6909, address(token6909), 7, "", _emptyMetadata());
+        uint256 secondAgentId = adapter.register(IERC8217.Standard.ERC6909, address(token6909), 7, "", _emptyMetadata());
 
         assertTrue(firstAgentId != secondAgentId);
         assertTrue(adapter.isController(firstAgentId, alice));
@@ -234,10 +230,11 @@ contract AdversarialAdapter8004Test is Test {
     /// break the adapter's own storage writes now that reverse lookup is gone.
     function testOverflowRegistryCanStillRegister() external {
         OverflowRegistry evilRegistry = new OverflowRegistry();
-        Adapter8004 overflowing = Adapter8004(
+        AdapterImplementation overflowing = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(evilRegistry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(evilRegistry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
@@ -265,7 +262,7 @@ contract AdversarialAdapter8004Test is Test {
         adapter.renounceOwnership();
         assertEq(adapter.owner(), address(0));
 
-        Adapter8004 freshImpl = new Adapter8004(address(registry));
+        AdapterImplementation freshImpl = new AdapterImplementation(address(registry));
         vm.prank(admin);
         vm.expectRevert();
         adapter.upgradeToAndCall(address(freshImpl), "");

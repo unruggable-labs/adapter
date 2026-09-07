@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
 /// SdR3 #16 — TokenURIUnboundPassthrough. `tokenURI` forwards to the registry with no binding check
@@ -16,16 +16,16 @@ import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 /// are intentionally binding-agnostic; authority/binding views are not.
 contract SdR3_16_TokenURIUnboundPassthrough is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
 
     address internal admin = makeAddr("admin");
     address internal stranger = makeAddr("stranger");
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
     }
 
     /// Success condition: adapter `tokenURI` returns data for a directly-registered id while
@@ -36,7 +36,7 @@ contract SdR3_16_TokenURIUnboundPassthrough is Test {
 
         assertEq(adapter.tokenURI(directId), "ipfs://direct-not-via-adapter", "tokenURI forwards regardless of binding");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, directId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, directId));
         adapter.bindingOf(directId);
     }
 }

@@ -4,14 +4,14 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
-contract Adapter8004ZeroHashHarness is Adapter8004 {
-    constructor(address registry_) Adapter8004(registry_) {}
+contract Adapter8004ZeroHashHarness is AdapterImplementation {
+    constructor(address registry_) AdapterImplementation(registry_) {}
 
     function _bindingHash(IERC8217.Standard, address, uint256) internal pure override returns (bytes32) {
         return bytes32(0);
@@ -60,7 +60,7 @@ contract Adapter8004PrimaryAgentTest is Test {
     );
     event WalletUBIDCleared(address indexed account, address indexed clearedBy);
 
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
     /// @dev A real deployed collection rather than a bare placeholder address. The wallet
@@ -71,9 +71,13 @@ contract Adapter8004PrimaryAgentTest is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        adapter = Adapter8004(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        adapter = AdapterImplementation(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
         token = address(new MockERC721());
     }
@@ -126,7 +130,11 @@ contract Adapter8004PrimaryAgentTest is Test {
         MockIdentityRegistry registry = new MockIdentityRegistry();
         Adapter8004ZeroHashHarness implementation = new Adapter8004ZeroHashHarness(address(registry));
         Adapter8004ZeroHashHarness zeroAdapter = Adapter8004ZeroHashHarness(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
         vm.recordLogs();
         vm.prank(alice);

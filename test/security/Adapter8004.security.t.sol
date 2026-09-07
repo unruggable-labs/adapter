@@ -6,7 +6,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
@@ -21,8 +21,8 @@ import {MockERC6909} from "../mocks/MockERC6909.sol";
 contract SecurityAdapter8004Test is Test {
     MockIdentityRegistry internal registry;
     MockIdentityRegistry internal registry2;
-    Adapter8004 internal implementation;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal implementation;
+    AdapterImplementation internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
     MockERC6909 internal token6909;
@@ -44,9 +44,10 @@ contract SecurityAdapter8004Test is Test {
         registry = new MockIdentityRegistry();
         registry2 = new MockIdentityRegistry();
 
-        implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
@@ -68,14 +69,14 @@ contract SecurityAdapter8004Test is Test {
     /// Rejecting at construction is strictly earlier than rejecting at initialize: an implementation
     /// carrying a zero registry cannot be deployed at all, so no proxy can ever point at one.
     function testConstructorRejectsZeroRegistry() external {
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        new Adapter8004(address(0));
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
+        new AdapterImplementation(address(0));
     }
 
     function testInitializeRejectsZeroOwner() external {
-        Adapter8004 impl = new Adapter8004(address(registry));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableInvalidOwner.selector, address(0)));
-        new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (address(0))));
+        new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (address(0))));
     }
 
     function testCannotReinitializeProxy() external {
@@ -94,7 +95,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testRegisterRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.register(IERC8217.Standard.ERC721, address(0), 1, "", _emptyMetadata());
     }
 
@@ -108,13 +109,13 @@ contract SecurityAdapter8004Test is Test {
 
     function testRegister1155NonControllerReverts() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.register(IERC8217.Standard.ERC1155, address(token1155), 10, "", _emptyMetadata());
     }
 
     function testRegister6909NonControllerReverts() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.register(IERC8217.Standard.ERC6909, address(token6909), 42, "", _emptyMetadata());
     }
 
@@ -145,32 +146,32 @@ contract SecurityAdapter8004Test is Test {
     function testSetAgentURINonControllerReverts() external {
         uint256 agentId = _register721(alice, 1);
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         adapter.setAgentURI(agentId, "ipfs://evil");
     }
 
     function testSetAgentURIUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 999));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 999));
         adapter.setAgentURI(999, "ipfs://nope");
     }
 
     function testSetMetadataUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 123));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 123));
         adapter.setMetadata(123, "k", bytes("v"));
     }
 
     function testSetMetadataBatchNonControllerReverts() external {
         uint256 agentId = _register721(alice, 1);
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         adapter.setMetadataBatch(agentId, _emptyMetadata());
     }
 
     function testSetMetadataBatchUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 77));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 77));
         adapter.setMetadataBatch(77, _emptyMetadata());
     }
 
@@ -221,26 +222,26 @@ contract SecurityAdapter8004Test is Test {
     function testSetAgentWalletNonControllerReverts() external {
         uint256 agentId = _register721(alice, 1);
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         adapter.setAgentWallet(agentId, makeAddr("x"), block.timestamp + 1, bytes(""));
     }
 
     function testSetAgentWalletUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 42));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 42));
         adapter.setAgentWallet(42, makeAddr("x"), block.timestamp + 1, bytes(""));
     }
 
     function testUnsetAgentWalletNonControllerReverts() external {
         uint256 agentId = _register721(alice, 1);
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         adapter.unsetAgentWallet(agentId);
     }
 
     function testUnsetAgentWalletUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 1));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 1));
         adapter.unsetAgentWallet(1);
     }
 
@@ -268,7 +269,7 @@ contract SecurityAdapter8004Test is Test {
     }
 
     function testBindingOfUnknownAgentReverts() external {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 999));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 999));
         adapter.bindingOf(999);
     }
 
@@ -325,7 +326,7 @@ contract SecurityAdapter8004Test is Test {
         assertTrue(adapter.isController(agentId, bob));
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, alice, agentId));
         adapter.setMetadata(agentId, "x", bytes("1"));
     }
 

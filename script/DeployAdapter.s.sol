@@ -3,10 +3,10 @@ pragma solidity ^0.8.24;
 
 import {Script} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 
 contract DeployAdapterScript is Script {
-    function run() external returns (Adapter8004 adapter) {
+    function run() external returns (AdapterImplementation adapter) {
         // 1. Load the target ERC-8004 registry the adapter will forward into.
         address identityRegistry = vm.envAddress("IDENTITY_REGISTRY_ADDRESS");
 
@@ -18,15 +18,15 @@ contract DeployAdapterScript is Script {
         vm.startBroadcast(deployerKey);
 
         // 4. Deploy the adapter implementation, baking the registry into its runtime code.
-        Adapter8004 implementation = new Adapter8004(identityRegistry);
+        AdapterImplementation implementation = new AdapterImplementation(identityRegistry);
 
         // 5. Deploy the proxy and initialize it with deployer-as-admin. The registry is no longer an
         //    initializer argument; it came from the constructor above.
         ERC1967Proxy proxy =
-            new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (deployer)));
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (deployer)));
 
         // 6. Return the proxy address typed as the adapter interface.
-        adapter = Adapter8004(address(proxy));
+        adapter = AdapterImplementation(address(proxy));
 
         // 7. Stop the deployment broadcast.
         vm.stopBroadcast();

@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {OverflowRegistry} from "./mocks/OverflowRegistry.sol";
 import {MockERC721} from "../mocks/MockERC721.sol";
@@ -13,10 +13,11 @@ contract GrokR2_1_DuplicateAgentIdRebind is Test {
     /// Success condition: a second register overwrites `_bindings[agentId]` so Alice's identity is captured.
     function test_trustBoundary_duplicateRegistryIdOverwritesTheBinding() external {
         OverflowRegistry ov = new OverflowRegistry();
-        Adapter8004 adapter = Adapter8004(
+        AdapterImplementation adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(ov))), abi.encodeCall(Adapter8004.initialize, (makeAddr("admin")))
+                    address(new AdapterImplementation(address(ov))),
+                    abi.encodeCall(AdapterImplementation.initialize, (makeAddr("admin")))
                 )
             )
         );

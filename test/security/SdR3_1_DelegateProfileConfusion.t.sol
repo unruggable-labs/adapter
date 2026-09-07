@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 import {MockDelegateRegistry} from "../mocks/MockDelegateRegistry.sol";
@@ -17,7 +17,7 @@ import {MockERC1155F} from "../mocks/MockERC1155F.sol";
 /// (#7); R2 had no delegate items. No prior test drives a 721-scoped grant against a 1155F binding.
 contract SdR3_1_DelegateProfileConfusion is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockDelegateRegistry internal delegateRegistry;
     MockERC1155F internal token;
 
@@ -29,9 +29,9 @@ contract SdR3_1_DelegateProfileConfusion is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         MockDelegateRegistry mockImpl = new MockDelegateRegistry();
         vm.etch(adapter.DELEGATE_REGISTRY(), address(mockImpl).code);

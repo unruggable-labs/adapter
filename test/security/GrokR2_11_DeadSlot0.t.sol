@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
 /// R1 #20 checked the upgrade getter. This is slot 0 vs the immutable registry on a fresh proxy.
@@ -12,11 +12,11 @@ contract GrokR2_11_DeadSlot0 is Test {
     /// confuse it with a mutable registry pointer the owner can swap.
     function test_defense_slot0IsDeadAndGetterIsTheImmutable() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 adapter = Adapter8004(
+        AdapterImplementation adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))),
-                    abi.encodeCall(Adapter8004.initialize, (makeAddr("admin")))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (makeAddr("admin")))
                 )
             )
         );

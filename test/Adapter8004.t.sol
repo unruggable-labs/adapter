@@ -6,7 +6,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
@@ -25,7 +25,7 @@ contract Adapter8004Test is Test {
 
     MockIdentityRegistry internal registry;
     MockIdentityRegistry internal registry2;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
     MockERC1155F internal token1155F;
@@ -53,9 +53,10 @@ contract Adapter8004Test is Test {
         registry = new MockIdentityRegistry();
         registry2 = new MockIdentityRegistry();
 
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
@@ -88,7 +89,7 @@ contract Adapter8004Test is Test {
     /// incoming-registry check. Its own slot 0 is empty, while the immutable getter still returns
     /// the constructor value from runtime code.
     function testImplementationGetterDoesNotDependOnItsOwnEmptySlotZero() external {
-        Adapter8004 implementation = new Adapter8004(address(registry));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
 
         assertEq(vm.load(address(implementation), bytes32(uint256(0))), bytes32(0));
         assertEq(address(implementation.identityRegistry()), address(registry));
@@ -99,8 +100,7 @@ contract Adapter8004Test is Test {
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "name", metadataValue: bytes("alpha")});
 
         vm.prank(alice);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/1", metadata);
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/1", metadata);
 
         assertEq(registry.ownerOf(agentId), address(adapter));
         assertEq(registry.tokenURI(agentId), "ipfs://agent/1");
@@ -124,14 +124,12 @@ contract Adapter8004Test is Test {
     function testFirstMintedAgentIdIsZero() external {
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit Adapter8004.AgentBound(0, IERC8217.Standard.ERC721, address(token721), 1, alice);
+        emit AdapterImplementation.AgentBound(0, IERC8217.Standard.ERC721, address(token721), 1, alice);
         uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/1");
 
         assertEq(agentId, 0);
         assertEq(adapter.bindingOf(agentId).boundAddress, address(token721), "agent 0 is a real binding");
-        assertEq(
-            adapter.bindingHashOf(agentId), adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1)
-        );
+        assertEq(adapter.bindingHashOf(agentId), adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1));
     }
 
     function test721ControllerCanUpdateRegistryFields() external {
@@ -153,7 +151,7 @@ contract Adapter8004Test is Test {
         token721.transferFrom(alice, bob, 1);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, alice, agentId));
         adapter.setMetadata(agentId, "x", bytes("1"));
 
         vm.prank(bob);
@@ -190,7 +188,7 @@ contract Adapter8004Test is Test {
         uint256 agentId = _register1155F(alice, 50);
 
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, bob, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, bob, agentId));
         adapter.setMetadata(agentId, "holder", bytes("bob"));
 
         vm.prank(alice);
@@ -212,7 +210,7 @@ contract Adapter8004Test is Test {
         token6909F.transferOwner(alice, bob, 60);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, alice, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, alice, agentId));
         adapter.setMetadata(agentId, "holder", bytes("alice"));
 
         vm.prank(bob);
@@ -223,7 +221,7 @@ contract Adapter8004Test is Test {
 
     function testCannotRegisterWithoutCurrentTokenControl() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "", _emptyMetadata());
     }
 
@@ -244,7 +242,7 @@ contract Adapter8004Test is Test {
 
     function testRegisterNoMetadataOverloadEnforcesTokenControl() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "");
     }
 
@@ -252,8 +250,7 @@ contract Adapter8004Test is Test {
         uint256 firstAgentId = _register721(alice, 1);
 
         vm.prank(alice);
-        uint256 secondAgentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "", _emptyMetadata());
+        uint256 secondAgentId = adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "", _emptyMetadata());
 
         assertEq(firstAgentId, 0);
         assertEq(secondAgentId, 1);
@@ -320,7 +317,7 @@ contract Adapter8004Test is Test {
         });
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
+            abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
         );
         vm.prank(alice);
         adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "", metadata);
@@ -330,7 +327,7 @@ contract Adapter8004Test is Test {
         uint256 agentId = _register721(alice, 1);
         string memory key = adapter.BINDING_METADATA_KEY();
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, key));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, key));
         vm.prank(alice);
         adapter.setMetadata(agentId, key, bytes("bad"));
     }
@@ -345,7 +342,7 @@ contract Adapter8004Test is Test {
         });
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
+            abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
         );
         vm.prank(alice);
         adapter.setMetadataBatch(agentId, metadata);
@@ -535,9 +532,8 @@ contract Adapter8004Test is Test {
         emit IERC8004AdapterCounterfactual.CounterfactualAgentRegistered(
             expectedHash, address(token721), 1, IERC8217.Standard.ERC721, "ipfs://agent/cf", metadata, alice
         );
-        bytes32 ubid = adapter.counterfactualRegister(
-            IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata
-        );
+        bytes32 ubid =
+            adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata);
 
         assertEq(ubid, expectedHash);
     }
@@ -577,23 +573,20 @@ contract Adapter8004Test is Test {
         );
 
         vm.prank(alice);
-        bytes32 ubid =
-            adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf");
+        bytes32 ubid = adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf");
 
         assertEq(ubid, expectedHash);
     }
 
     function testCounterfactualRegisterRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
-        adapter.counterfactualRegister(
-            IERC8217.Standard.ERC721, address(0), 1, "ipfs://agent/cf", _emptyMetadata()
-        );
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
+        adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(0), 1, "ipfs://agent/cf", _emptyMetadata());
     }
 
     function testCounterfactualRegisterRejectsNonController() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualRegister(
             IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf", _emptyMetadata()
         );
@@ -607,7 +600,7 @@ contract Adapter8004Test is Test {
         });
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
+            abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
         );
         vm.prank(alice);
         adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/cf", metadata);
@@ -644,13 +637,13 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentURIRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentURI(IERC8217.Standard.ERC721, address(0), 1, "ipfs://x");
     }
 
     function testCounterfactualSetAgentURIRejectsNonController() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetAgentURI(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://x");
     }
 
@@ -669,27 +662,25 @@ contract Adapter8004Test is Test {
         emit IERC8004AdapterCounterfactual.CounterfactualMetadataSet(
             expectedHash, address(token721), 1, IERC8217.Standard.ERC721, "description", bytes("hello"), alice
         );
-        adapter.counterfactualSetMetadata(
-            IERC8217.Standard.ERC721, address(token721), 1, "description", bytes("hello")
-        );
+        adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(token721), 1, "description", bytes("hello"));
     }
 
     function testCounterfactualSetMetadataRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(0), 1, "k", bytes("v"));
     }
 
     function testCounterfactualSetMetadataRejectsNonController() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(token721), 1, "k", bytes("v"));
     }
 
     function testCounterfactualSetMetadataRejectsReservedBindingMetadataKey() external {
         string memory key = adapter.BINDING_METADATA_KEY();
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, key));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, key));
         vm.prank(alice);
         adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(token721), 1, key, bytes("bad"));
     }
@@ -727,7 +718,7 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetMetadataBatchRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(0), 1, _emptyMetadata());
     }
 
@@ -736,7 +727,7 @@ contract Adapter8004Test is Test {
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "a", metadataValue: bytes("1")});
 
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(token721), 1, metadata);
     }
 
@@ -748,7 +739,7 @@ contract Adapter8004Test is Test {
         });
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
+            abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, adapter.BINDING_METADATA_KEY())
         );
         vm.prank(alice);
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(token721), 1, metadata);
@@ -785,13 +776,13 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentWalletRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentWallet(IERC8217.Standard.ERC721, address(0), 1, wallet);
     }
 
     function testCounterfactualSetAgentWalletRejectsNonController() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetAgentWallet(IERC8217.Standard.ERC721, address(token721), 1, wallet);
     }
 
@@ -815,13 +806,13 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualUnsetAgentWalletRejectsZeroTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ERC721, address(0), 1);
     }
 
     function testCounterfactualUnsetAgentWalletRejectsNonController() external {
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ERC721, address(token721), 1);
     }
 
@@ -839,8 +830,7 @@ contract Adapter8004Test is Test {
         vm.prank(alice);
         bytes32 viaToken721 = adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "u");
         vm.prank(alice);
-        bytes32 viaToken1155 =
-            adapter.counterfactualRegister(IERC8217.Standard.ERC1155, address(token1155), 10, "u");
+        bytes32 viaToken1155 = adapter.counterfactualRegister(IERC8217.Standard.ERC1155, address(token1155), 10, "u");
 
         assertTrue(viaToken721 != viaToken1155);
     }
@@ -893,10 +883,8 @@ contract Adapter8004Test is Test {
         bytes32 h1155 = adapter.hashBinding(IERC8217.Standard.ERC1155, address(hybrid), 77);
 
         vm.startPrank(alice);
-        bytes32 cf721 =
-            adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(hybrid), 77, "ipfs://cf721");
-        bytes32 cf1155 =
-            adapter.counterfactualRegister(IERC8217.Standard.ERC1155, address(hybrid), 77, "ipfs://cf1155");
+        bytes32 cf721 = adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(hybrid), 77, "ipfs://cf721");
+        bytes32 cf1155 = adapter.counterfactualRegister(IERC8217.Standard.ERC1155, address(hybrid), 77, "ipfs://cf1155");
         vm.stopPrank();
 
         assertEq(cf721, h721);
@@ -905,15 +893,15 @@ contract Adapter8004Test is Test {
     }
 
     function testCounterfactualRegistrationHashChangesWithAdapterAddress() external {
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        Adapter8004 secondAdapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        AdapterImplementation secondAdapter = AdapterImplementation(address(proxy));
 
         vm.prank(alice);
         bytes32 fromFirst = adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "u");
         vm.prank(alice);
-        bytes32 fromSecond =
-            secondAdapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "u");
+        bytes32 fromSecond = secondAdapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "u");
 
         assertTrue(fromFirst != fromSecond);
         assertTrue(address(adapter) != address(secondAdapter));
@@ -1026,13 +1014,13 @@ contract Adapter8004Test is Test {
 
     function testRegisterRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.register(IERC8217.Standard.ERC721, address(registry), 0, "", _emptyMetadata());
     }
 
     function testCounterfactualRegisterRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualRegister(
             IERC8217.Standard.ERC721, address(registry), 0, "ipfs://agent/cf", _emptyMetadata()
         );
@@ -1040,31 +1028,31 @@ contract Adapter8004Test is Test {
 
     function testCounterfactualSetAgentURIRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetAgentURI(IERC8217.Standard.ERC721, address(registry), 0, "u");
     }
 
     function testCounterfactualSetMetadataRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(registry), 0, "k", bytes("v"));
     }
 
     function testCounterfactualSetMetadataBatchRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(registry), 0, _emptyMetadata());
     }
 
     function testCounterfactualSetAgentWalletRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualSetAgentWallet(IERC8217.Standard.ERC721, address(registry), 0, wallet);
     }
 
     function testCounterfactualUnsetAgentWalletRejectsRegistryAsTokenContract() external {
         vm.prank(alice);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ERC721, address(registry), 0);
     }
 
@@ -1140,8 +1128,8 @@ contract Adapter8004Test is Test {
     }
 }
 
-contract Adapter8004V2 is Adapter8004 {
-    constructor(address registry_) Adapter8004(registry_) {}
+contract Adapter8004V2 is AdapterImplementation {
+    constructor(address registry_) AdapterImplementation(registry_) {}
 
     function version() external pure returns (string memory) {
         return "2";

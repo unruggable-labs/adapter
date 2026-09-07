@@ -4,12 +4,12 @@ pragma solidity ^0.8.24;
 import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {InteroperableAddress} from "@openzeppelin/contracts/utils/draft-InteroperableAddress.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
-/// @notice The word-aligned encoder that `Adapter8004` carried before it adopted OpenZeppelin's
+/// @notice The word-aligned encoder that `AdapterImplementation` carried before it adopted OpenZeppelin's
 /// `InteroperableAddress`, kept verbatim as a second frozen reference.
 ///
 /// **Do not delete, and do not edit it to match anything.** When production used this code, OZ was
@@ -130,8 +130,8 @@ library ReferenceErc7930 {
     }
 }
 
-contract Adapter8004HashHarness is Adapter8004 {
-    constructor(address registry_) Adapter8004(registry_) {}
+contract Adapter8004HashHarness is AdapterImplementation {
+    constructor(address registry_) AdapterImplementation(registry_) {}
 
     function chainIdentifierFor(uint256 chainId) external pure returns (bytes memory) {
         return _chainIdentifierFor(chainId);
@@ -193,7 +193,7 @@ contract Adapter8004HashHarness is Adapter8004 {
 }
 
 contract Adapter8004ERC7930Test is Test {
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     Adapter8004HashHarness internal harness;
     address internal constant VECTOR_ADAPTER = 0x1111111111111111111111111111111111111111;
     address internal constant VECTOR_TOKEN = 0x2222222222222222222222222222222222222222;
@@ -201,9 +201,13 @@ contract Adapter8004ERC7930Test is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        adapter = Adapter8004(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        adapter = AdapterImplementation(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
         harness = new Adapter8004HashHarness(address(registry));
     }
@@ -242,9 +246,7 @@ contract Adapter8004ERC7930Test is Test {
     function testPublishedPerStandardVectors() external view {
         bytes memory mainnetAdapter = hex"000100000101141111111111111111111111111111111111111111";
         _assertVector(
-            mainnetAdapter,
-            IERC8217.Standard.ERC721,
-            0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9
+            mainnetAdapter, IERC8217.Standard.ERC721, 0x8493ab3adb4f5e8753ee3fe05e377bffe213753e1b4155035fec1705d94615f9
         );
         _assertVector(
             mainnetAdapter,
@@ -512,7 +514,7 @@ contract Adapter8004ERC7930Test is Test {
 
     function testChainIdZeroRejected() external {
         vm.chainId(0);
-        vm.expectRevert(Adapter8004.InvalidChainId.selector);
+        vm.expectRevert(AdapterImplementation.InvalidChainId.selector);
         adapter.chainIdentifier();
     }
 
@@ -559,10 +561,7 @@ contract Adapter8004ERC7930Test is Test {
         assertTrue(base != harness.bindingHashFrom(adapterAddress, IERC8217.Standard.ERC1155, VECTOR_TOKEN, 42));
     }
 
-    function _assertVector(bytes memory adapterAddress, IERC8217.Standard standard, bytes32 expected)
-        internal
-        view
-    {
+    function _assertVector(bytes memory adapterAddress, IERC8217.Standard standard, bytes32 expected) internal view {
         assertEq(harness.bindingHashFrom(adapterAddress, standard, VECTOR_TOKEN, 42), expected);
     }
 
@@ -702,7 +701,7 @@ contract Adapter8004ERC7930Test is Test {
     /// ever own. OpenZeppelin encodes it. The fuzz case above excludes zero for this reason and no
     /// other.
     function testZeroChainIdIsRejectedLocallyButNotByOpenZeppelin() external {
-        vm.expectRevert(Adapter8004.InvalidChainId.selector);
+        vm.expectRevert(AdapterImplementation.InvalidChainId.selector);
         harness.chainIdentifierFor(0);
 
         assertGt(InteroperableAddress.formatEvmV1(uint256(0)).length, 0);

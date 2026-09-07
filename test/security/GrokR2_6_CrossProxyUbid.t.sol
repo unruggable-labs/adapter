@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "../mocks/MockERC721.sol";
@@ -14,17 +14,19 @@ contract GrokR2_6_CrossProxyUbid is Test {
     function test_defense_twoProxiesDoNotShareAUbid() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
         address admin = makeAddr("admin");
-        Adapter8004 a = Adapter8004(
+        AdapterImplementation a = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
-        Adapter8004 b = Adapter8004(
+        AdapterImplementation b = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );

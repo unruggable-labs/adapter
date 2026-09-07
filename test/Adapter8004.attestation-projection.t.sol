@@ -4,11 +4,11 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 
-/// @notice Projection harness: records the events the real `Adapter8004` proxy emits and replays the
+/// @notice Projection harness: records the events the real `AdapterImplementation` proxy emits and replays the
 /// published reader rules over them in log order. Built in slice two-a against a reference emitter
 /// and re-pointed here at the contract itself, unchanged in every rule it asserts. Rule four, that a revocation counts only when its caller is the
 /// original attester, cannot be a contract test at all, because the contract records every
@@ -28,7 +28,7 @@ contract AttestationProjectionTest is Test {
         uint256 blockNum;
     }
 
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     Ev[] internal evs;
 
     // Plain enum values now that the types are an enum. Under the previous bytes32 constants these
@@ -49,9 +49,13 @@ contract AttestationProjectionTest is Test {
 
     function setUp() public {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        adapter = Adapter8004(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        adapter = AdapterImplementation(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
         vm.recordLogs();
     }
@@ -286,7 +290,7 @@ contract AttestationProjectionTest is Test {
     /// itself, which is the failure this fixture would otherwise be blind to.
     function testFixtureVectors() public {
         address proxy = 0x1111111111111111111111111111111111111111;
-        vm.etch(proxy, address(new Adapter8004(address(adapter.identityRegistry()))).code);
+        vm.etch(proxy, address(new AdapterImplementation(address(adapter.identityRegistry()))).code);
         vm.chainId(1);
         vm.roll(19000000);
         IERC8004AdapterAttestation fx = IERC8004AdapterAttestation(proxy);

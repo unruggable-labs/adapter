@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8004AdapterAttestation} from "../../src/interfaces/IERC8004AdapterAttestation.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
@@ -15,7 +15,7 @@ import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 /// Defended: identical fields under two different attesters yield two different ids.
 contract SdR3_13_CrossAttesterIdForgeryBlocked is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
 
     address internal admin = makeAddr("admin");
     address internal victim = makeAddr("victim");
@@ -23,9 +23,9 @@ contract SdR3_13_CrossAttesterIdForgeryBlocked is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
     }
 
     function _id(address attester, bytes32 ubid) internal view returns (bytes32) {

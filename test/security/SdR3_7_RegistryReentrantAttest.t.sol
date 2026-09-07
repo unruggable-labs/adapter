@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004AdapterAttestation} from "../../src/interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
@@ -26,7 +26,9 @@ contract ReentrantAttestRegistry is IERC8004IdentityRegistry {
         id = lastId++;
         if (adapter != address(0)) {
             // Reenter the emit-only, non-guarded surface while the adapter holds its register guard.
-            Adapter8004(adapter).attest(IERC8004AdapterAttestation.AttestationType.STAR, target, bytes32(0), "");
+            AdapterImplementation(adapter).attest(
+                IERC8004AdapterAttestation.AttestationType.STAR, target, bytes32(0), ""
+            );
         }
     }
 
@@ -75,19 +77,18 @@ contract ReentrantAttestRegistry is IERC8004IdentityRegistry {
 /// and no adapter state is corrupted.
 contract SdR3_7_RegistryReentrantAttest is Test {
     ReentrantAttestRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
 
     address internal admin = makeAddr("admin");
     address internal attacker = makeAddr("attacker");
 
-    bytes32 internal constant ATTESTED_SIG =
-        keccak256("Attested(address,uint8,bytes32,bytes32,bytes32,bytes)");
+    bytes32 internal constant ATTESTED_SIG = keccak256("Attested(address,uint8,bytes32,bytes32,bytes32,bytes)");
 
     function setUp() external {
         registry = new ReentrantAttestRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
         registry.arm(address(adapter), keccak256("reentrant-ubid"));
     }
 
@@ -103,7 +104,11 @@ contract SdR3_7_RegistryReentrantAttest is Test {
         for (uint256 i; i < logs.length; ++i) {
             if (logs[i].topics[0] == ATTESTED_SIG) {
                 sawAttested = true;
-                assertEq(address(uint160(uint256(logs[i].topics[1]))), address(registry), "attester is the registry, not the adapter");
+                assertEq(
+                    address(uint160(uint256(logs[i].topics[1]))),
+                    address(registry),
+                    "attester is the registry, not the adapter"
+                );
             }
         }
         assertTrue(sawAttested, "reentrant attest was not blocked by the register guard");

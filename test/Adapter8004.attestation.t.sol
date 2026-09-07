@@ -5,13 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8004AdapterAttestation} from "../src/interfaces/IERC8004AdapterAttestation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockERC721} from "./mocks/MockERC721.sol";
 
-/// @notice The attestation surface as implemented on `Adapter8004` itself: what it binds, what it
+/// @notice The attestation surface as implemented on `AdapterImplementation` itself: what it binds, what it
 /// refuses to write, what it deliberately does not guard, and what it costs.
 ///
 /// The projection rules and the published identifier vectors live in
@@ -32,8 +32,8 @@ contract Adapter8004AttestationTest is Test {
     uint256 private constant REQUIRED_MARGIN = 2_000;
 
     MockIdentityRegistry internal registry;
-    Adapter8004 internal implementation;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal implementation;
+    AdapterImplementation internal adapter;
     MockERC721 internal token;
 
     // Plain enum values. Under the previous bytes32 constants these had to be cached in setUp,
@@ -51,9 +51,13 @@ contract Adapter8004AttestationTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        implementation = new Adapter8004(address(registry));
-        adapter = Adapter8004(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+        implementation = new AdapterImplementation(address(registry));
+        adapter = AdapterImplementation(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
         token = new MockERC721();
         token.mint(alice, 1);
@@ -160,8 +164,7 @@ contract Adapter8004AttestationTest is Test {
         bytes memory adapterAddress = adapter.interoperableAddress(address(adapter));
 
         // The ubid side, pinned by hashing it against the published view.
-        bytes memory ubidPreimage =
-            abi.encode(adapterAddress, IERC8217.Standard.ERC721, address(token), uint256(42));
+        bytes memory ubidPreimage = abi.encode(adapterAddress, IERC8217.Standard.ERC721, address(token), uint256(42));
         assertEq(
             keccak256(ubidPreimage),
             adapter.hashBinding(IERC8217.Standard.ERC721, address(token), 42),
@@ -169,8 +172,7 @@ contract Adapter8004AttestationTest is Test {
         );
 
         // The identifier side, pinned against an identifier the contract actually emitted.
-        bytes memory idPreimage =
-            abi.encode(adapterAddress, alice, ubid, tConfirm, block.number, bytes32(0), bytes(""));
+        bytes memory idPreimage = abi.encode(adapterAddress, alice, ubid, tConfirm, block.number, bytes32(0), bytes(""));
         vm.recordLogs();
         vm.prank(alice);
         adapter.confirmAdditionalAccount(ubid);

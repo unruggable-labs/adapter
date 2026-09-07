@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
@@ -18,7 +18,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract ProbeTrapBinder is MockERC20 {
     error OwnershipProbe();
 
-    constructor(Adapter8004 adapter) MockERC20(adapter) {}
+    constructor(AdapterImplementation adapter) MockERC20(adapter) {}
 
     function ownerOf(uint256) external pure returns (address) {
         revert OwnershipProbe();
@@ -37,7 +37,7 @@ contract ProbeTrapBinder is MockERC20 {
 /// separately. Nothing about this depends on the fixture being a token; it inherits `MockERC20` only
 /// because that is a convenient concrete binder.
 contract HybridERC721Contract is MockERC20 {
-    constructor(Adapter8004 adapter) MockERC20(adapter) {}
+    constructor(AdapterImplementation adapter) MockERC20(adapter) {}
 
     function owner() external view returns (address) {
         return address(this);
@@ -59,7 +59,7 @@ contract HybridERC721Contract is MockERC20 {
 contract OwnableERC20Binder is MockERC20 {
     address internal currentOwner;
 
-    constructor(Adapter8004 adapter, address initialOwner) MockERC20(adapter) {
+    constructor(AdapterImplementation adapter, address initialOwner) MockERC20(adapter) {
         currentOwner = initialOwner;
     }
 
@@ -88,7 +88,7 @@ contract OwnableERC20Binder is MockERC20 {
 }
 
 contract RevertingOwnerBinder is OwnableERC20Binder {
-    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+    constructor(AdapterImplementation adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
 
     function owner() external pure override returns (address) {
         revert("owner unavailable");
@@ -96,7 +96,7 @@ contract RevertingOwnerBinder is OwnableERC20Binder {
 }
 
 contract DirtyOwnerBinder is OwnableERC20Binder {
-    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+    constructor(AdapterImplementation adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
 
     function owner() external view override returns (address) {
         assembly ("memory-safe") {
@@ -107,7 +107,7 @@ contract DirtyOwnerBinder is OwnableERC20Binder {
 }
 
 contract ShortOwnerBinder is OwnableERC20Binder {
-    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+    constructor(AdapterImplementation adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
 
     function owner() external view override returns (address) {
         assembly ("memory-safe") {
@@ -120,7 +120,7 @@ contract ShortOwnerBinder is OwnableERC20Binder {
 /// @dev Returns a well formed owner address followed by a second word. The address itself is clean,
 /// so the response can only be denied on its length.
 contract LongOwnerBinder is OwnableERC20Binder {
-    constructor(Adapter8004 adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
+    constructor(AdapterImplementation adapter, address allegedOwner) OwnableERC20Binder(adapter, allegedOwner) {}
 
     function owner() external view override returns (address) {
         assembly ("memory-safe") {
@@ -138,7 +138,7 @@ contract Adapter8004ContractBindingTest is Test {
         keccak256("AgentWalletSet(uint256 agentId,address newWallet,address owner,uint256 deadline)");
 
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     /// @dev The concrete token fixture: an ERC-20 binding itself as a contract. Used for the
     /// holder-versus-contract cases, since a plain contract has no holders to test against.
     MockERC20 internal token;
@@ -154,9 +154,10 @@ contract Adapter8004ContractBindingTest is Test {
         wallet = vm.addr(walletPk);
 
         registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token = new MockERC20(adapter);
         token.mint(holder, 1_000 ether);
@@ -170,7 +171,7 @@ contract Adapter8004ContractBindingTest is Test {
 
     function testContractRegistersItsOwnAgent() external {
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit Adapter8004.AgentBound(0, IERC8217.Standard.ACCOUNT, address(token), 0, address(token));
+        emit AdapterImplementation.AgentBound(0, IERC8217.Standard.ACCOUNT, address(token), 0, address(token));
         uint256 agentId = token.register(0);
 
         IERC8217.Binding memory binding = adapter.bindingOf(agentId);
@@ -573,7 +574,7 @@ contract Adapter8004ContractBindingTest is Test {
         token.counterfactualUnsetAgentWallet(1);
 
         // Nothing was minted, bound, or claimed along the way: agent id 0 would be the first mint.
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
         adapter.bindingOf(0);
     }
 
@@ -747,9 +748,7 @@ contract Adapter8004ContractBindingTest is Test {
         uint256 firstAgentId = token.register(0);
 
         // The permanent authority can re-emit a counterfactual claim at any later time...
-        assertEq(
-            token.counterfactualRegister(0), adapter.hashBinding(IERC8217.Standard.ACCOUNT, address(token), 0)
-        );
+        assertEq(token.counterfactualRegister(0), adapter.hashBinding(IERC8217.Standard.ACCOUNT, address(token), 0));
 
         // ...and mint further, distinct ERC-8004 identities for the same contract, here through the
         // metadata-bearing full register overload, whose entries must land in the registry.
@@ -777,19 +776,19 @@ contract Adapter8004ContractBindingTest is Test {
     // -----------------------------------------------------------------
 
     function testIdentityRegistryCannotBeBoundAsAContract() external {
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.register(IERC8217.Standard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(registry), 0, "ipfs://registry");
 
         // The registry rejection precedes the canonical-id check, matching the other standards.
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.register(IERC8217.Standard.ACCOUNT, address(registry), 1, "ipfs://registry");
 
         // The zero address is still the generic rejection. Under `ACCOUNT` that comes from the sentinel
         // clause rather than the code test, which this standard does not apply.
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.register(IERC8217.Standard.ACCOUNT, address(0), 0, "ipfs://zero");
     }
 
@@ -874,15 +873,19 @@ contract Adapter8004ContractBindingTest is Test {
     }
 
     function _expectNotController(address account) internal {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, account, type(uint256).max));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, account, type(uint256).max)
+        );
     }
 
     function _expectNotControllerOf(address account, uint256 agentId) internal {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, account, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, account, agentId));
     }
 
     function _expectNonZeroTokenId(address boundAddress, uint256 tokenId) internal {
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, boundAddress, tokenId));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NonZeroTokenIdForAccount.selector, boundAddress, tokenId)
+        );
     }
 
     function _signAgentWallet(uint256 agentId, address newWallet, address owner, uint256 deadline)

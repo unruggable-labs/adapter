@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// @notice Computes the CREATE2 inputs for the vanity miner.
@@ -14,7 +14,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 /// CREATE2 at a fixed salt would have put their implementations at one address; it did not. The
 /// 2026-04-05 report records why — each chain got "a fresh implementation contract and a fresh
 /// `ERC1967Proxy`" — and `DeployAdapterImplementation.s.sol`, the script upgrades actually use,
-/// calls plain `new Adapter8004()` with no salt, so every future implementation is nonce-derived
+/// calls plain `new AdapterImplementation()` with no salt, so every future implementation is nonce-derived
 /// and per-chain by construction. Cross-chain address determinism is therefore a property this
 /// deployment has never had, and no change to the contract can cost it something it does not hold.
 /// Treat the paragraphs below as a design sketch for a future redeployment, not a description of
@@ -47,13 +47,14 @@ contract ComputeVanityInputs is Script {
     function run() external pure {
         // The registry is a constructor argument since `0.0.17`, so it is part of the
         // implementation init code and therefore part of the implementation's vanity address.
-        bytes32 implInitCodeHash = keccak256(abi.encodePacked(type(Adapter8004).creationCode, abi.encode(REGISTRY)));
+        bytes32 implInitCodeHash =
+            keccak256(abi.encodePacked(type(AdapterImplementation).creationCode, abi.encode(REGISTRY)));
         address impl = vm.computeCreate2Address(IMPL_SALT, implInitCodeHash, CREATE2_FACTORY);
 
         // Bake initialize() into the proxy constructor so deployment is atomic
         // (no front-run window) and the init code is identical on every chain that
         // shares REGISTRY + OWNER (Mainnet + Base) -> same vanity address there.
-        bytes memory initData = abi.encodeCall(Adapter8004.initialize, (OWNER));
+        bytes memory initData = abi.encodeCall(AdapterImplementation.initialize, (OWNER));
         bytes memory proxyInitCode = abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(impl, initData));
         bytes32 proxyInitCodeHash = keccak256(proxyInitCode);
 

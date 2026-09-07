@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
@@ -16,13 +16,13 @@ import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 /// code length it saw during construction so the test can assert the premise rather than assume it, and
 /// exposes a post-deployment write so the same binding can be exercised once code exists.
 contract ConstructorAccountBinder {
-    Adapter8004 private immutable ADAPTER;
+    AdapterImplementation private immutable ADAPTER;
 
     uint256 public agentId;
     bytes32 public ubid;
     uint256 public codeLengthDuringConstruction;
 
-    constructor(Adapter8004 adapter, bool useCounterfactual) {
+    constructor(AdapterImplementation adapter, bool useCounterfactual) {
         ADAPTER = adapter;
         codeLengthDuringConstruction = address(this).code.length;
 
@@ -42,7 +42,7 @@ contract ConstructorAccountBinder {
 /// deployment reverts, which is the half that shows the code test was made standard-aware rather than
 /// switched off.
 contract ConstructorCodeRequiringBinder {
-    constructor(Adapter8004 adapter, IERC8217.Standard standard) {
+    constructor(AdapterImplementation adapter, IERC8217.Standard standard) {
         adapter.register(standard, address(this), 0, "ipfs://ctor");
     }
 }
@@ -52,7 +52,7 @@ contract ConstructorCodeRequiringBinder {
 /// `ACCOUNT` must not relax it for the other seven standards, and must not relax either the zero
 /// address or the registry-address rejection for any standard including `ACCOUNT`.
 contract Adapter8004AccountTest is Test {
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockIdentityRegistry internal registry;
 
     address internal eoa = address(0xE0A);
@@ -61,9 +61,10 @@ contract Adapter8004AccountTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
     }
 
     // --- positives: a code-less address is a first-class principal under ACCOUNT ---
@@ -129,11 +130,11 @@ contract Adapter8004AccountTest is Test {
 
         for (uint256 i; i < standards.length; ++i) {
             vm.prank(eoa);
-            vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+            vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
             adapter.register(standards[i], eoa, 0, "ipfs://x");
 
             vm.prank(eoa);
-            vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+            vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
             adapter.counterfactualRegister(standards[i], eoa, 0, "ipfs://x");
         }
     }
@@ -142,23 +143,25 @@ contract Adapter8004AccountTest is Test {
     /// be indistinguishable from no binding. `ACCOUNT` waives the code test but must not waive this.
     function testAccountRejectsZeroAddress() external {
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.register(IERC8217.Standard.ACCOUNT, address(0), 0, "ipfs://x");
 
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(0), 0, "ipfs://x");
     }
 
     function testAccountRejectsRegistryAddress() external {
         vm.prank(eoa);
-        vm.expectRevert(Adapter8004.BoundAddressIsRegistry.selector);
+        vm.expectRevert(AdapterImplementation.BoundAddressIsRegistry.selector);
         adapter.register(IERC8217.Standard.ACCOUNT, address(registry), 0, "ipfs://x");
     }
 
     function testAccountStillRequiresCanonicalTokenId() external {
         vm.prank(eoa);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NonZeroTokenIdForAccount.selector, eoa, uint256(1)));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NonZeroTokenIdForAccount.selector, eoa, uint256(1))
+        );
         adapter.register(IERC8217.Standard.ACCOUNT, eoa, 1, "ipfs://x");
     }
 
@@ -170,7 +173,7 @@ contract Adapter8004AccountTest is Test {
         assertFalse(adapter.isController(agentId, stranger), "a stranger has no authority");
 
         vm.prank(stranger);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, stranger, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, stranger, agentId));
         adapter.setAgentURI(agentId, "ipfs://hijacked");
     }
 
@@ -229,7 +232,7 @@ contract Adapter8004AccountTest is Test {
         ];
 
         for (uint256 i; i < standards.length; ++i) {
-            vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+            vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
             new ConstructorCodeRequiringBinder(adapter, standards[i]);
         }
     }
@@ -281,7 +284,7 @@ contract Adapter8004AccountTest is Test {
         delegateRegistry.delegateAll(hot, eoa, adapter.DELEGATE_RIGHTS(), false);
         assertFalse(adapter.isController(agentId, hot), "revocation is visible immediately");
         vm.prank(hot);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, hot, agentId));
         adapter.setAgentURI(agentId, "ipfs://after-revocation");
     }
 
@@ -313,7 +316,7 @@ contract Adapter8004AccountTest is Test {
 
         // The delegate has no route to an identity for its own address.
         vm.prank(hot);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, hot, type(uint256).max));
         adapter.register(IERC8217.Standard.ACCOUNT, address(0xD00D), 0, "ipfs://elsewhere");
     }
 
@@ -324,27 +327,27 @@ contract Adapter8004AccountTest is Test {
     function testAccountRejectsZeroAddressAtEveryEntryPoint() external {
         vm.startPrank(eoa);
 
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.register(IERC8217.Standard.ACCOUNT, address(0), 0, "ipfs://x");
 
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(0), 0, "ipfs://x");
 
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentURI(IERC8217.Standard.ACCOUNT, address(0), 0, "ipfs://x");
 
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadata(IERC8217.Standard.ACCOUNT, address(0), 0, "k", bytes("v"));
 
         IERC8004IdentityRegistry.MetadataEntry[] memory batch = new IERC8004IdentityRegistry.MetadataEntry[](1);
         batch[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ACCOUNT, address(0), 0, batch);
 
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualSetAgentWallet(IERC8217.Standard.ACCOUNT, address(0), 0, eoa);
 
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ACCOUNT, address(0), 0);
 
         vm.stopPrank();
@@ -374,11 +377,11 @@ contract Adapter8004AccountTest is Test {
         assertFalse(adapter.isController(agentId, hot), shape);
 
         vm.prank(hot);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, hot, agentId));
         adapter.setAgentURI(agentId, "ipfs://hijacked");
 
         vm.prank(hot);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, hot, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, hot, agentId));
         adapter.setMetadata(agentId, "k", bytes("v"));
     }
 }

@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockERC721} from "../mocks/MockERC721.sol";
@@ -86,7 +86,7 @@ contract ForeignWalletRegistry is IERC8004IdentityRegistry {
 /// Defended: the adapter zeroes the default regardless of its value.
 contract SdR3_19_AgentWalletDefaultCleared is Test {
     ForeignWalletRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token;
 
     address internal admin = makeAddr("admin");
@@ -96,9 +96,9 @@ contract SdR3_19_AgentWalletDefaultCleared is Test {
 
     function setUp() external {
         registry = new ForeignWalletRegistry(foreign);
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
         token = new MockERC721();
         token.mint(owner, TID);
     }
@@ -109,6 +109,8 @@ contract SdR3_19_AgentWalletDefaultCleared is Test {
         uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token), TID, "ipfs://a");
 
         assertEq(adapter.getAgentWallet(agentId), address(0), "adapter cleared the registry's foreign default wallet");
-        assertEq(adapter.getMetadata(agentId, "agent-binding"), abi.encodePacked(address(adapter)), "binding record written");
+        assertEq(
+            adapter.getMetadata(agentId, "agent-binding"), abi.encodePacked(address(adapter)), "binding record written"
+        );
     }
 }

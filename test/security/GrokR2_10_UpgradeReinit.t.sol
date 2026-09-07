@@ -4,11 +4,11 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
-contract NextImpl is Adapter8004 {
-    constructor(address registry_) Adapter8004(registry_) {}
+contract NextImpl is AdapterImplementation {
+    constructor(address registry_) AdapterImplementation(registry_) {}
 }
 
 /// R1 #20 was RegistryMismatch spoof. This is upgrade-and-reinitialize owner seizure.
@@ -18,10 +18,11 @@ contract GrokR2_10_UpgradeReinit is Test {
         MockIdentityRegistry registry = new MockIdentityRegistry();
         address admin = makeAddr("admin");
         address attacker = makeAddr("attacker");
-        Adapter8004 adapter = Adapter8004(
+        AdapterImplementation adapter = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(registry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(registry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
@@ -29,7 +30,7 @@ contract GrokR2_10_UpgradeReinit is Test {
 
         vm.prank(admin);
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        adapter.upgradeToAndCall(address(next), abi.encodeCall(Adapter8004.initialize, (attacker)));
+        adapter.upgradeToAndCall(address(next), abi.encodeCall(AdapterImplementation.initialize, (attacker)));
 
         assertEq(adapter.owner(), admin);
         assertEq(address(adapter.identityRegistry()), address(registry));

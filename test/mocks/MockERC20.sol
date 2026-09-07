@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "./MockIdentityRegistry.sol";
@@ -16,7 +16,7 @@ contract MockERC20 {
     string public constant symbol = "M20";
     uint8 public constant decimals = 18;
 
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
 
     uint256 public totalSupply;
     mapping(address account => uint256 balance) internal _balances;
@@ -25,7 +25,7 @@ contract MockERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    constructor(Adapter8004 adapter) {
+    constructor(AdapterImplementation adapter) {
         ADAPTER = adapter;
     }
 
@@ -76,8 +76,7 @@ contract MockERC20 {
     }
 
     function counterfactualRegister(uint256 tokenId) external returns (bytes32) {
-        return
-            ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
+        return ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, "ipfs://erc20-agent");
     }
 
     function counterfactualRegisterWithMetadata(
@@ -85,8 +84,7 @@ contract MockERC20 {
         string calldata agentURI,
         IERC8004IdentityRegistry.MetadataEntry[] calldata metadata
     ) external returns (bytes32) {
-        return
-            ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, agentURI, metadata);
+        return ADAPTER.counterfactualRegister(IERC8217.Standard.ACCOUNT, address(this), tokenId, agentURI, metadata);
     }
 
     function counterfactualSetAgentURI(uint256 tokenId, string calldata newURI) external {
@@ -96,9 +94,7 @@ contract MockERC20 {
     function counterfactualSetMetadata(uint256 tokenId, string calldata metadataKey, bytes calldata metadataValue)
         external
     {
-        ADAPTER.counterfactualSetMetadata(
-            IERC8217.Standard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue
-        );
+        ADAPTER.counterfactualSetMetadata(IERC8217.Standard.ACCOUNT, address(this), tokenId, metadataKey, metadataValue);
     }
 
     function counterfactualSetMetadataBatch(uint256 tokenId, IERC8004IdentityRegistry.MetadataEntry[] calldata metadata)

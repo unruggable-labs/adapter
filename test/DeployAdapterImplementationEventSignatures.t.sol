@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {DeployAdapterImplementationScript} from "../script/DeployAdapterImplementation.s.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
@@ -70,14 +70,14 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
     }
 
     function testPrintedAgentBoundSignatureMatchesTheContract() external pure {
-        _assertSig(SIG_AGENT_BOUND, Adapter8004.AgentBound.selector, "AgentBound");
+        _assertSig(SIG_AGENT_BOUND, AdapterImplementation.AgentBound.selector, "AgentBound");
     }
 
     /// @dev The same defect in a different shape. The script prints a sample identity, and a preimage
     /// that omits a field is as misleading as a signature that names the wrong one. This compares the
     /// script's formula against the contract's, for inputs the script itself uses.
     function testPrintedSampleRegistrationHashMatchesTheContract() external {
-        Adapter8004 adapter = new Adapter8004(address(new MockIdentityRegistry()));
+        AdapterImplementation adapter = new AdapterImplementation(address(new MockIdentityRegistry()));
         bytes memory proxyInteroperableAddress = _interoperableAddress(block.chainid, address(adapter));
 
         assertEq(

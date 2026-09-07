@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
@@ -17,7 +17,7 @@ import {MockERC6909} from "../mocks/MockERC6909.sol";
 /// across randomized inputs.
 contract FuzzAdapter8004Test is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
     MockERC6909 internal token6909;
@@ -26,9 +26,9 @@ contract FuzzAdapter8004Test is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
@@ -45,8 +45,7 @@ contract FuzzAdapter8004Test is Test {
         token721.mint(holder, tokenId);
 
         vm.prank(holder);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         IERC8217.Binding memory b = adapter.bindingOf(agentId);
         assertEq(b.boundAddress, address(token721));
@@ -85,8 +84,7 @@ contract FuzzAdapter8004Test is Test {
 
         token721.mint(alice, tokenId);
         vm.prank(alice);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertFalse(adapter.isController(agentId, bob));
@@ -119,8 +117,7 @@ contract FuzzAdapter8004Test is Test {
         if (bobBal > 0) token1155.mint(bob, tokenId, bobBal);
 
         vm.prank(alice);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC1155, address(token1155), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC1155, address(token1155), tokenId, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertEq(adapter.isController(agentId, bob), bobBal > 0);
@@ -142,8 +139,7 @@ contract FuzzAdapter8004Test is Test {
         if (bobBal > 0) token6909.mint(bob, tokenId, bobBal);
 
         vm.prank(alice);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC6909, address(token6909), tokenId, "", _emptyMetadata());
 
         assertTrue(adapter.isController(agentId, alice));
         assertEq(adapter.isController(agentId, bob), bobBal > 0);
@@ -160,24 +156,23 @@ contract FuzzAdapter8004Test is Test {
 
         token721.mint(holder, tokenId);
         vm.prank(holder);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         vm.startPrank(attacker);
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, attacker, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, attacker, agentId));
         adapter.setAgentURI(agentId, "ipfs://evil");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, attacker, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, attacker, agentId));
         adapter.setMetadata(agentId, "k", bytes("v"));
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, attacker, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, attacker, agentId));
         adapter.setMetadataBatch(agentId, _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, attacker, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, attacker, agentId));
         adapter.setAgentWallet(agentId, attacker, block.timestamp + 1, "");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, attacker, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, attacker, agentId));
         adapter.unsetAgentWallet(agentId);
 
         vm.stopPrank();
@@ -200,7 +195,7 @@ contract FuzzAdapter8004Test is Test {
 
     function testFuzzNonOwnerCannotUpgrade(address attacker) external {
         vm.assume(attacker != admin && attacker != address(0));
-        Adapter8004 newImpl = new Adapter8004(address(registry));
+        AdapterImplementation newImpl = new AdapterImplementation(address(registry));
 
         vm.prank(attacker);
         vm.expectRevert();

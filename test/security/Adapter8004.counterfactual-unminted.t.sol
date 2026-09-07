@@ -4,13 +4,13 @@ pragma solidity ^0.8.24;
 import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 import {MockIdentityRegistry} from "../mocks/MockIdentityRegistry.sol";
 
 contract CounterfactualCollection {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     IERC8217.Standard internal immutable STANDARD;
     bool internal immutable MISSING_RETURNS_ZERO;
 
@@ -18,7 +18,7 @@ contract CounterfactualCollection {
 
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
 
-    constructor(Adapter8004 adapter, IERC8217.Standard standard, bool missingReturnsZero) {
+    constructor(AdapterImplementation adapter, IERC8217.Standard standard, bool missingReturnsZero) {
         ADAPTER = adapter;
         STANDARD = standard;
         MISSING_RETURNS_ZERO = missingReturnsZero;
@@ -97,12 +97,12 @@ contract CounterfactualCollection {
 }
 
 contract CounterfactualPlainMultiToken {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     IERC8217.Standard internal immutable STANDARD;
 
     mapping(address account => mapping(uint256 tokenId => uint256 balance)) internal _balances;
 
-    constructor(Adapter8004 adapter, IERC8217.Standard standard) {
+    constructor(AdapterImplementation adapter, IERC8217.Standard standard) {
         ADAPTER = adapter;
         STANDARD = standard;
     }
@@ -126,10 +126,10 @@ contract CounterfactualMalformedOwnerCollection {
         DirtyAddress
     }
 
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     Mode internal immutable MODE;
 
-    constructor(Adapter8004 adapter, Mode mode) {
+    constructor(AdapterImplementation adapter, Mode mode) {
         ADAPTER = adapter;
         MODE = mode;
     }
@@ -153,9 +153,9 @@ contract CounterfactualMalformedOwnerCollection {
 }
 
 contract CounterfactualReentrantOwnerCollection {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
 
-    constructor(Adapter8004 adapter) {
+    constructor(AdapterImplementation adapter) {
         ADAPTER = adapter;
     }
 
@@ -239,7 +239,7 @@ contract CounterfactualUnmintedTest is Test {
     );
 
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
 
     address internal admin = makeAddr("admin");
     address internal alice = makeAddr("alice");
@@ -247,9 +247,10 @@ contract CounterfactualUnmintedTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
     }
 
     function testERC721OwnerlessCollectionCanUseFullRegisterOverload() external {
@@ -301,9 +302,7 @@ contract CounterfactualUnmintedTest is Test {
         collection.setWallet(7, alice);
 
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit CounterfactualAgentWalletUnset(
-            hash, address(collection), 7, IERC8217.Standard.ERC721, address(collection)
-        );
+        emit CounterfactualAgentWalletUnset(hash, address(collection), 7, IERC8217.Standard.ERC721, address(collection));
         collection.unsetWallet(7);
     }
 
@@ -332,7 +331,7 @@ contract CounterfactualUnmintedTest is Test {
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.NotController.selector, address(collection), type(uint256).max)
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(collection), type(uint256).max)
         );
         collection.mintThenRegister(alice, 12, "ipfs://too-late", empty);
         // The whole transaction reverted, so neither the attempted mint state nor any receipt logs
@@ -352,7 +351,7 @@ contract CounterfactualUnmintedTest is Test {
     function _assertEveryCollectionWriteReverts(CounterfactualCollection collection, uint256 tokenId) internal {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
         bytes memory expected =
-            abi.encodeWithSelector(Adapter8004.NotController.selector, address(collection), type(uint256).max);
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(collection), type(uint256).max);
 
         vm.expectRevert(expected);
         collection.registerFull(tokenId, "u", metadata);
@@ -374,17 +373,13 @@ contract CounterfactualUnmintedTest is Test {
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = _metadata("a", "b");
         bytes32 hash = adapter.hashBinding(IERC8217.Standard.ERC721, address(collection), tokenId);
         vm.startPrank(alice);
-        adapter.counterfactualRegister(
-            IERC8217.Standard.ERC721, address(collection), tokenId, "ipfs://owner", metadata
-        );
+        adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(collection), tokenId, "ipfs://owner", metadata);
         vm.expectEmit(true, true, true, true, address(adapter));
         emit CounterfactualAgentURISet(
             hash, address(collection), tokenId, IERC8217.Standard.ERC721, "ipfs://latest", alice
         );
         adapter.counterfactualSetAgentURI(IERC8217.Standard.ERC721, address(collection), tokenId, "ipfs://latest");
-        adapter.counterfactualSetMetadata(
-            IERC8217.Standard.ERC721, address(collection), tokenId, "owner", bytes("yes")
-        );
+        adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(collection), tokenId, "owner", bytes("yes"));
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(collection), tokenId, metadata);
         adapter.counterfactualSetAgentWallet(IERC8217.Standard.ERC721, address(collection), tokenId, eve);
         adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ERC721, address(collection), tokenId);
@@ -401,13 +396,11 @@ contract CounterfactualUnmintedTest is Test {
         CounterfactualCollection zeroOwnerCollection = _collection(IERC8217.Standard.ERC721, true);
 
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
-        adapter.counterfactualRegister(
-            IERC8217.Standard.ERC721, address(zeroOwnerCollection), 1, "ipfs://stranger"
-        );
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
+        adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(zeroOwnerCollection), 1, "ipfs://stranger");
 
         vm.prank(eve);
-        vm.expectRevert(Adapter8004.InvalidBoundAddress.selector);
+        vm.expectRevert(AdapterImplementation.InvalidBoundAddress.selector);
         adapter.counterfactualRegister(IERC8217.Standard.ERC721, eve, 1, "ipfs://eoa");
     }
 
@@ -438,7 +431,7 @@ contract CounterfactualUnmintedTest is Test {
         collection.mint(alice, 40);
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.NotController.selector, address(collection), type(uint256).max)
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(collection), type(uint256).max)
         );
         collection.registerShort(40, "ipfs://closed");
     }
@@ -446,13 +439,17 @@ contract CounterfactualUnmintedTest is Test {
     function testMalformedSuccessfulOwnerOfResponsesFailClosed() external {
         CounterfactualMalformedOwnerCollection shortResponse =
             new CounterfactualMalformedOwnerCollection(adapter, CounterfactualMalformedOwnerCollection.Mode.WrongLength);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.InvalidOwnerOfResponse.selector, address(shortResponse), 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.InvalidOwnerOfResponse.selector, address(shortResponse), 1)
+        );
         shortResponse.register(1);
 
         CounterfactualMalformedOwnerCollection dirtyResponse = new CounterfactualMalformedOwnerCollection(
             adapter, CounterfactualMalformedOwnerCollection.Mode.DirtyAddress
         );
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.InvalidOwnerOfResponse.selector, address(dirtyResponse), 2));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.InvalidOwnerOfResponse.selector, address(dirtyResponse), 2)
+        );
         dirtyResponse.register(2);
     }
 
@@ -487,10 +484,8 @@ contract CounterfactualUnmintedTest is Test {
     }
 
     function testPlainERC1155AndERC6909PositiveHolderBehaviorIsUnchanged() external {
-        CounterfactualPlainMultiToken token1155 =
-            new CounterfactualPlainMultiToken(adapter, IERC8217.Standard.ERC1155);
-        CounterfactualPlainMultiToken token6909 =
-            new CounterfactualPlainMultiToken(adapter, IERC8217.Standard.ERC6909);
+        CounterfactualPlainMultiToken token1155 = new CounterfactualPlainMultiToken(adapter, IERC8217.Standard.ERC1155);
+        CounterfactualPlainMultiToken token6909 = new CounterfactualPlainMultiToken(adapter, IERC8217.Standard.ERC6909);
         token1155.mint(alice, 71, 1);
         token6909.mint(alice, 72, 1);
 
@@ -506,7 +501,7 @@ contract CounterfactualUnmintedTest is Test {
         collection.mint(alice, tokenId);
 
         vm.expectRevert(
-            abi.encodeWithSelector(Adapter8004.NotController.selector, address(collection), type(uint256).max)
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(collection), type(uint256).max)
         );
         collection.registerShort(tokenId, "ipfs://closed");
 
@@ -516,7 +511,9 @@ contract CounterfactualUnmintedTest is Test {
 
     function _assertPlainMultiTokenExcluded(IERC8217.Standard standard, uint256 tokenId) internal {
         CounterfactualPlainMultiToken token = new CounterfactualPlainMultiToken(adapter, standard);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(token), type(uint256).max));
+        vm.expectRevert(
+            abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(token), type(uint256).max)
+        );
         token.registerAsCollection(tokenId);
     }
 

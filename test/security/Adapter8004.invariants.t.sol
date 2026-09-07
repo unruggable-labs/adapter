@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
@@ -18,7 +18,7 @@ import {MockERC6909} from "../mocks/MockERC6909.sol";
 /// here only add coverage — they do not modify any existing test or source.
 contract SecurityAdapter8004InvariantsTest is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token721;
     MockERC1155 internal token1155;
     MockERC6909 internal token6909;
@@ -27,9 +27,9 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token721 = new MockERC721();
         token1155 = new MockERC1155();
@@ -46,8 +46,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
         token721.mint(holder, tokenId);
 
         vm.prank(holder);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         // The mock (and the real registry) set agentWallet = msg.sender during
         // register; the adapter must clear it as step 7 of register.
@@ -66,8 +65,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
         token721.mint(holder, tokenId);
 
         vm.prank(holder);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         IERC8217.Binding memory beforeBinding = adapter.bindingOf(agentId);
 
@@ -101,8 +99,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
         token721.mint(holder, tokenId);
 
         vm.prank(holder);
-        uint256 agentId =
-            adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
+        uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), tokenId, "", _emptyMetadata());
 
         bytes memory stored = registry.getMetadata(agentId, adapter.BINDING_METADATA_KEY());
         bytes memory expected = abi.encodePacked(address(adapter));
@@ -118,24 +115,24 @@ contract SecurityAdapter8004InvariantsTest is Test {
     // ---------------------------------------------------------------------
     function testFuzzUnknownAgentRevertsAcrossAllGatedReads(uint256 agentId) external {
         // With no register ever called, every agentId is unknown.
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
         adapter.bindingOf(agentId);
 
         assertFalse(adapter.isController(agentId, makeAddr("anyone")));
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
         adapter.setAgentURI(agentId, "x");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
         adapter.setMetadata(agentId, "k", bytes("v"));
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
         adapter.setMetadataBatch(agentId, _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
         adapter.setAgentWallet(agentId, makeAddr("w"), block.timestamp + 1, "");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
         adapter.unsetAgentWallet(agentId);
     }
 
@@ -156,10 +153,11 @@ contract SecurityAdapter8004InvariantsTest is Test {
         // Build an adapter on a registry whose setMetadata always reverts. This used to swap the
         // registry under the live adapter; the registry is fixed at construction since `0.0.17`.
         FailingMetadataRegistry badRegistry = new FailingMetadataRegistry();
-        Adapter8004 failing = Adapter8004(
+        AdapterImplementation failing = AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(badRegistry))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(badRegistry))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
@@ -177,7 +175,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         // Nothing persisted. The registry issued id 0 and the adapter wrote `_bindings[0]` before
         // the failure arrived, so this is the assertion that the revert rolled that write back.
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
         failing.bindingOf(0);
     }
 

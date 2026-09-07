@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test, Vm} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {Adapter8004} from "../../src/Adapter8004.sol";
+import {AdapterImplementation} from "../../src/AdapterImplementation.sol";
 import {IERC8217} from "../../src/interfaces/IERC8217.sol";
 import {IERC8004IdentityRegistry} from "../../src/interfaces/IERC8004IdentityRegistry.sol";
 
@@ -23,7 +23,7 @@ interface ICounterfactualReentrancyErrors {
 /// here as an off-chain behavior — the chain only emits events, it does not enforce ordering.
 contract CounterfactualSecurityTest is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token721;
 
     address internal admin = makeAddr("admin");
@@ -32,9 +32,9 @@ contract CounterfactualSecurityTest is Test {
 
     function setUp() external {
         registry = new MockIdentityRegistry();
-        Adapter8004 impl = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation impl = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token721 = new MockERC721();
         token721.mint(alice, 1);
@@ -65,7 +65,7 @@ contract CounterfactualSecurityTest is Test {
         vm.prank(alice);
         adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://cf");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 
@@ -88,7 +88,7 @@ contract CounterfactualSecurityTest is Test {
         assertEq(registry.getMetadata(0, "k").length, 0, "registry must hold no metadata for unminted agent 0");
         assertEq(registry.getMetadata(0, "k2").length, 0, "registry must hold no batch metadata for unminted agent 0");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 
@@ -109,23 +109,23 @@ contract CounterfactualSecurityTest is Test {
     function testCounterfactualSurfaceRefusesNonController() external {
         vm.startPrank(eve);
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "u");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetAgentURI(IERC8217.Standard.ERC721, address(token721), 1, "u");
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetMetadata(IERC8217.Standard.ERC721, address(token721), 1, "k", bytes("v"));
 
         IERC8004IdentityRegistry.MetadataEntry[] memory empty = new IERC8004IdentityRegistry.MetadataEntry[](0);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetMetadataBatch(IERC8217.Standard.ERC721, address(token721), 1, empty);
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualSetAgentWallet(IERC8217.Standard.ERC721, address(token721), 1, address(0xBEEF));
 
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, type(uint256).max));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, type(uint256).max));
         adapter.counterfactualUnsetAgentWallet(IERC8217.Standard.ERC721, address(token721), 1);
 
         vm.stopPrank();
@@ -163,9 +163,7 @@ contract CounterfactualSecurityTest is Test {
                 // Decode the non-indexed payload (uint8 standard, string newURI, address emitter)
                 // and confirm the standard rides on every event.
                 (uint8 standard,,) = abi.decode(logs[i].data, (uint8, string, address));
-                assertEq(
-                    standard, uint8(IERC8217.Standard.ERC721), "standard must ride on every counterfactual event"
-                );
+                assertEq(standard, uint8(IERC8217.Standard.ERC721), "standard must ride on every counterfactual event");
                 ++matches;
             }
         }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @notice Reads and writes an ERC-8004 agent identity record, covering metadata, URI, wallet, NFT
-/// owner and token URI. Both the identity registry and `Adapter8004` expose this surface; the
+/// owner and token URI. Both the identity registry and `AdapterImplementation` expose this surface; the
 /// adapter forwards to `identityRegistry()` after bound-token access checks (the registry typically
 /// enforces NFT owner/approval).
 ///

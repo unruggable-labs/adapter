@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8004AdapterCounterfactual} from "../src/interfaces/IERC8004AdapterCounterfactual.sol";
 import {IInteroperableAddressView} from "../src/interfaces/IInteroperableAddressView.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
@@ -18,7 +18,7 @@ import {MockERC721} from "./mocks/MockERC721.sol";
 /// - L-01: exercises the two new ERC-8004 `register` overloads on the registry interface.
 contract Adapter8004InterfacesTest is Test {
     MockIdentityRegistry internal registry;
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockERC721 internal token721;
 
     address internal alice;
@@ -30,9 +30,10 @@ contract Adapter8004InterfacesTest is Test {
 
         registry = new MockIdentityRegistry();
 
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (admin)));
-        adapter = Adapter8004(address(proxy));
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        ERC1967Proxy proxy =
+            new ERC1967Proxy(address(implementation), abi.encodeCall(AdapterImplementation.initialize, (admin)));
+        adapter = AdapterImplementation(address(proxy));
 
         token721 = new MockERC721();
         token721.mint(alice, 1);
@@ -204,8 +205,7 @@ contract Adapter8004InterfacesTest is Test {
     function testCounterfactualAndEncodingInterfaceCastsAndSelectors() external view {
         IERC8004AdapterCounterfactual cf = IERC8004AdapterCounterfactual(address(adapter));
         assertEq(
-            cf.hashBinding(IERC8217.Standard.ERC721, alice, 7),
-            adapter.hashBinding(IERC8217.Standard.ERC721, alice, 7)
+            cf.hashBinding(IERC8217.Standard.ERC721, alice, 7), adapter.hashBinding(IERC8217.Standard.ERC721, alice, 7)
         );
 
         IInteroperableAddressView encoding = IInteroperableAddressView(address(adapter));
@@ -241,8 +241,7 @@ contract Adapter8004InterfacesTest is Test {
         bytes32 expected = adapter.hashBinding(IERC8217.Standard.ERC721, address(token721), 1);
 
         vm.prank(alice);
-        bytes32 withoutMetadata =
-            cf.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://a");
+        bytes32 withoutMetadata = cf.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://a");
 
         IERC8004IdentityRegistry.MetadataEntry[] memory metadata = new IERC8004IdentityRegistry.MetadataEntry[](1);
         metadata[0] = IERC8004IdentityRegistry.MetadataEntry({metadataKey: "k", metadataValue: bytes("v")});
@@ -275,7 +274,7 @@ contract Adapter8004InterfacesTest is Test {
 
         // The revert behaviour is reachable through the standard's own interface, not only through
         // the concrete contract type.
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.UnknownAgent.selector, uint256(4242)));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(4242)));
         bindings.bindingHashOf(4242);
     }
 
@@ -321,15 +320,15 @@ contract Adapter8004InterfacesTest is Test {
         // Non-controller is rejected at the adapter layer, even via the interface cast.
         address eve = makeAddr("eve");
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         record.setMetadata(agentId, "k", bytes("bad"));
 
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         record.setAgentURI(agentId, "ipfs://bad");
 
         vm.prank(eve);
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, eve, agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, eve, agentId));
         record.unsetAgentWallet(agentId);
     }
 
@@ -341,37 +340,38 @@ contract Adapter8004InterfacesTest is Test {
     /// construction since `0.0.17`, so each builds a whole adapter on the reverting registry
     /// instead. The property under test is unchanged: a view must bubble the registry's revert
     /// rather than swallow it and answer zero.
-    function _onReverting() private returns (Adapter8004) {
+    function _onReverting() private returns (AdapterImplementation) {
         RevertingRegistry reverting = new RevertingRegistry();
-        return Adapter8004(
+        return AdapterImplementation(
             address(
                 new ERC1967Proxy(
-                    address(new Adapter8004(address(reverting))), abi.encodeCall(Adapter8004.initialize, (admin))
+                    address(new AdapterImplementation(address(reverting))),
+                    abi.encodeCall(AdapterImplementation.initialize, (admin))
                 )
             )
         );
     }
 
     function testGetMetadataForwardsRegistryRevert() external {
-        Adapter8004 reverting = _onReverting();
+        AdapterImplementation reverting = _onReverting();
         vm.expectRevert(bytes("getMetadata reverted"));
         reverting.getMetadata(0, "any");
     }
 
     function testGetAgentWalletForwardsRegistryRevert() external {
-        Adapter8004 reverting = _onReverting();
+        AdapterImplementation reverting = _onReverting();
         vm.expectRevert(bytes("getAgentWallet reverted"));
         reverting.getAgentWallet(0);
     }
 
     function testOwnerOfForwardsRegistryRevert() external {
-        Adapter8004 reverting = _onReverting();
+        AdapterImplementation reverting = _onReverting();
         vm.expectRevert(bytes("ownerOf reverted"));
         reverting.ownerOf(0);
     }
 
     function testTokenURIForwardsRegistryRevert() external {
-        Adapter8004 reverting = _onReverting();
+        AdapterImplementation reverting = _onReverting();
         vm.expectRevert(bytes("tokenURI reverted"));
         reverting.tokenURI(0);
     }
@@ -434,7 +434,7 @@ contract Adapter8004InterfacesTest is Test {
 }
 
 /// @notice Minimal IERC8004IdentityRegistry stub whose view functions all revert,
-/// used to verify Adapter8004 propagates registry-side read failures faithfully.
+/// used to verify AdapterImplementation propagates registry-side read failures faithfully.
 contract RevertingRegistry is IERC8004IdentityRegistry {
     function register(string memory, MetadataEntry[] memory) external pure override returns (uint256) {
         revert("register reverted");

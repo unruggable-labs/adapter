@@ -3,16 +3,16 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {IERC8217} from "../src/interfaces/IERC8217.sol";
 import {MockIdentityRegistry} from "./mocks/MockIdentityRegistry.sol";
 import {MockDelegateRegistry} from "./mocks/MockDelegateRegistry.sol";
 
 contract OwnableBinder {
-    Adapter8004 internal immutable ADAPTER;
+    AdapterImplementation internal immutable ADAPTER;
     address internal currentOwner;
 
-    constructor(Adapter8004 adapter, address initialOwner) {
+    constructor(AdapterImplementation adapter, address initialOwner) {
         ADAPTER = adapter;
         currentOwner = initialOwner;
     }
@@ -33,7 +33,7 @@ contract OwnableBinder {
 /// @notice Covers the delegation route added to `CONTRACT_OWNABLE`, which makes it the fourth member
 /// of the owner-and-delegate pattern alongside the three single-owner token standards.
 contract Adapter8004OwnableDelegateTest is Test {
-    Adapter8004 internal adapter;
+    AdapterImplementation internal adapter;
     MockDelegateRegistry internal delegateRegistry;
 
     address internal alice = makeAddr("alice");
@@ -45,9 +45,13 @@ contract Adapter8004OwnableDelegateTest is Test {
 
     function setUp() external {
         MockIdentityRegistry registry = new MockIdentityRegistry();
-        Adapter8004 implementation = new Adapter8004(address(registry));
-        adapter = Adapter8004(
-            address(new ERC1967Proxy(address(implementation), abi.encodeCall(Adapter8004.initialize, (address(this)))))
+        AdapterImplementation implementation = new AdapterImplementation(address(registry));
+        adapter = AdapterImplementation(
+            address(
+                new ERC1967Proxy(
+                    address(implementation), abi.encodeCall(AdapterImplementation.initialize, (address(this)))
+                )
+            )
         );
 
         MockDelegateRegistry mockImpl = new MockDelegateRegistry();
@@ -111,7 +115,7 @@ contract Adapter8004OwnableDelegateTest is Test {
         assertFalse(adapter.isController(agentId, address(binder)));
 
         vm.prank(address(binder));
-        vm.expectRevert(abi.encodeWithSelector(Adapter8004.NotController.selector, address(binder), agentId));
+        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.NotController.selector, address(binder), agentId));
         adapter.setAgentURI(agentId, "ipfs://self");
     }
 

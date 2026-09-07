@@ -2,10 +2,10 @@
 pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
-import {Adapter8004} from "../src/Adapter8004.sol";
+import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-/// @notice Deploys the canonical Adapter8004 proxy at a CREATE2 vanity address.
+/// @notice Deploys the canonical AdapterImplementation proxy at a CREATE2 vanity address.
 ///
 /// **These scripts describe a deployment that was never performed.** As of 2026-08-19 the live
 /// proxies and implementations sit at unrelated addresses on all three chains:
@@ -14,7 +14,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
 /// CREATE2 at a fixed salt would have put their implementations at one address; it did not. The
 /// 2026-04-05 report records why — each chain got "a fresh implementation contract and a fresh
 /// `ERC1967Proxy`" — and `DeployAdapterImplementation.s.sol`, the script upgrades actually use,
-/// calls plain `new Adapter8004()` with no salt, so every future implementation is nonce-derived
+/// calls plain `new AdapterImplementation()` with no salt, so every future implementation is nonce-derived
 /// and per-chain by construction. Cross-chain address determinism is therefore a property this
 /// deployment has never had, and no change to the contract can cost it something it does not hold.
 /// Treat the paragraphs below as a design sketch for a future redeployment, not a description of
@@ -49,13 +49,14 @@ contract DeployVanityProxy is Script {
         address registry = _registryForChain();
 
         // 1. Predict + (idempotently) deploy the implementation.
-        bytes32 implInitCodeHash = keccak256(abi.encodePacked(type(Adapter8004).creationCode, abi.encode(registry)));
+        bytes32 implInitCodeHash =
+            keccak256(abi.encodePacked(type(AdapterImplementation).creationCode, abi.encode(registry)));
         address predictedImpl = vm.computeCreate2Address(IMPL_SALT, implInitCodeHash, CREATE2_FACTORY);
 
         // 2. Predict the proxy address from the baked init code. The registry is now a constructor
         //    argument rather than an initializer one, so it moved from `initData` into the
         //    implementation init code hash above.
-        bytes memory initData = abi.encodeCall(Adapter8004.initialize, (OWNER));
+        bytes memory initData = abi.encodeCall(AdapterImplementation.initialize, (OWNER));
         bytes memory proxyInitCode =
             abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(predictedImpl, initData));
         address predictedProxy = vm.computeCreate2Address(proxySalt, keccak256(proxyInitCode), CREATE2_FACTORY);
@@ -71,7 +72,7 @@ contract DeployVanityProxy is Script {
 
         address impl = predictedImpl;
         if (predictedImpl.code.length == 0) {
-            impl = address(new Adapter8004{salt: IMPL_SALT}(registry));
+            impl = address(new AdapterImplementation{salt: IMPL_SALT}(registry));
             require(impl == predictedImpl, "impl address mismatch");
             console2.log("deployed impl");
         } else {
@@ -85,7 +86,7 @@ contract DeployVanityProxy is Script {
         vm.stopBroadcast();
 
         // 3. Post-deploy verification.
-        Adapter8004 adapter = Adapter8004(address(proxy));
+        AdapterImplementation adapter = AdapterImplementation(address(proxy));
         require(adapter.owner() == OWNER, "owner not set to Safe");
         require(address(adapter.identityRegistry()) == registry, "registry not set");
 

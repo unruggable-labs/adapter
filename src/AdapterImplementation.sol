@@ -29,7 +29,7 @@ interface IOwnableContract {
 /// @notice Lets a token holder, account, or contract controller manage an ERC-8004 identity.
 /// The adapter proxy owns the identity token; the binding determines who can manage its record.
 /// @custom:version 0.0.17
-contract Adapter8004 is
+contract AdapterImplementation is
     Initializable,
     OwnableUpgradeable,
     UUPSUpgradeable,
