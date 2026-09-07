@@ -1,9 +1,9 @@
-# ERC-8004 Identity Adapter
+# Adapter
 
-AdapterImplementation lets a token holder, account, or contract controller manage an ERC-8004 identity.
-The adapter proxy owns the identity NFT; a binding determines who can update its record.
+Adapter is a protocol for managing ERC-8004 identities through token, account, and contract bindings.
+The Adapter proxy owns the identity NFT; a binding determines who can update its record.
 
-This README describes the source version in [AdapterImplementation.sol](./src/AdapterImplementation.sol), not every deployed implementation.
+This README describes the source version in [the implementation contract](./src/AdapterImplementation.sol), not every deployed implementation.
 Check [Deployments](#deployments) before integrating with a live proxy.
 
 ## How it works
@@ -15,17 +15,17 @@ Check [Deployments](#deployments) before integrating with a live proxy.
             │ register(standard, boundAddress, tokenId, agentURI)
             ▼
   ┌───────────────────┐     register      ┌────────────────────┐
-  │   Adapter proxy   │ ─────────────────▶ │ ERC-8004 registry  │
+  │   Adapter proxy   │ ────────────────▶ │ ERC-8004 registry  │
   │ checks authority  │                   └─────────┬──────────┘
   │ stores binding    │                             │
   └───────────────────┘ ◀───────────────────────────┘
-                           mints agent NFT to adapter
+                           mints agent NFT to Adapter
 ```
 
 1. A caller passes the authority check for a binding.
-2. The adapter registers an identity in the ERC-8004 registry.
-3. The registry mints the identity NFT to the adapter.
-4. The adapter stores the binding and clears the registry's default agent wallet.
+2. The Adapter registers an identity in the ERC-8004 registry.
+3. The registry mints the identity NFT to the Adapter.
+4. The Adapter stores the binding and clears the registry's default agent wallet.
 5. Later updates require current authority under that binding.
 
 A binding contains `(standard, boundAddress, tokenId)`.
@@ -33,14 +33,14 @@ The current implementation has no rebind, unbind, withdrawal, or existing-agent 
 One binding can be used to register several agent IDs.
 
 For example, transferring a bound ERC-721 transfers control of its agent record to the new token owner.
-The ERC-8004 identity NFT stays in the adapter.
+The ERC-8004 identity NFT stays in the Adapter.
 
 ```text
-  ┌─────────┐       transfer bound NFT #1       ┌─────────┐
-  │  Alice  │ ────────────────────────────────▶ │   Bob   │
-  └─────────┘                                  └────┬────┘
-                                                    │ update agent
-                                                    ▼
+  ┌─────────┐       transfer bound NFT #1     ┌─────────┐
+  │  Alice  │ ──────────────────────────────▶ │   Bob   │
+  └─────────┘                                 └────┬────┘
+                                                   │ update agent
+                                                   ▼
                                           ┌──────────────────┐
                                           │  Adapter proxy   │
                                           │ checks current   │
@@ -51,7 +51,7 @@ The ERC-8004 identity NFT stays in the adapter.
                                           ┌──────────────────┐
                                           │ ERC-8004 record  │
                                           │ NFT still owned  │
-                                          │ by the adapter   │
+                                          │ by the Adapter   │
                                           └──────────────────┘
 ```
 
@@ -76,14 +76,14 @@ All except `ACCOUNT` require deployed code at `boundAddress`.
 
 ERC1155 and ERC6909 bindings allow shared control when several accounts hold a positive balance.
 ERC1155F and ERC6909F use the single-owner `ownerOf` profile.
-The adapter checks authority, not ERC conformance: it does not call `supportsInterface`.
+The Adapter checks authority, not ERC conformance: it does not call `supportsInterface`.
 
 Standard numbers are part of stored bindings and identity hashes.
 Append new values; never renumber, reorder, or remove existing values.
 
 ### Delegation
 
-The adapter queries delegate.xyz v2 at `0x00000000000000447e69651d841bD8D104Bed493`.
+The Adapter queries delegate.xyz v2 at `0x00000000000000447e69651d841bD8D104Bed493`.
 A grant must cover `keccak256("adapter8004.manage")` or use unscoped rights.
 
 Direct authority is checked first.
@@ -96,7 +96,7 @@ A wallet-wide grant can authorize an ACCOUNT binding even if the grant predates 
 ### Account-level bindings
 
 Choose `ACCOUNT` when the address itself should control the identity.
-For a contract to act directly, it must be able to call the adapter; it can register from its constructor.
+For a contract to act directly, it must be able to call the Adapter; it can register from its constructor.
 Its owner or admin gains no authority unless separately authorized through a qualifying delegation.
 
 Choose `CONTRACT_OWNABLE` for management by the contract's current owner or that owner's delegates.
@@ -115,7 +115,7 @@ A router or relayer must qualify under the selected rule; forwarding a user's ad
 EIP-7702 and smart-wallet execution policies determine who can cause calls from an ACCOUNT address.
 Changing those policies can widen or narrow access without changing the binding.
 
-Call the adapter proxy normally; do not delegatecall its implementation into another contract's storage.
+Call the Adapter proxy normally; do not delegatecall its implementation into another contract's storage.
 
 ### Ownerless token registration
 
@@ -143,7 +143,7 @@ register(standard, boundAddress, tokenId, agentURI)
 ```
 
 Both overloads return the new registry `agentId`.
-The adapter writes the binding, stores its proxy address under `agent-binding`, and calls `unsetAgentWallet` to remove the registry's default wallet assignment.
+The Adapter writes the binding, stores its proxy address under `agent-binding`, and calls `unsetAgentWallet` to remove the registry's default wallet assignment.
 
 Current controllers can call:
 
@@ -155,18 +155,18 @@ Current controllers can call:
 
 Read functions include `bindingOf`, `bindingHashOf`, `isController`, `getMetadata`, `getAgentWallet`, `ownerOf`, and `tokenURI`.
 The last four forward to the configured registry.
-For a bound agent, `ownerOf(agentId)` reports the adapter proxy, not its controller.
+For a bound agent, `ownerOf(agentId)` reports the Adapter proxy, not its controller.
 
 Registered wallet assignments retain the registry's signature checks.
-For the registry's EIP-712 wallet authorization, use the adapter proxy as the `owner` field, not the external token holder.
+For the registry's EIP-712 wallet authorization, use the Adapter proxy as the `owner` field, not the external token holder.
 The registry validates EOA signatures or the wallet's ERC-1271 response.
 
-Do not transfer existing identity NFTs or unrelated NFTs to the adapter.
+Do not transfer existing identity NFTs or unrelated NFTs to the Adapter.
 Its ERC-721 receiver accepts transfers, but receiving an NFT creates no binding and the current implementation has no rescue function.
 
 ## Binding metadata and verification
 
-The adapter's discovery interface is [IERC8217](./src/interfaces/IERC8217.sol).
+The Adapter's discovery interface is [IERC8217](./src/interfaces/IERC8217.sol).
 
 | Field | Value |
 | --- | --- |
@@ -176,22 +176,22 @@ The adapter's discovery interface is [IERC8217](./src/interfaces/IERC8217.sol).
 | Returned fields | `standard`, `boundAddress`, `tokenId` |
 
 To resolve a binding, read the metadata address, then call `bindingOf` at that address.
-Use `isController` to check this adapter's authority rules; it is an adapter-specific helper.
+Use `isController` to check this Adapter's authority rules; it is an Adapter-specific helper.
 
 `agent-binding` is the only reserved metadata key on registered and counterfactual writes.
 Caller-supplied values for that key revert.
-Other keys, including `cf-registration`, are user data and must not be trusted as adapter-authored binding evidence.
+Other keys, including `cf-registration`, are user data and must not be trusted as Adapter-authored binding evidence.
 
 ## UBIDs
 
-A Universal Binding Identifier (UBID) identifies the binding within this adapter and chain:
+A Universal Binding Identifier (UBID) identifies the binding within this Adapter and chain:
 
 ```text
 keccak256(abi.encode(adapterInteroperableAddress, standard, boundAddress, tokenId))
 ```
 
 Encode the fields as `(bytes,uint8,address,uint256)`, not packed encoding.
-The adapter address uses the local [ERC-7930](https://eips.ethereum.org/EIPS/eip-7930) envelope; `boundAddress` remains a plain EVM address.
+The Adapter address uses the local [ERC-7930](https://eips.ethereum.org/EIPS/eip-7930) envelope; `boundAddress` remains a plain EVM address.
 
 - `hashBinding(standard, boundAddress, tokenId)` computes a UBID without validating the binding or checking authority.
 - `bindingHashOf(agentId)` derives it from a stored binding and reverts for an unknown agent.
@@ -304,7 +304,7 @@ Older migration documents describe intermediate releases; do not use their API o
 
 ## Architecture and admin authority
 
-The adapter uses an ERC1967Proxy with a UUPS implementation.
+The Adapter uses an ERC1967Proxy with a UUPS implementation.
 The implementation constructor sets `identityRegistry`; `initialize(initialOwner)` sets a new proxy's owner.
 
 The owner can upgrade, transfer ownership, or renounce ownership.
@@ -373,7 +373,7 @@ It impersonates the Safe locally; it does not validate Safe signatures or submit
 
 ## Deploy a new proxy
 
-This creates a new adapter address; it does not upgrade an existing deployment.
+This creates a new Adapter address; it does not upgrade an existing deployment.
 
 Copy [.env.example](./.env.example) to `.env`.
 Set `DEPLOYER_PRIVATE_KEY` and the selected network's RPC and identity-registry variables.
