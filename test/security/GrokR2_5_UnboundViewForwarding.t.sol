@@ -28,12 +28,12 @@ contract GrokR2_5_UnboundViewForwarding is Test {
 
         assertEq(adapter.ownerOf(rawId), attacker, "forwarded registry owner");
         assertFalse(adapter.isController(rawId, attacker), "no binding, not an adapter controller");
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, rawId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, rawId));
         adapter.bindingOf(rawId);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, rawId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, rawId));
         adapter.bindingHashOf(rawId);
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, rawId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, rawId));
         adapter.setAgentURI(rawId, "ipfs://pwn");
     }
 }

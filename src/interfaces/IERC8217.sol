@@ -2,6 +2,8 @@
 pragma solidity ^0.8.24;
 
 interface IERC8217 {
+    error UnknownAgent(uint256 agentId);
+
     /// @dev **APPEND ONLY. NEVER RENUMBER, REORDER, OR REMOVE A MEMBER.** The `uint8` of this enum
     /// sits in the preimage of every binding hash, so renumbering silently re-keys every identity
     /// claimed under it and nothing on chain records the old value. Values 0-4 name a token within a
@@ -23,6 +25,14 @@ interface IERC8217 {
         address boundAddress;
         uint256 tokenId;
     }
+
+    event AgentBound(
+        uint256 indexed agentId,
+        Standard indexed standard,
+        address indexed boundAddress,
+        uint256 tokenId,
+        address registeredBy
+    );
 
     /// @notice The stored `Binding` for `agentId`, reverting `UnknownAgent` when the id carries none.
     /// @dev ERC-8217 mandates this function on this interface.

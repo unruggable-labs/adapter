@@ -115,24 +115,24 @@ contract SecurityAdapter8004InvariantsTest is Test {
     // ---------------------------------------------------------------------
     function testFuzzUnknownAgentRevertsAcrossAllGatedReads(uint256 agentId) external {
         // With no register ever called, every agentId is unknown.
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, agentId));
         adapter.bindingOf(agentId);
 
         assertFalse(adapter.isController(agentId, makeAddr("anyone")));
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, agentId));
         adapter.setAgentURI(agentId, "x");
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, agentId));
         adapter.setMetadata(agentId, "k", bytes("v"));
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, agentId));
         adapter.setMetadataBatch(agentId, _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, agentId));
         adapter.setAgentWallet(agentId, makeAddr("w"), block.timestamp + 1, "");
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, agentId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, agentId));
         adapter.unsetAgentWallet(agentId);
     }
 
@@ -175,7 +175,7 @@ contract SecurityAdapter8004InvariantsTest is Test {
 
         // Nothing persisted. The registry issued id 0 and the adapter wrote `_bindings[0]` before
         // the failure arrived, so this is the assertion that the revert rolled that write back.
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(0)));
         failing.bindingOf(0);
     }
 

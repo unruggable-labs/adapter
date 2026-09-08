@@ -134,10 +134,10 @@ contract Adapter8004CounterfactualReturnsTest is Test {
     /// @dev Unknown agents revert rather than answering zero, matching `bindingOf`. A zero answer
     /// would be indistinguishable from a real identity that happened to hash to zero.
     function testRegistrationHashOfRevertsForAnUnknownAgent() external {
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(42)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(42)));
         adapter.bindingHashOf(42);
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(0)));
         adapter.bindingHashOf(0);
     }
 

@@ -259,7 +259,7 @@ contract Adapter8004DelegateTest is Test {
         delegateRegistry.delegateERC721(hot, cold, address(token721), 1, rights, true);
 
         vm.prank(hot);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 999));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 999));
         adapter.setAgentURI(999, "ipfs://x");
     }
 

@@ -29,7 +29,7 @@ contract GrokR2_2_StrayNftReceive is Test {
         token.safeTransferFrom(alice, address(adapter), 99);
 
         assertEq(IERC721(address(token)).ownerOf(99), address(adapter), "adapter holds the stray NFT");
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(99)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(99)));
         adapter.bindingOf(99);
         assertFalse(adapter.isController(99, alice));
         assertFalse(adapter.isController(99, address(adapter)));

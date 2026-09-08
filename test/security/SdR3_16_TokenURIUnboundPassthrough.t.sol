@@ -36,7 +36,9 @@ contract SdR3_16_TokenURIUnboundPassthrough is Test {
 
         assertEq(adapter.tokenURI(directId), "ipfs://direct-not-via-adapter", "tokenURI forwards regardless of binding");
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, directId));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, directId));
         adapter.bindingOf(directId);
     }
 }
+
+import {IERC8217} from "../../src/interfaces/IERC8217.sol";

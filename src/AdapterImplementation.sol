@@ -64,15 +64,6 @@ contract AdapterImplementation is
     error ReservedMetadataKey(string metadataKey);
     error NotController(address account, uint256 agentId);
     error InvalidChainId();
-    error UnknownAgent(uint256 agentId);
-
-    event AgentBound(
-        uint256 indexed agentId,
-        Standard indexed standard,
-        address indexed boundAddress,
-        uint256 tokenId,
-        address registeredBy
-    );
 
     event AgentURISet(uint256 indexed agentId, string newURI, address indexed updatedBy);
     event MetadataSet(uint256 indexed agentId, string metadataKey, bytes metadataValue, address indexed updatedBy);

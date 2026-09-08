@@ -274,7 +274,7 @@ contract Adapter8004InterfacesTest is Test {
 
         // The revert behaviour is reachable through the standard's own interface, not only through
         // the concrete contract type.
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(4242)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(4242)));
         bindings.bindingHashOf(4242);
     }
 

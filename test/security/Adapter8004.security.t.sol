@@ -152,13 +152,13 @@ contract SecurityAdapter8004Test is Test {
 
     function testSetAgentURIUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 999));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 999));
         adapter.setAgentURI(999, "ipfs://nope");
     }
 
     function testSetMetadataUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 123));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 123));
         adapter.setMetadata(123, "k", bytes("v"));
     }
 
@@ -171,7 +171,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testSetMetadataBatchUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 77));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 77));
         adapter.setMetadataBatch(77, _emptyMetadata());
     }
 
@@ -228,7 +228,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testSetAgentWalletUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 42));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 42));
         adapter.setAgentWallet(42, makeAddr("x"), block.timestamp + 1, bytes(""));
     }
 
@@ -241,7 +241,7 @@ contract SecurityAdapter8004Test is Test {
 
     function testUnsetAgentWalletUnknownAgentReverts() external {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 1));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 1));
         adapter.unsetAgentWallet(1);
     }
 
@@ -269,7 +269,7 @@ contract SecurityAdapter8004Test is Test {
     }
 
     function testBindingOfUnknownAgentReverts() external {
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 999));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 999));
         adapter.bindingOf(999);
     }
 

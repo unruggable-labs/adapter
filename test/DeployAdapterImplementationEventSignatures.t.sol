@@ -70,7 +70,7 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
     }
 
     function testPrintedAgentBoundSignatureMatchesTheContract() external pure {
-        _assertSig(SIG_AGENT_BOUND, AdapterImplementation.AgentBound.selector, "AgentBound");
+        _assertSig(SIG_AGENT_BOUND, IERC8217.AgentBound.selector, "AgentBound");
     }
 
     /// @dev The same defect in a different shape. The script prints a sample identity, and a preimage

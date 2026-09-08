@@ -171,7 +171,7 @@ contract Adapter8004ContractBindingTest is Test {
 
     function testContractRegistersItsOwnAgent() external {
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit AdapterImplementation.AgentBound(0, IERC8217.Standard.ACCOUNT, address(token), 0, address(token));
+        emit IERC8217.AgentBound(0, IERC8217.Standard.ACCOUNT, address(token), 0, address(token));
         uint256 agentId = token.register(0);
 
         IERC8217.Binding memory binding = adapter.bindingOf(agentId);
@@ -574,7 +574,7 @@ contract Adapter8004ContractBindingTest is Test {
         token.counterfactualUnsetAgentWallet(1);
 
         // Nothing was minted, bound, or claimed along the way: agent id 0 would be the first mint.
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(0)));
         adapter.bindingOf(0);
     }
 

@@ -1,59 +1,41 @@
 # Adapter
 
-Adapter is a protocol for managing ERC-8004 identities through token, account, and contract bindings.
-The Adapter proxy owns the identity NFT; a binding determines who can update its record.
+Adapter is a protocol for agent identity and reputation across blockchains.
+An agent profile associates a token or account with agent metadata and is identified by a Universal Binding Identifier (UBID).
+The UBID includes the binding's chain and Adapter deployment, giving applications an unambiguous identifier across networks.
+
+Attestations let accounts publish statements about a profile, providing a record that applications can use to assess reputation.
+Applications can also associate payments on different blockchains with a profile's UBID.
+
+Adapter supports counterfactual profiles through event-based identity claims, wallet links, and attestations.
+The protocol also supports ERC-8004 registration, letting agents have a registry record and identity NFT bound to their token or account.
 
 This README describes the source version in [the implementation contract](./src/AdapterImplementation.sol), not every deployed implementation.
 Check [Deployments](#deployments) before integrating with a live proxy.
 
 ## How it works
 
-```text
-  ┌───────────────────┐
-  │ Authorized caller │
-  └─────────┬─────────┘
-            │ register(standard, boundAddress, tokenId, agentURI)
-            ▼
-  ┌───────────────────┐     register      ┌────────────────────┐
-  │   Adapter proxy   │ ────────────────▶ │ ERC-8004 registry  │
-  │ checks authority  │                   └─────────┬──────────┘
-  │ stores binding    │                             │
-  └───────────────────┘ ◀───────────────────────────┘
-                           mints agent NFT to Adapter
-```
+A binding describes the token or account associated with a profile: `(standard, boundAddress, tokenId)`.
+It determines who can publish or update the profile, and its UBID identifies it within an Adapter deployment and chain.
 
-1. A caller passes the authority check for a binding.
-2. The Adapter registers an identity in the ERC-8004 registry.
-3. The registry mints the identity NFT to the Adapter.
-4. The Adapter stores the binding and clears the registry's default agent wallet.
-5. Later updates require current authority under that binding.
+1. Choose a token or account and its [control rule](#control-rules).
+2. Choose how to publish the profile using one of the two paths below. Both accept an agent URI and optional metadata, and check the caller's authority under the binding.
+3. Manage the profile through the chosen path's update functions. Authority is checked on each write, using the current controller of the token or account.
+4. Use the UBID for [wallet links](#wallet-ubid-self-claims) and [attestations](#attestations). These work with either path and also independently of profile publication; each has its own authorization rules.
 
-A binding contains `(standard, boundAddress, tokenId)`.
-The current implementation has no rebind, unbind, withdrawal, or existing-agent import function.
-One binding can be used to register several agent IDs.
+| Profile path | Publish | Manage and read |
+| --- | --- | --- |
+| [Counterfactual registration](#counterfactual-registration) | Call `counterfactualRegister` to emit the profile under its UBID. | Use the counterfactual setters to publish updates. Indexers reconstruct the profile from events; no ERC-8004 NFT is minted and no binding is stored. |
+| [ERC-8004 registration](#erc-8004-registration-and-management) | Call `register` to create a registry record, mint its identity NFT to the Adapter, and store the binding. The call returns an `agentId`. | Use the registered-agent setters with the `agentId`. Read the record through the registry or Adapter's forwarding getters. |
 
-For example, transferring a bound ERC-721 transfers control of its agent record to the new token owner.
-The ERC-8004 identity NFT stays in the Adapter.
+Both paths use the same UBID for the same binding within an Adapter deployment and chain.
+You can derive the [UBID](#ubids) at any time with `hashBinding(standard, boundAddress, tokenId)`; this read call requires no registration or transaction.
+Counterfactual events describe one profile per UBID.
+ERC-8004 registration associates an identity with that UBID, and each registration creates a new `agentId`.
+A UBID can have one or more ERC-8004 identities associated with it.
 
-```text
-  ┌─────────┐       transfer bound NFT #1     ┌─────────┐
-  │  Alice  │ ──────────────────────────────▶ │   Bob   │
-  └─────────┘                                 └────┬────┘
-                                                   │ update agent
-                                                   ▼
-                                          ┌──────────────────┐
-                                          │  Adapter proxy   │
-                                          │ checks current   │
-                                          │ owner of NFT #1  │
-                                          └─────────┬────────┘
-                                                    │ authorized update
-                                                    ▼
-                                          ┌──────────────────┐
-                                          │ ERC-8004 record  │
-                                          │ NFT still owned  │
-                                          │ by the Adapter   │
-                                          └──────────────────┘
-```
+Control follows the current token owner, holder, account, or contract authority selected by the binding standard.
+For example, transferring a bound ERC-721 transfers authority to update its profile to the new owner, whether the profile uses event-based claims or an ERC-8004 record.
 
 ## Control rules
 
@@ -76,64 +58,81 @@ All except `ACCOUNT` require deployed code at `boundAddress`.
 
 ERC1155 and ERC6909 bindings allow shared control when several accounts hold a positive balance.
 ERC1155F and ERC6909F use the single-owner `ownerOf` profile.
-The Adapter checks authority, not ERC conformance: it does not call `supportsInterface`.
-
-Standard numbers are part of stored bindings and identity hashes.
-Append new values; never renumber, reorder, or remove existing values.
+The Adapter checks who can manage the profile, but does not verify that the token or contract fully follows the selected standard.
 
 ### Delegation
 
-The Adapter queries delegate.xyz v2 at `0x00000000000000447e69651d841bD8D104Bed493`.
-A grant must cover `keccak256("adapter8004.manage")` or use unscoped rights.
+Adapter uses delegate.xyz to delegate profile management to another account. For example, you can keep your asset in a hardware wallet and manage its agent profile from a hot wallet.
 
-Direct authority is checked first.
-If the delegation registry has no code, delegation grants no authority.
-Delegations are read live, so revocation removes delegated access.
+Adapter uses the `adapter8004.manage` delegation grant. Grants covering all rights are also accepted.
 
 Plain ERC1155, ERC6909, and CONTRACT_ADMIN bindings have no delegation path.
-A wallet-wide grant can authorize an ACCOUNT binding even if the grant predates registration.
 
 ### Account-level bindings
 
-Choose `ACCOUNT` when the address itself should control the identity.
-For a contract to act directly, it must be able to call the Adapter; it can register from its constructor.
-Its owner or admin gains no authority unless separately authorized through a qualifying delegation.
+These types bind a profile to a wallet or contract rather than an individual token:
 
-Choose `CONTRACT_OWNABLE` for management by the contract's current owner or that owner's delegates.
-Choose `CONTRACT_ADMIN` for management by its default admins.
-Neither standard grants special authority merely because the caller is the bound contract.
+- `ACCOUNT`: The wallet or contract itself manages the profile. It can also authorize another account through delegate.xyz.
+- `CONTRACT_OWNABLE`: The contract's current owner, or that owner's delegates, manages the profile.
+- `CONTRACT_ADMIN`: The contract's default admins manage the profile.
 
-The `owner()` probe accepts only a successful 32-byte canonical address response.
-Zero, malformed responses, and reverts grant no owner authority.
-The `hasRole(bytes32(0), account)` probe accepts only a successful 32-byte word equal to `1`.
-
-Ownership transfers and role changes affect existing bindings immediately.
-If `owner()` becomes zero, an OWNABLE binding cannot be managed unless the bound contract later restores a valid owner.
-
-Authorization uses the immediate `msg.sender`.
-A router or relayer must qualify under the selected rule; forwarding a user's address does not confer authority.
-EIP-7702 and smart-wallet execution policies determine who can cause calls from an ACCOUNT address.
-Changing those policies can widen or narrow access without changing the binding.
-
-Call the Adapter proxy normally; do not delegatecall its implementation into another contract's storage.
+Changes to the contract's owner or admins change who can manage the profile.
 
 ### Ownerless token registration
 
-For ERC721, ERC1155F, and ERC6909F, the bound token contract may directly call `register` or a counterfactual writer while `ownerOf(tokenId)` reverts or returns zero.
-The contract must already have runtime code.
-A successful but malformed `ownerOf` response reverts; it does not establish ownerlessness.
+Binding a profile at mint should be gas efficient. Previously, a collection had to mint the token to its own contract, bind the profile, then transfer the token to the user.
 
-This permits registration immediately before minting.
-A burn can reopen the same window; it is not proof that the ID was never minted.
-Once a nonzero owner exists, the collection needs normal owner or delegate authority.
+For `ERC721`, `ERC1155F`, and `ERC6909F`, Adapter lets the deployed token contract bind a profile before the token has an owner. The collection can then mint directly to the user, avoiding the extra transfer and its gas cost. This works with both ERC-8004 registration and counterfactual publication.
 
-The exception does not authorize management of an already-registered agent through `setAgentURI`, metadata, or wallet setters.
-Those functions require a current controller.
+Once the token has an owner, managing its profile requires the owner's or a delegate's permission.
+Updating an existing ERC-8004 record always requires a current controller, even when the token has no owner.
 
-`isController(agentId, account)` returns false for an unknown agent.
-For known agents, external ownership, balance, or delegation calls can revert; callers must not assume it always returns a boolean.
+## ERC-8004 registration and management
 
-## Register and manage an agent
+Use `register` to add an ERC-8004 registry record and identity NFT to a binding's UBID.
+Event-based profiles, wallet claims, and attestations also work independently, so you can choose ERC-8004 registration to suit your application's needs.
+
+```text
+  ┌───────────────────┐
+  │ Authorized caller │
+  └─────────┬─────────┘
+            │ register(standard, boundAddress, tokenId, agentURI)
+            ▼
+  ┌───────────────────┐     register      ┌────────────────────┐
+  │   Adapter proxy   │ ────────────────▶ │ ERC-8004 registry  │
+  │ checks authority  │                   └─────────┬──────────┘
+  │ stores binding    │                             │
+  └───────────────────┘ ◀───────────────────────────┘
+                           mints agent NFT to Adapter
+```
+
+1. A caller passes the authority check for a binding.
+2. The Adapter registers an identity in the ERC-8004 registry.
+3. The registry mints the identity NFT to the Adapter.
+4. The Adapter stores the binding and clears the registry's default agent wallet.
+5. Later updates require current authority under that binding.
+
+For example, transferring a bound ERC-721 transfers control of its agent record to the new token owner.
+
+```text
+  ┌─────────┐       transfer bound NFT #1     ┌─────────┐
+  │  Alice  │ ──────────────────────────────▶ │   Bob   │
+  └─────────┘                                 └────┬────┘
+                                                   │ update agent
+                                                   ▼
+                                          ┌──────────────────┐
+                                          │  Adapter proxy   │
+                                          │ checks current   │
+                                          │ owner of NFT #1  │
+                                          └─────────┬────────┘
+                                                    │ authorized update
+                                                    ▼
+                                          ┌──────────────────┐
+                                          │ ERC-8004 record  │
+                                          │ NFT still owned  │
+                                          │ by the Adapter   │
+                                          └──────────────────┘
+```
 
 Register with or without metadata:
 
@@ -174,8 +173,15 @@ The Adapter's discovery interface is [IERC8217](./src/interfaces/IERC8217.sol).
 | Metadata value | `abi.encodePacked(adapterProxy)`: exactly 20 bytes |
 | Binding lookup | `bindingOf(agentId)` on that proxy |
 | Returned fields | `standard`, `boundAddress`, `tokenId` |
+| Binding identifier | `bindingHashOf(agentId)` on that proxy |
 
-To resolve a binding, read the metadata address, then call `bindingOf` at that address.
+Adapter targets the expected ERC-8217 update and exposes both functions:
+
+- `bindingOf(uint256 agentId) returns (Binding)` returns the stored binding.
+- `bindingHashOf(uint256 agentId) returns (bytes32)` returns the binding's UBID.
+
+To resolve a binding, read the metadata address, then call both functions at that address.
+Verify the returned UBID against the binding fields before joining records from other chains or event histories.
 Use `isController` to check this Adapter's authority rules; it is an Adapter-specific helper.
 
 `agent-binding` is the only reserved metadata key on registered and counterfactual writes.
@@ -207,8 +213,9 @@ See the [UBID fixtures](./docs/fixtures/adapter-counterfactual-hashes.md) for ve
 
 ## Counterfactual registration
 
-Counterfactual functions emit identity claims without minting a registry NFT or storing a binding.
-They still consume transaction gas and use the registration authority rules above.
+Counterfactual functions publish and update an event-based profile without minting a registry NFT or storing a binding.
+These profiles work independently of ERC-8004 registration. Agents can also register in the ERC-8004 registry at any time.
+These calls still consume transaction gas and use the binding authority rules above.
 
 Each function below returns the UBID it emits:
 
@@ -250,7 +257,7 @@ A reverse claim alone does not prove a mutual link; also check the identity's cu
 ## Attestations
 
 Attestations record public statements about a UBID.
-The immediate caller is the attester; no identity authority is required.
+The immediate caller is the attester; no identity authority or prior registration of the target is required.
 
 - `attest(attestationType, ubid, variant, data)` emits `Attested`.
 - `confirmAdditionalAccount(ubid)` is equivalent to a CONFIRM_ACCOUNT attestation with zero variant and empty data.
@@ -284,42 +291,6 @@ No attestation state is stored or exposed through a getter.
 Readers must apply the [type and projection rules](./docs/specs/attestation-type-registry-v1.md), including re-attestation after revocation.
 See the [attestation fixtures](./docs/fixtures/adapter-attestation-ids.md) for identifier vectors.
 
-## Indexing and upgrades
-
-Use the ABI for the implementation active when each event was emitted.
-
-- Registered bindings use `AgentBound`; `agentId`, `standard`, and `boundAddress` are indexed.
-- Counterfactual identity events index `ubid`, `boundAddress`, and `tokenId`; `standard` is in the body.
-- Group counterfactual records by UBID, not just address and token ID.
-- Apply canonical-chain logs by block number and log index; undo records removed by a reorganization.
-- Treat event-schema and hash-scheme changes as explicit cutovers.
-- Preserve historical hashes; computing the current hash does not rewrite old event identities.
-- `setMetadataBatch` emits one `MetadataSet` per entry; the current contract has no `MetadataBatchSet` event.
-
-Record the executed upgrade transaction and exact log boundary.
-Implementation deployment alone changes neither the proxy nor its event stream.
-
-The [Sepolia preflight](./deployments/v0.0.17-sepolia-preflight.md) lists changes from the deployed baseline.
-Older migration documents describe intermediate releases; do not use their API or storage descriptions as the current specification.
-
-## Architecture and admin authority
-
-The Adapter uses an ERC1967Proxy with a UUPS implementation.
-The implementation constructor sets `identityRegistry`; `initialize(initialOwner)` sets a new proxy's owner.
-
-The owner can upgrade, transfer ownership, or renounce ownership.
-The current implementation gives the owner no special authority to manage an individual agent.
-However, upgrade authority can replace those rules; bindings are not immutable against an owner-authorized code change.
-
-The registry has no setter and is immutable within one implementation.
-**Upgrades check ownership only, not registry equality.**
-Operators must preserve the registry: another registry can reuse agent IDs and cause new registrations to overwrite existing bindings.
-
-For the documented deployed baselines, slot 0 holds the old registry address and slot 1 holds bindings.
-The current implementation reserves slot 0 and keeps bindings at slot 1.
-Wallet claims and attestations add no storage mappings.
-Upgrade existing proxies with empty initialization data; do not call `initialize` again.
-
 ## Deployments
 
 Use proxy addresses for integrations.
@@ -330,24 +301,11 @@ Use proxy addresses for integrations.
 | Base | `0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27` | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
 | Sepolia | `0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92` | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
 
-Recorded owner Safe: `0x03302Df40186D9B85faEA4fbb6cC5da028B23149` on all three chains.
-
 | Chain | Last checked | Active implementation at that check |
 | --- | --- | --- |
 | Ethereum | 2026-07-29 | `0xa6D23f27D3b1780B12488482a008cB3c3787135f` |
 | Base | 2026-07-29 | `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9` |
 | Sepolia | 2026-09-07 | `0x31a68E5bc0224ad081d6Ec20229B05F558609257` |
-
-These checks do not show the current source deployed.
-See the [historical baseline](./deployments/upgrade-baseline-from-last-deployed.md) and [Sepolia preflight](./deployments/v0.0.17-sepolia-preflight.md) for evidence.
-
-Before an upgrade, re-read the proxy's EIP-1967 implementation slot:
-
-```text
-0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc
-```
-
-A prepared Safe payload or a deployed implementation is not evidence of an executed upgrade.
 
 ## Build and test
 
@@ -370,49 +328,6 @@ Tests cover authority checks, malformed responses, registry signatures, immutabl
 delegation, event projections, encoding vectors, and upgrades.
 The [Sepolia fork test](./test/Adapter8004.sepolia-fork.t.sol) also preserves historical bindings through an upgrade using the actual deployed registries.
 It impersonates the Safe locally; it does not validate Safe signatures or submit transactions.
-
-## Deploy a new proxy
-
-This creates a new Adapter address; it does not upgrade an existing deployment.
-
-Copy [.env.example](./.env.example) to `.env`.
-Set `DEPLOYER_PRIVATE_KEY` and the selected network's RPC and identity-registry variables.
-Never commit a private key.
-
-The following commands broadcast an implementation and a new proxy:
-
-```sh
-script/deploy.sh sepolia
-# Alternatives: script/deploy.sh base or script/deploy.sh mainnet
-```
-
-The deployer becomes the new proxy's owner.
-Use [TransferAdapterOwnership.s.sol](./script/TransferAdapterOwnership.s.sol) to transfer ownership when required.
-
-## Upgrade an existing Safe-owned proxy
-
-1. Confirm the live implementation, registry, owner, storage compatibility, and indexer cutover.
-2. Deploy only the implementation with [DeployAdapterImplementation.s.sol](./script/DeployAdapterImplementation.s.sol), passing the unchanged registry to its constructor.
-3. Verify its source, constructor argument, runtime code, and deployment receipt.
-4. Generate Safe calldata using the actual deployed address.
-5. Have the Safe execute `upgradeToAndCall(newImplementation, 0x)` against the existing proxy.
-6. Re-read the implementation slot, owner, registry, and sampled bindings after execution.
-
-For Sepolia, follow the [preflight report](./deployments/v0.0.17-sepolia-preflight.md).
-After deploying and verifying the implementation, set `ADAPTER_IMPLEMENTATION_ADDRESS` and `EXPECTED_IMPLEMENTATION_CODEHASH`, then prepare the Safe JSON:
-
-```sh
-forge script script/PrepareSepoliaUpgrade.s.sol:PrepareSepoliaUpgradeScript \
-  --rpc-url https://ethereum-sepolia-rpc.publicnode.com
-```
-
-This preparation script checks the deployed target and simulates the upgrade locally.
-It rejects `--broadcast` and `--resume`.
-Its output is `deployments/v0.0.17-safe-tx-sepolia-verified.json`.
-
-The Safe transaction is a CALL to the proxy with value zero and empty post-upgrade initialization data.
-Do not sign an implementation address taken only from a deployment dry run.
-The direct-owner [UpgradeAdapter.s.sol](./script/UpgradeAdapter.s.sol) is not the execution path for a Safe-owned proxy.
 
 ## Source reference
 

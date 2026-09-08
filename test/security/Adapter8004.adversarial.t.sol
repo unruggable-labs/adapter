@@ -60,7 +60,7 @@ contract AdversarialAdapter8004Test is Test {
         vm.expectRevert();
         adapter.register(IERC8217.Standard.ERC721, address(rev), 1, "", _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 
@@ -157,7 +157,7 @@ contract AdversarialAdapter8004Test is Test {
         vm.expectRevert();
         adapter.register(IERC8217.Standard.ERC721, address(mal), 1, "", _emptyMetadata());
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 

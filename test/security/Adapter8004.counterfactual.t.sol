@@ -65,7 +65,7 @@ contract CounterfactualSecurityTest is Test {
         vm.prank(alice);
         adapter.counterfactualRegister(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://cf");
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 
@@ -88,7 +88,7 @@ contract CounterfactualSecurityTest is Test {
         assertEq(registry.getMetadata(0, "k").length, 0, "registry must hold no metadata for unminted agent 0");
         assertEq(registry.getMetadata(0, "k2").length, 0, "registry must hold no batch metadata for unminted agent 0");
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, 0));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, 0));
         adapter.bindingOf(0);
     }
 

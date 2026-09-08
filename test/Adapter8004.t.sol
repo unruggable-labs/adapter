@@ -124,7 +124,7 @@ contract Adapter8004Test is Test {
     function testFirstMintedAgentIdIsZero() external {
         vm.prank(alice);
         vm.expectEmit(true, true, true, true, address(adapter));
-        emit AdapterImplementation.AgentBound(0, IERC8217.Standard.ERC721, address(token721), 1, alice);
+        emit IERC8217.AgentBound(0, IERC8217.Standard.ERC721, address(token721), 1, alice);
         uint256 agentId = adapter.register(IERC8217.Standard.ERC721, address(token721), 1, "ipfs://agent/1");
 
         assertEq(agentId, 0);

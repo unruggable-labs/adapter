@@ -33,7 +33,7 @@ contract GrokR2_4_RegisterReservedMetadata is Test {
         vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.ReservedMetadataKey.selector, "agent-binding"));
         adapter.register(IERC8217.Standard.ERC721, address(token), 1, "ipfs://a", metadata);
 
-        vm.expectRevert(abi.encodeWithSelector(AdapterImplementation.UnknownAgent.selector, uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(IERC8217.UnknownAgent.selector, uint256(0)));
         adapter.bindingOf(0);
     }
 }
