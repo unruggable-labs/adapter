@@ -10,8 +10,8 @@ contract UpgradeAdapterScript is Script {
         uint256 ownerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
         // Read the registry the live proxy already points at and bake exactly that one into the new
-        // implementation. `_authorizeUpgrade` on the outgoing implementation checks the same
-        // equality, so a mismatch here fails on chain rather than repointing the proxy.
+        // implementation. Upgrade authorization checks ownership only, so this script must
+        // preserve the registry explicitly. Safe-owned proxies use the implementation-only flow.
         address registry = address(AdapterImplementation(payable(proxy)).identityRegistry());
         require(registry != address(0), "proxy reports no registry");
 

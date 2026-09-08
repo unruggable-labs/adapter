@@ -321,7 +321,7 @@ The Sepolia fork test requires an RPC URL; otherwise it skips:
 
 ```sh
 SEPOLIA_FORK_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
-SEPOLIA_FORK_BLOCK=11655563 forge test
+SEPOLIA_FORK_BLOCK=11658120 forge test
 ```
 
 Tests cover authority checks, malformed responses, registry signatures, immutable binding storage,

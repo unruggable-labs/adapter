@@ -15,39 +15,28 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 /// ONLY the EOA-side step: it deploys the new implementation contract. It deliberately
 /// does NOT call `upgradeToAndCall`.
 ///
-/// After the broadcast, the script:
-///   1. Prints the exact transaction the Safe signers must submit through the Safe
-///      Transaction Builder:
+/// After the broadcast, the script prints:
 ///        - `to`    = the proxy address (`ADAPTER_PROXY_ADDRESS`)
 ///        - `value` = 0
 ///        - `data`  = `upgradeToAndCall(newImplementation, "")`
-///   2. Writes a ready-to-import Safe Transaction Builder JSON to
-///      `deployments/2026-07-29-primary-split-erc7930-safe-tx-<network>.json`,
-///      where `<network>` is derived from `block.chainid` via `_networkNames`. The Safe
-///      signers can drag-and-drop that file into the Transaction Builder instead of
-///      copy-pasting raw calldata. The JSON description includes the implementation
-///      EXTCODEHASH so signers can independently compare it against
-///      `keccak256(eth_getCode(<implementation>))`.
+///        - the implementation runtime code hash
+///
+/// This script does not write a Safe payload. Generate that only after the implementation
+/// deployment and runtime code have been independently verified.
 ///
 /// Upgrade data is empty: the active Mainnet/Base and Sepolia implementations both use only
-/// regular slots 0/1. AdapterImplementation appends two mappings directly at slots 2-3. New mappings
-/// begin empty naturally; no migration or `reinitializer` is permitted.
+/// regular slots 0/1. Slot 0 is reserved and bindings stay at slot 1. No new storage
+/// needs initialization; do not call an initializer or migration during this upgrade.
 contract DeployAdapterImplementationScript is Script {
     /// @notice Thrown when this script runs on a chain id outside the production set
     /// (`1` mainnet, `8453` base, `11155111` sepolia). Stops the script before any
-    /// JSON artifact is written under an unknown filename.
+    /// deployment can begin on an unknown network.
     error UnsupportedChainId(uint256 chainId);
 
     /// @notice Thrown when `ADAPTER_PROXY_ADDRESS` does not match the canonical proxy
-    /// for `block.chainid`. Without this guard, an operator running the script on
-    /// Mainnet with the Base proxy in their env would write a Mainnet-named Safe TX
-    /// JSON whose `to` field points at the Base proxy, misrouting the upgrade.
+    /// for `block.chainid`. This prevents deploying against one chain while reading
+    /// the registry from another chain's proxy address.
     error MismatchedProxyForChain(uint256 chainId, address expected, address supplied);
-
-    /// @notice Safe-owner address used in the JSON `meta.createdFromSafeAddress` field.
-    /// The Safe Transaction Builder uses this only for display; signers MUST still
-    /// open the Safe app for the matching chain and submit against this Safe.
-    address internal constant SAFE_ADDRESS = 0x03302Df40186D9B85faEA4fbb6cC5da028B23149;
 
     /// @notice Canonical AdapterImplementation UUPS proxy on Ethereum Mainnet (chainId 1).
     address internal constant ADAPTER_PROXY_MAINNET = 0xde152AfB7db5373F34876E1499fbD893A82dD336;
@@ -86,14 +75,9 @@ contract DeployAdapterImplementationScript is Script {
         _requireProxyMatchesChain(proxy, block.chainid);
 
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        (string memory networkSlug, string memory networkDisplayName) = _networkNames(block.chainid);
-
-        // 1. Read the registry the live proxy points at today and require the implementation to be
-        //    built against exactly that one. This is a SECOND layer, and it exists specifically for
-        //    the bootstrap hop. `_authorizeUpgrade` performs the same equality check on chain, but
-        //    THIS upgrade is authorized by the currently deployed storage-based implementation,
-        //    which has no such check, so the first hop is unguarded on chain by design. Every hop
-        //    after it is guarded by the contract; this one is guarded only here.
+        // 1. Preserve the live registry. Both outgoing and current implementations authorize
+        //    upgrades by owner only; registry equality is checked here, not enforced on chain.
+        //    Safe signers must independently check it before executing the upgrade.
         address liveRegistry = address(AdapterImplementation(payable(proxy)).identityRegistry());
         require(liveRegistry != address(0), "live proxy reports no identity registry");
         require(
@@ -115,8 +99,7 @@ contract DeployAdapterImplementationScript is Script {
         );
 
         // 4. Build the calldata the Safe must execute against the proxy. Empty upgrade data:
-        //    The implementation upgrades directly from the active slot-0/1 baselines and uses
-        //    naturally empty append-only mappings, with no initializer, reinitializer, or migration.
+        //    Slot 0 remains reserved and bindings remain at slot 1. No initializer or migration.
         upgradeCalldata = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (implementation, bytes("")));
 
         // 5. Print the Safe Transaction Builder parameters for this chain.
@@ -127,6 +110,8 @@ contract DeployAdapterImplementationScript is Script {
         console2.logUint(0);
         console2.log("new implementation (just deployed):");
         console2.logAddress(implementation);
+        console2.log("implementation runtime code hash:");
+        console2.logBytes32(implementation.codehash);
         console2.log("data (upgradeToAndCall(newImplementation, 0x)):");
         console2.logBytes(upgradeCalldata);
         bytes memory identifier = _chainIdentifier(block.chainid);
@@ -154,9 +139,6 @@ contract DeployAdapterImplementationScript is Script {
         console2.log("=== New attestation event topic[0] hashes (subscribe to these post-upgrade) ===");
         _logSignature("Attested", SIG_ATTESTED);
         _logSignature("AttestationRevoked", SIG_ATTESTATION_REVOKED);
-
-        // 6. Persist a Safe Transaction Builder JSON next to the existing per-chain artifacts.
-        _writeSafeTxJson(proxy, implementation, upgradeCalldata, networkSlug, networkDisplayName);
     }
 
     /// @dev Prints one event's signature and its topic[0], so an operator can paste either into a
@@ -176,88 +158,6 @@ contract DeployAdapterImplementationScript is Script {
         uint256 tokenId
     ) internal pure returns (bytes32) {
         return keccak256(abi.encode(proxyInteroperableAddress, standard, boundAddress, tokenId));
-    }
-
-    /// @dev Writes the Safe Transaction Builder JSON for this chain. The chain id is
-    /// mapped to a stable network slug used as the filename suffix; any other chain
-    /// id reverts with `UnsupportedChainId` so the file is never written under an
-    /// unknown name.
-    function _writeSafeTxJson(
-        address proxy,
-        address implementation,
-        bytes memory data,
-        string memory networkSlug,
-        string memory networkDisplayName
-    ) internal {
-        // Defense-in-depth: re-assert chainid↔proxy before the file write itself, in case the
-        // caller (or a future refactor) reaches this helper without going through `run()`.
-        _requireProxyMatchesChain(proxy, block.chainid);
-
-        string memory path =
-            string.concat("deployments/2026-07-29-primary-split-erc7930-safe-tx-", networkSlug, ".json");
-        bytes32 implementationCodehash;
-        assembly {
-            implementationCodehash := extcodehash(implementation)
-        }
-
-        // Safe Transaction Builder ingests this minimal shape: `version`, `chainId`,
-        // `createdAt` (epoch milliseconds), `meta`, and a `transactions` array. Each
-        // transaction is exposed as a raw / custom tx (`contractMethod = null`) with
-        // `data` set to the upgradeToAndCall calldata bytes.
-        string memory json = string.concat(
-            "{\n",
-            '  "version": "1.0",\n',
-            '  "chainId": "',
-            vm.toString(block.chainid),
-            '",\n',
-            '  "createdAt": ',
-            vm.toString(block.timestamp * 1000),
-            ",\n",
-            '  "meta": {\n',
-            '    "name": "AdapterImplementation v0.0.17 - split primaries, ERC-7930 hashes keyed on the token standard with no reserved discriminator, contract-binding authority - ',
-            networkDisplayName,
-            '",\n',
-            '    "description": "Upgrade the AdapterImplementation UUPS proxy directly from its active deployed implementation to v0.0.17. Separates full uint256 and counterfactual bytes32 wallet-id mappings and events, and changes every counterfactual identifier, called the Universal Binding Identifier or UBID in the specification and computed by the functions named bindingHash here, to keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), uint8 standard, boundAddress, tokenId)), where standard is the Standard enum value. Those four components are the adapter address plus exactly the stored Binding, always abi.encode and never packed. There is NO trailing reserved discriminator word: an earlier build of this release carried one, fixed at bytes32(0), and it was removed before deployment because no caller could ever reach it. A signer verifying the new identity against a five-field preimage derives a value the proxy will not compute. Because the standard is in the preimage, one (boundAddress, tokenId) claimed under two standards is now two identities rather than one, which removes the aliasing the previous scheme documented; Standard numbering is therefore identity-critical and append-only forever. The five counterfactual update events and WalletUBIDSet each gain a non-indexed uint8 standard field as their first non-indexed word, and the reserved discriminator field is dropped from all seven counterfactual events. Every counterfactual topic0 therefore changes, CounterfactualAgentRegistered included, and indexers must resubscribe to all of them. The current values are tabulated in docs/fixtures/adapter-counterfactual-hashes.md. The public registrationHash(address,uint256) view is REPLACED by hashBinding(uint8,address,uint256), selector 0x3723bc92, and setWalletUBID gains a leading uint8 standard parameter. The acting-for selectors setWalletUBIDFor(address,uint8,address,uint256) and clearWalletUBIDFor(address) are removed; only the wallet itself can emit its reverse claim through setWalletUBID or clearWalletUBID. Stale callers revert rather than silently computing a hash that no longer identifies anything. The Binding struct, bindingOf and AgentBound are untouched. A new view bindingHashOf(uint256 agentId), selector 0x30b7f986, derives a registered agent identifier from its stored binding and reverts UnknownAgent for an unknown id, and every counterfactual writer now RETURNS the identifier it derived, which changes their ABI return type but not their selectors. One combined entry point closes the wallet loop in one call: counterfactualSetAgentWalletAndUBID(uint8,address,uint256), selector 0xd7c7f150. The metadata key cf-registration is no longer reserved and is now accepted from callers, because no path in this contract writes it, so there is no adapter-authored record for a caller to forge; agent-binding remains the one reserved key. THE IDENTITY REGISTRY IS NOW SET ONCE AND CANNOT BE REPOINTED. setIdentityRegistry is removed and its selector no longer resolves, the IdentityRegistryUpdated event is gone, and identityRegistry is an immutable baked into this implementation rather than a storage variable. initialize loses its registry parameter and is now initialize(address initialOwner), so that selector changes too. _authorizeUpgrade additionally refuses any future implementation whose identityRegistry differs from this one, reverting RegistryMismatch, so no later upgrade can repoint the proxy either. This closes audit finding G2-01, binding capture: agent ids mean something only inside the registry that issued them, and a repoint made previously issued ids resolve to different agents. A signer should verify that the implementation named below reports the SAME identityRegistry the live proxy reports today, because this particular upgrade is authorized by the current implementation, which predates the check and cannot enforce it. STORAGE: slot 0 held identityRegistry and now holds nothing the contract reads. The address stays there as dead bytes and the slot is permanently reserved by a placeholder, so regular storage begins at slot 1 with the bindings mapping and the two wallet-id mappings sit at slots 2 and 3, unmoved. No slot changes meaning and no migration is required. Renames Standard value 5 from CONTRACT to ACCOUNT and relaxes it to accept any address, with or without runtime code, since its authority is a bare msg.sender comparison that never calls the address; the enum position is unchanged, but the NonZeroTokenIdForContract error is renamed NonZeroTokenIdForAccount and its selector changes. Two consequences of that relaxation a signer should see: the zero address is now rejected explicitly under every standard including ACCOUNT, because a zero boundAddress is the unbound sentinel, and a contract can now bind itself as ACCOUNT from its own constructor, which stays rejected for all seven other standards. ACCOUNT authority remains exactly msg.sender == boundAddress with no delegate.xyz route. Adds two contract-level binding standards, CONTRACT_OWNABLE (6) and CONTRACT_ADMIN (7), whose authority is the bound contract owner() or a DEFAULT_ADMIN_ROLE holder respectively and never the bound contract itself. Removes the MetadataBatchSet event; setMetadataBatch now emits one MetadataSet per entry. Adds an emit-only attestation surface for counterfactual identities: attest, confirmAdditionalAccount and revoke, three new entry points. The attestation type is an AttestationType enum with UNSPECIFIED at zero, so the set of types is closed and admitting a sixth is a further upgrade; its numbering is identity-critical because the uint8 sits in the identifier preimage. It writes no storage, makes no external call, and derives its identifier as keccak256(abi.encode(ERC-7930 interoperableAddress(proxy), attester, cfid, attestationType, block.number, variant, data)); the caller is always the attester and there is no acting-for path. It carries no reentrancy guard, deliberately, because it makes no external call. Two new events, Attested and AttestationRevoked, are additive, so existing indexers add subscriptions rather than re-index for them. The ERC-7930 envelope inside every counterfactual UBID and every attestation identifier is now produced by the OpenZeppelin InteroperableAddress library rather than by code in this contract; the encoding is byte-identical and every published fixture vector still holds, but a signer should know a dependency now sits under the identity derivation and that its file is draft- prefixed, so it carries no encoding stability guarantee across releases. Removes the signed primary-agent surface: setPrimaryAgentWithSig, clearPrimaryAgentWithSig, primaryAgentNonces, the PrimaryAgentSetWithSig and PrimaryAgentClearedWithSig events and the adapter EIP-712 domain are all gone, so those three selectors no longer resolve. The mapping that backed it was slot 4 and was never written on any chain, since no live implementation exposed a function reaching it, so the slot is removed rather than reserved. Setting or clearing a reverse claim for another account is no longer available. Smart wallets must execute the caller-only functions through their own authorization policy. The owner/getOwner/admin inference helper and NotAccountController error are removed; CONTRACT_ADMIN identity management still uses its existing role check. REMOVES THE WALLET-TO-AGENT-ID SURFACE ENTIRELY and keeps only the wallet-to-UBID one. Seven selectors no longer resolve: setWalletAgentID(uint256) 0x31b159ee, setWalletAgentIDFor(address,uint256) 0xe300b9a0, clearWalletAgentID() 0xa6fceb35, clearWalletAgentIDFor(address) 0xa842f7aa, walletAgentIDOf(address) 0x09ff1fe7, WALLET_AGENT_ID_UNSET() 0x9ed22b72 and setAgentWalletAndID(uint256,address,uint256,bytes) 0x0f1634ba, which existed only to write the pointer that is gone. The WalletAgentIDSet and WalletAgentIDCleared events and the WalletAgentIDReserved error go with them. An agent id is meaningful only inside the registry that issued it, so a reverse-resolution surface keyed on one contradicted ERC-8217, and nothing reconciled the two pointers when a wallet aimed them at unrelated things. STORAGE: BOTH WALLET MAPPINGS ARE GONE AND THE LAYOUT COLLAPSES TO TWO SLOTS. The wallet-to-agent-id mapping was slot 2 and the wallet-to-UBID mapping was slot 3; the surviving reverse designation is now emit-only and stores nothing, so regular storage is slot 0 reserved plus bindings at slot 1, and ends there. Neither removed slot is reserved, because neither has ever held anything: the deployed implementations declare only the registry at slot 0 and bindings at slot 1. Slot 0 stays reserved because it is the one slot that does hold live data, the old registry address, and sliding bindings onto it would read every existing binding against a dead word. No migration or reinitializer is required and no existing slot changes meaning. The walletUBIDOf getter and the WALLET_UBID_UNSET sentinel are removed with the storage, so resolution is an indexer concern: per account, the latest WalletUBIDSet wins and WalletUBIDCleared unsets, in log order. The intermediate surface was also renamed from Primary to Wallet earlier in this release (acting-for functions, getters and sentinels listed in this historical rename were subsequently removed): setPrimaryAgent and its counterfactual counterparts became setWalletUBID, setWalletUBIDFor, clearWalletUBID, clearWalletUBIDFor, walletUBIDOf and WALLET_UBID_UNSET. The PrimaryCounterfactualAgentSet and PrimaryCounterfactualAgentCleared events become WalletUBIDSet and WalletUBIDCleared; PrimaryAgentSet and PrimaryAgentCleared have no successor, since that surface is removed. Then the counterfactual half was renamed again onto the UBID vocabulary, because a wallet counterfactual id IS the UBID of that wallet: setWalletCounterfactualID, setWalletCounterfactualIDFor, clearWalletCounterfactualID, clearWalletCounterfactualIDFor, walletCounterfactualIDOf and WALLET_COUNTERFACTUAL_ID_UNSET are now setWalletUBID (0xe86f9988), setWalletUBIDFor (0x3eb96e79), clearWalletUBID (0xb7a99d6c), clearWalletUBIDFor (0x0e063b6d), walletUBIDOf (0x28415273) and WALLET_UBID_UNSET (0x253a8599); counterfactualSetAgentWalletAndID is now counterfactualSetAgentWalletAndUBID (0xd7c7f150); the error WalletCounterfactualIDReserved is now WalletUBIDReserved; and topic0 for WalletUBIDSet is 0x5b2d80534e25bc5327adef6249134758fecf5241edc7af36df800bfc54b254d8 and for WalletUBIDCleared is 0x603a296842a0937b44f35112604ccde4ee3e0ed612d054988434da8bfccc6506. Every one of those selectors and topic0 values changes, so this is a full indexer and integrator cutover on top of the registration-hash one. Compiled with solc 0.8.30 targeting the prague EVM, so the implementation EXTCODEHASH differs from any earlier build. Implementation deployed at ',
-            vm.toString(implementation),
-            " (bytecode hash ",
-            vm.toString(implementationCodehash),
-            ') by DeployAdapterImplementation.s.sol. Empty upgrade data (append-only mappings begin empty; no initializer, migration, or reinitializer).",\n',
-            '    "txBuilderVersion": "1.18.0",\n',
-            '    "createdFromSafeAddress": "',
-            vm.toString(SAFE_ADDRESS),
-            '",\n',
-            '    "createdFromOwnerAddress": ""\n',
-            "  },\n",
-            '  "transactions": [\n',
-            "    {\n",
-            '      "to": "',
-            vm.toString(proxy),
-            '",\n',
-            '      "value": "0",\n',
-            '      "data": "',
-            vm.toString(data),
-            '",\n',
-            '      "contractMethod": null,\n',
-            '      "contractInputsValues": null\n',
-            "    }\n",
-            "  ]\n",
-            "}\n"
-        );
-
-        vm.writeFile(path, json);
-
-        console2.log("Safe Transaction Builder JSON written to:");
-        console2.log(path);
-    }
-
-    /// @dev Maps the production chain ids to the slug used in the JSON filename. Any
-    /// other chain id reverts with `UnsupportedChainId` rather than writing a file
-    /// under an unknown name.
-    function _networkNames(uint256 chainId) internal pure returns (string memory slug, string memory displayName) {
-        if (chainId == 1) return ("mainnet", "Mainnet");
-        if (chainId == 8453) return ("base", "Base");
-        if (chainId == 11155111) return ("sepolia", "Sepolia");
-        revert UnsupportedChainId(chainId);
     }
 
     function _chainIdentifier(uint256 chainId) internal pure returns (bytes memory identifier) {
