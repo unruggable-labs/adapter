@@ -305,7 +305,10 @@ Use proxy addresses for integrations.
 | --- | --- | --- |
 | Ethereum | 2026-07-29 | `0xa6D23f27D3b1780B12488482a008cB3c3787135f` |
 | Base | 2026-07-29 | `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9` |
-| Sepolia | 2026-09-07 | `0x31a68E5bc0224ad081d6Ec20229B05F558609257` |
+| Sepolia | 2026-09-08 | `0xab4188FA94aBA7a6cf4605032CCd1Be461406719` |
+
+Sepolia runs v0.0.17 following the [Safe upgrade transaction](https://sepolia.etherscan.io/tx/0x3643c86ae00ccc92a51be5ee7741baebb6c37f6d6d4cbd03ea47fd1b3afa9cb2).
+The [deployment record](./deployments/v0.0.17-sepolia-preflight.md) records verification and the indexer cutover at block `11662078`, transaction index `71`, log index `272`.
 
 ## Build and test
 
@@ -317,11 +320,12 @@ forge test
 forge fmt --check
 ```
 
-The Sepolia fork test requires an RPC URL; otherwise it skips:
+The Sepolia fork test replays the upgrade from a pinned pre-upgrade block.
+It requires an RPC URL; otherwise it skips:
 
 ```sh
 SEPOLIA_FORK_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
-SEPOLIA_FORK_BLOCK=11658120 forge test
+SEPOLIA_FORK_BLOCK=11661779 forge test
 ```
 
 Tests cover authority checks, malformed responses, registry signatures, immutable binding storage,
