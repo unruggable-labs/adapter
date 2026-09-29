@@ -1,0 +1,16 @@
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.41s
+Compiler run successful!
+
+Ran 4 tests for test/PrepareChainUpgrade.t.sol:PrepareChainUpgradeTest
+[PASS] testRejectsRuntimeEvenWithSelfReportedHash() (gas: 12138333)
+[PASS] testRejectsUnapprovedRuntime() (gas: 5233746)
+[PASS] testRejectsUndeployedOnBothChains() (gas: 5243180)
+[PASS] testRejectsUnsupportedChain() (gas: 5233302)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 10.64ms (15.46ms CPU time)
+
+Ran 1 test for test/Adapter8004.base-fork.t.sol:Adapter8004BaseForkTest
+[PASS] testBaseLiveBaselineUpgradeThroughThreeOwnerSafe() (gas: 20476687)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 702.27ms (700.44ms CPU time)
+
+Ran 2 test suites in 705.99ms (712.91ms CPU time): 5 tests passed, 0 failed, 0 skipped (5 total tests)

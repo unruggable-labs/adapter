@@ -73,9 +73,11 @@ input via `/api/v2/smart-contracts/{addr}/verification/via/standard-input`; it s
 code verified (exact match)" as `ERC1967Proxy` at 16:18 UTC, with EIP-1967 detection linking
 `AdapterImplementation` (Read/Write proxy tab available).
 
-Note: `test/Adapter8004.robinhood-fork.t.sol` is a pre-deployment rehearsal and asserts both CREATE2
-destinations are empty, so it now fails at blocks after 75784376 by design. Pin
-`ROBINHOOD_FORK_BLOCK` at or below 75784375 (archive RPC) to reproduce it.
+`test/Adapter8004.robinhood-fork.t.sol` now has separate pre-deployment and live-proxy acceptance
+modes. The rehearsal defaults to block 75784375 and the deployed eight-nibble salt; it rejects
+blocks after that pre-deployment boundary. Live acceptance uses `ROBINHOOD_LIVE_BLOCK` and starts
+from the deployed proxy. Both modes passed; see the [acceptance and Base preparation report](../output/2026-09-29-robinhood-acceptance-base-preparation.md)
+for block hashes, coverage, and commands.
 
 ## Rollback / recovery
 

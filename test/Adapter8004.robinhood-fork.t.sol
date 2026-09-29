@@ -79,16 +79,27 @@ contract Adapter8004RobinhoodForkTest is Test {
     AdapterImplementation adapter;
     address holder = address(0xa11ce);
     address delegate = address(0xb0b);
+    address walletBeforeUpgrade;
     uint256[8] ids;
     address[8] targets;
 
     function testRobinhoodFactoryRegistryDelegatesAndRealSafeUpgrade() external {
+        _acceptance(false);
+    }
+
+    function testRobinhoodLiveProxyRegistryDelegatesAndRealSafeUpgrade() external {
+        _acceptance(true);
+    }
+
+    function _acceptance(bool live) internal {
         string memory rpc = vm.envOr("ROBINHOOD_FORK_RPC_URL", string(""));
         if (bytes(rpc).length == 0) {
             vm.skip(true);
             return;
         }
-        uint256 pinned = vm.envUint("ROBINHOOD_FORK_BLOCK");
+        uint256 pinned = live ? vm.envUint("ROBINHOOD_LIVE_BLOCK") : vm.envOr("ROBINHOOD_FORK_BLOCK", uint256(75784375));
+        if (live) require(pinned >= 75785682, "before proxy deployment");
+        else require(pinned <= 75784375, "use a pre-deployment block");
         vm.createSelectFork(rpc, pinned);
         assertEq(block.chainid, 4663);
         assertEq(block.number, pinned);
@@ -110,8 +121,18 @@ contract Adapter8004RobinhoodForkTest is Test {
         assertEq(fallbackHandler.codehash, 0x7c6007a5d711cea8dfd5d91f5940ec29c7f200fe511eb1fc1397b367af3c42f9);
         assertEq(IRobinhoodSafe(SAFE).getThreshold(), 2);
         assertEq(IRobinhoodSafe(SAFE).getOwners().length, 4);
-        assertEq(IRobinhoodSafe(SAFE).nonce(), 0);
-        _deploy();
+        if (live) {
+            adapter = AdapterImplementation(0x000000009d62675362a58911e3f32FEcf46F5E18);
+            assertEq(address(adapter).codehash, 0xa9c092f12ac0cf28336ae9fc3aa7c6e11411d6dbbb033cedb4f41a93da2eb17a);
+            assertEq(IMPL.codehash, 0x89df8d1ddb712742b9d7bdfa4048cbcdb651e5abc204b8e1714f8a431c5dad90);
+            assertEq(address(uint160(uint256(vm.load(address(adapter), SLOT)))), IMPL);
+            assertEq(adapter.owner(), SAFE);
+            assertEq(address(adapter.identityRegistry()), REGISTRY);
+            vm.expectRevert();
+            AdapterImplementation(IMPL).initialize(SAFE);
+        } else {
+            _deploy();
+        }
         _matrix();
         _walletSignaturePath();
         _upgrade();
@@ -121,7 +142,7 @@ contract Adapter8004RobinhoodForkTest is Test {
             assertEq(adapter.ownerOf(ids[i]), address(adapter));
             assertEq(adapter.tokenURI(ids[i]), "ipfs://updated");
             assertEq(adapter.getMetadata(ids[i], "rehearsal"), hex"1234");
-            assertEq(adapter.getAgentWallet(ids[i]), address(0));
+            assertEq(adapter.getAgentWallet(ids[i]), i == 0 ? walletBeforeUpgrade : address(0));
             assertEq(adapter.bindingOf(ids[i]).boundAddress, targets[i]);
             assertTrue(adapter.isController(ids[i], holder));
         }
@@ -147,7 +168,9 @@ contract Adapter8004RobinhoodForkTest is Test {
         bytes memory init = abi.encodeCall(AdapterImplementation.initialize, (SAFE));
         bytes memory proxyInit = abi.encodePacked(type(ERC1967Proxy).creationCode, abi.encode(IMPL, init));
         assertEq(keccak256(proxyInit), 0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953);
-        bytes32 salt = vm.envOr("ROBINHOOD_PROXY_SALT", bytes32(uint256(42)));
+        bytes32 salt = vm.envOr(
+            "ROBINHOOD_PROXY_SALT", bytes32(0x18d9d345878344f000000000000000040000000000000000000000000a632f3f)
+        );
         address predicted =
             address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), FACTORY, salt, keccak256(proxyInit))))));
         assertEq(predicted.code.length, 0);
@@ -295,9 +318,13 @@ contract Adapter8004RobinhoodForkTest is Test {
         vm.prank(holder);
         adapter.unsetAgentWallet(ids[0]);
         assertEq(adapter.getAgentWallet(ids[0]), address(0));
+        vm.prank(holder);
+        adapter.setAgentWallet(ids[0], address(wallet), deadline, hex"1234");
+        walletBeforeUpgrade = address(wallet);
     }
 
     function _upgrade() internal {
+        uint256 nonceBefore = IRobinhoodSafe(SAFE).nonce();
         RobinhoodFutureImplementation next = new RobinhoodFutureImplementation(REGISTRY);
         vm.prank(holder);
         vm.expectRevert();
@@ -322,7 +349,7 @@ contract Adapter8004RobinhoodForkTest is Test {
         }
         assertTrue(success);
         assertTrue(upgraded);
-        assertEq(IRobinhoodSafe(SAFE).nonce(), 1);
+        assertEq(IRobinhoodSafe(SAFE).nonce(), nonceBefore + 1);
         assertEq(IRobinhoodSafe(SAFE).getThreshold(), 2);
         assertEq(vm.load(address(adapter), bytes32(0)), oldSlot0);
         assertEq(address(uint160(uint256(vm.load(address(adapter), SLOT)))), address(next));

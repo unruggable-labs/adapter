@@ -1,0 +1,13 @@
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.99s
+Compiler run successful!
+
+Ran 2 tests for test/Adapter8004.robinhood-fork.t.sol:Adapter8004RobinhoodForkTest
+[PASS] testRobinhoodFactoryRegistryDelegatesAndRealSafeUpgrade() (gas: 16117048)
+Logs:
+  rehearsed proxy: 0x000000009d62675362a58911e3f32FEcf46F5E18
+
+[PASS] testRobinhoodLiveProxyRegistryDelegatesAndRealSafeUpgrade() (gas: 12580682)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 486.40ms (917.65ms CPU time)
+
+Ran 1 test suite in 488.04ms (486.40ms CPU time): 2 tests passed, 0 failed, 0 skipped (2 total tests)
