@@ -1,0 +1,10 @@
+{
+  "phase": "initial",
+  "blockNumber": 75771021,
+  "blockHash": "0x4e3b93f3bb3cc44490f0e3e0bf53039c2151681fa47f15c01533df4ac69f7cd9",
+  "deployerNonce": 0,
+  "deployerBalanceWei": 2000000000000000,
+  "safeThreshold": 2,
+  "safeNonce": 0,
+  "passed": true
+}

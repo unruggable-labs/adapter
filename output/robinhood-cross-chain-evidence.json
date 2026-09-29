@@ -1,0 +1,58 @@
+{
+  "base": {
+    "block": "51952714",
+    "blockHash": "0xa9174d232e5ca0b55cf357d24df4ed7a7068b315a3defe238ae209ae5dbc0255",
+    "contracts": {
+      "safe": {
+        "address": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+        "hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c"
+      },
+      "singleton": {
+        "address": "0x29fcb43b46531bca003ddc8fcb67ffe91900c762",
+        "hash": "0xb1f926978a0f44a2c0ec8fe822418ae969bd8c3f18d61e5103100339894f81ff"
+      },
+      "fallback": {
+        "address": "0xfd0732dc9e303f09fcef3a7388ad10a83459ec99",
+        "hash": "0x7c6007a5d711cea8dfd5d91f5940ec29c7f200fe511eb1fc1397b367af3c42f9"
+      },
+      "factory": {
+        "address": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "hash": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+      },
+      "delegate": {
+        "address": "0x00000000000000447e69651d841bD8D104Bed493",
+        "hash": "0x9deccbdeb08111dbf1c31292cbd0be06a662688ddcca594f681a7de809b61ba9"
+      }
+    },
+    "threshold": "3",
+    "owners": "[0x8b1f85a93Ac6E4F62695Ea8EF2410d248605FEff, 0xc3F96C409d26272fDB592c0d04e1D771A7df032e, 0x93886649b07888129fa320eb95756C35CF80d732, 0x28996f7DECe7E058EBfC56dFa9371825fBfa515A]"
+  },
+  "ethereum": {
+    "block": "26083945",
+    "blockHash": "0x883c73b806929aa94c7b59e7fdc06fbb8553f63762a8ea740a86900c9c700653",
+    "contracts": {
+      "safe": {
+        "address": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+        "hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c"
+      },
+      "singleton": {
+        "address": "0x29fcb43b46531bca003ddc8fcb67ffe91900c762",
+        "hash": "0xb1f926978a0f44a2c0ec8fe822418ae969bd8c3f18d61e5103100339894f81ff"
+      },
+      "fallback": {
+        "address": "0xfd0732dc9e303f09fcef3a7388ad10a83459ec99",
+        "hash": "0x7c6007a5d711cea8dfd5d91f5940ec29c7f200fe511eb1fc1397b367af3c42f9"
+      },
+      "factory": {
+        "address": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "hash": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+      },
+      "delegate": {
+        "address": "0x00000000000000447e69651d841bD8D104Bed493",
+        "hash": "0x9deccbdeb08111dbf1c31292cbd0be06a662688ddcca594f681a7de809b61ba9"
+      }
+    },
+    "threshold": "3",
+    "owners": "[0x8b1f85a93Ac6E4F62695Ea8EF2410d248605FEff, 0xc3F96C409d26272fDB592c0d04e1D771A7df032e, 0x93886649b07888129fa320eb95756C35CF80d732, 0x28996f7DECe7E058EBfC56dFa9371825fBfa515A]"
+  }
+}

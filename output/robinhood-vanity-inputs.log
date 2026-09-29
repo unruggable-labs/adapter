@@ -1,0 +1,14 @@
+No files changed, compilation skipped
+Script ran successfully.
+Gas used: 46078
+
+== Logs ==
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953

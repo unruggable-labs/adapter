@@ -1,0 +1,49 @@
+{
+  "source": "https://sourcify.dev/server/v2/contract/4663/0x7274e874ca62410a93bd8bf61c69d8045e399c02?fields=all",
+  "compiler": {
+    "language": "Solidity",
+    "compiler": "solc",
+    "compilerVersion": "0.8.24+commit.e11b9ed9",
+    "compilerSettings": {
+      "viaIR": true,
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "evmVersion": "shanghai",
+      "remappings": [
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "npm/@openzeppelin/contracts-upgradeable@5.4.0/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "project/:@openzeppelin/contracts-upgradeable/=npm/@openzeppelin/contracts-upgradeable@5.4.0/",
+        "project/:@openzeppelin/contracts-upgradeable/=npm/@openzeppelin/contracts-upgradeable@5.4.0/",
+        "project/:@openzeppelin/contracts-upgradeable/=npm/@openzeppelin/contracts-upgradeable@5.4.0/",
+        "project/:@openzeppelin/contracts-upgradeable/=npm/@openzeppelin/contracts-upgradeable@5.4.0/",
+        "project/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/",
+        "project/:@openzeppelin/contracts/=npm/@openzeppelin/contracts@5.4.0/"
+      ]
+    },
+    "name": "IdentityRegistryUpgradeable",
+    "fullyQualifiedName": "project/contracts/IdentityRegistryUpgradeable.sol:IdentityRegistryUpgradeable"
+  },
+  "runtimeHash": "0xa5f9624ea85e45b3f4b8558581f03bfb3e6cefab278d7bf0500ec9bd065dc16f",
+  "exactLocalRebuildMatch": true,
+  "immutableSelf": "0x7274e874ca62410a93bd8bf61c69d8045e399c02",
+  "proxy": {
+    "source": "https://sourcify.dev/server/v2/contract/4663/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432?fields=all",
+    "exactLocalRebuildMatch": true,
+    "runtimeHash": "0xd0e45b1d89fa9b6cc7e97c1f155d64180e5c232aaccf9900ef9d4fd738c02b41"
+  }
+}

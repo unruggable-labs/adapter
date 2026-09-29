@@ -1,0 +1,801 @@
+No files changed, compilation skipped
+
+Ran 1 test for test/security/GrokExploit_8_AccountCreate2Squat.t.sol:GrokExploit_8_AccountCreate2Squat
+[PASS] test_defense_neitherPartyCanBindAccountToAnUndeployedCreate2Address() (gas: 437767)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.95ms (678.79µs CPU time)
+
+Ran 1 test for test/security/SdR3_1_DelegateProfileConfusion.t.sol:SdR3_1_DelegateProfileConfusion
+[PASS] test_erc721ScopedGrantGovernsErc1155FBinding() (gas: 295990)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 5.33ms (132.83µs CPU time)
+
+Ran 1 test for test/security/GrokR2_19_MetadataRegisterClearsWallet.t.sol:GrokR2_19_MetadataRegisterClearsWallet
+[PASS] test_defense_metadataRegisterStillClearsDefaultWallet() (gas: 6824983)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 5.61ms (1.89ms CPU time)
+
+Ran 3 tests for test/PrepareSepoliaUpgrade.t.sol:PrepareSepoliaUpgradeTest
+[PASS] testRejectsUndeployedImplementation() (gas: 1362079)
+[PASS] testRejectsUnexpectedCodehash() (gas: 1360121)
+[PASS] testRejectsWrongChain() (gas: 1354244)
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 5.79ms (2.15ms CPU time)
+
+Ran 1 test for test/security/GrokExploit_9_ControlsAccountSuperset.t.sol:GrokExploit_9_ControlsAccountSuperset
+[PASS] test_defense_ownerCannotMoveVaultReversePointerOrWriteTheIdentity() (gas: 331193)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 658.00µs (106.46µs CPU time)
+
+Ran 1 test for test/security/SdR3_20_CounterfactualControlOscillation.t.sol:SdR3_20_CounterfactualControlOscillation
+[PASS] test_controlOscillatesWithOwnershipAndLastWriteWins() (gas: 113658)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 925.04µs (132.25µs CPU time)
+
+Ran 1 test for test/security/GrokR2_10_UpgradeReinit.t.sol:GrokR2_10_UpgradeReinit
+[PASS] test_defense_upgradeCannotReinitializeAndStealOwner() (gas: 9015079)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 627.42µs (345.17µs CPU time)
+
+Ran 1 test for test/security/GrokR2_11_DeadSlot0.t.sol:GrokR2_11_DeadSlot0
+[PASS] test_defense_slot0IsDeadAndGetterIsTheImmutable() (gas: 5664650)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 408.46µs (220.50µs CPU time)
+
+Ran 1 test for test/security/SdR3_10_SameBlockReemitAfterRevoke.t.sol:SdR3_10_SameBlockReemitAfterRevoke
+[PASS] test_sameBlockReemitCollidesWithRevokedId() (gas: 47584)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.16ms (195.96µs CPU time)
+
+Ran 1 test for test/security/GrokR2_12_RegistryReenterWrite.t.sol:GrokR2_12_RegistryReenterWrite
+[PASS] test_defense_registryCallbackCannotReenterSetAgentURI() (gas: 5118102)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 441.83µs (279.50µs CPU time)
+
+Ran 1 test for test/security/GrokR2_1_DuplicateAgentIdRebind.t.sol:GrokR2_1_DuplicateAgentIdRebind
+[PASS] test_trustBoundary_duplicateRegistryIdOverwritesTheBinding() (gas: 4903933)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.11ms (787.38µs CPU time)
+
+Ran 1 test for test/security/GrokR2_13_EmptyMetadataKey.t.sol:GrokR2_13_EmptyMetadataKey
+[PASS] test_defense_emptyKeyDoesNotForgeAgentBinding() (gas: 6834552)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 594.92µs (385.17µs CPU time)
+
+Ran 1 test for test/security/SdR3_2_OwnableWalletWideDelegate.t.sol:SdR3_2_OwnableWalletWideDelegate
+[PASS] test_walletWideGrantConfersContractOwnableControl() (gas: 295460)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.72ms (425.92µs CPU time)
+
+Ran 1 test for test/security/GrokR2_14_CfBatchReserved.t.sol:GrokR2_14_CfBatchReserved
+[PASS] test_defense_cfBatchWithReservedKeyEmitsNothing() (gas: 6603677)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 512.17µs (302.04µs CPU time)
+
+Ran 1 test for test/security/GrokR2_20_ChainVsAddressEnvelope.t.sol:GrokR2_20_ChainVsAddressEnvelope
+[PASS] test_defense_chainIdentifierIsNotTheZeroAddressEnvelope() (gas: 5672677)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 773.63µs (457.25µs CPU time)
+
+Ran 1 test for test/security/SdR3_11_MultiHolderMetadataLastWins.t.sol:SdR3_11_MultiHolderMetadataLastWins
+[PASS] test_twoHoldersBothAuthorizedToWriteSameKey() (gas: 71727)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.59ms (267.58µs CPU time)
+
+Ran 16 tests for test/Adapter8004.account.t.sol:Adapter8004AccountTest
+[PASS] testAccountAcceptsOnlyAWalletWideDelegationRoute() (gas: 811249)
+[PASS] testAccountAuthorityIsSelfOnly() (gas: 219122)
+[PASS] testAccountBindsFromItsOwnConstructorAndKeepsControlAfterward() (gas: 374514)
+[PASS] testAccountCounterfactualRegisterAlsoWorksFromAConstructor() (gas: 201561)
+[PASS] testAccountCounterfactualRegisterFromCodelessAddress() (gas: 53922)
+[PASS] testAccountDelegateClaimsTheGrantorIdentityNotItsOwn() (gas: 663999)
+[PASS] testAccountDelegationFailsClosedWhenTheRegistryHasNoCode() (gas: 669833)
+[PASS] testAccountDelegationRevocationTakesEffectInTheSameTransaction() (gas: 661222)
+[PASS] testAccountRegistersFromCodelessAddress() (gas: 218322)
+[PASS] testAccountRejectsRegistryAddress() (gas: 41167)
+[PASS] testAccountRejectsZeroAddress() (gas: 69463)
+[PASS] testAccountRejectsZeroAddressAtEveryEntryPoint() (gas: 226590)
+[PASS] testAccountStillRequiresCanonicalTokenId() (gas: 39887)
+[PASS] testDelegatedAndUndelegatedAccountsBehaveIdentically() (gas: 343851)
+[PASS] testEveryCodeRequiringStandardStillRejectsAConstructorTimeBind() (gas: 456236)
+[PASS] testEveryOtherStandardStillRejectsCodelessAddress() (gas: 462163)
+Suite result: ok. 16 passed; 0 failed; 0 skipped; finished in 9.16ms (5.48ms CPU time)
+
+Ran 1 test for test/security/GrokR2_15_AttestationTypePreimage.t.sol:GrokR2_15_AttestationTypePreimage
+[PASS] test_defense_confirmAndRatingDoNotShareAnIdentifier() (gas: 5688427)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 484.71µs (291.83µs CPU time)
+
+Ran 1 test for test/security/SdR3_3_SubdelegationNotTransitive.t.sol:SdR3_3_SubdelegationNotTransitive
+[PASS] test_subdelegationConfersNothing() (gas: 319614)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 974.63µs (114.25µs CPU time)
+
+Ran 24 tests for test/Adapter8004.attestation-projection.t.sol:AttestationProjectionTest
+[PASS] testAttestRejectsUnspecifiedType() (gas: 16081)
+[PASS] testAttestRejectsZeroTarget() (gas: 14008)
+[PASS] testAttestRevokeAttestRevokeEndsWithdrawn() (gas: 403031)
+[PASS] testCollapseDuplicateEmitsAreOneStatement() (gas: 376886)
+[PASS] testConfirmHelperEqualsGenericAttest() (gas: 244100)
+[PASS] testConfirmRejectsZeroTarget() (gas: 13541)
+[PASS] testEnumNumberingIsPinned() (gas: 720)
+[PASS] testFixtureVectors() (gas: 3930392)
+[PASS] testNonAttesterRevocationIsIgnored() (gas: 224586)
+[PASS] testOutOfRangeTypeIsRejectedByTheDecoder() (gas: 12882)
+[PASS] testPayloadRules() (gas: 3083)
+[PASS] testRatingAggregationExcludesDependentAttesters() (gas: 312726)
+[PASS] testRatingAggregationExcludesInvalidPayloads() (gas: 437659)
+[PASS] testReEmissionMakesAStatementCurrentAgain() (gas: 420556)
+[PASS] testReactivationAcrossBlocksIsANewStatement() (gas: 340348)
+[PASS] testReactivationWithinOneBlock() (gas: 324995)
+[PASS] testRevokeAcceptsZeroIdAsRecordedNoOp() (gas: 201896)
+[PASS] testRevokeBeforeAttestIsInertThenAttestLands() (gas: 229663)
+[PASS] testStarCountCountsLatestLivePositions() (gas: 597580)
+[PASS] testStateResurrection() (gas: 475853)
+[PASS] testTwoAttestersAreTwoStatements() (gas: 330289)
+[PASS] testUnstarVersusRevokeAreDifferentOperations() (gas: 831738)
+[PASS] testVariantSeparatesWithinOneBlock() (gas: 284980)
+[PASS] testWithdrawal() (gas: 222484)
+Suite result: ok. 24 passed; 0 failed; 0 skipped; finished in 9.70ms (4.81ms CPU time)
+
+Ran 1 test for test/security/GrokR2_2_StrayNftReceive.t.sol:GrokR2_2_StrayNftReceive
+[PASS] test_defense_strayNftDoesNotCreateABinding() (gas: 6597264)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 971.71µs (623.71µs CPU time)
+
+Ran 1 test for test/security/GrokR2_16_MaxVsZeroTokenId.t.sol:GrokR2_16_MaxVsZeroTokenId
+[PASS] test_defense_maxTokenIdIsADistinctIdentityFromZero() (gas: 6953960)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 634.92µs (427.92µs CPU time)
+
+Ran 1 test for test/security/GrokR2_17_HashBindingMatchesStored.t.sol:GrokR2_17_HashBindingMatchesStored
+[PASS] test_defense_storedHashMatchesThePublicDerivation() (gas: 6794559)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.28ms (1.07ms CPU time)
+
+Ran 6 tests for test/security/Adapter8004.ownerless-register.t.sol:OwnerlessRegisterTest
+[PASS] testAfterMintCollectionCanRegisterWhenItIsCurrentController() (gas: 508224)
+[PASS] testAfterMintCollectionLosesSpecialPathAndBuyerControlsAgent() (gas: 574321)
+[PASS] testOwnerlessCollectionCanRegisterWhenOwnerOfReturnsZero() (gas: 484335)
+[PASS] testOwnerlessCollectionsCanRegisterForEverySingleOwnerStandard() (gas: 1304862)
+[PASS] testPlainERC1155AndERC6909RemainBalanceOnly() (gas: 374627)
+[PASS] testStrangerCannotRegisterOwnerlessCollectionToken() (gas: 296358)
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 11.56ms (6.75ms CPU time)
+
+Ran 1 test for test/security/SdR3_4_UnboundedAttestDataGrief.t.sol:SdR3_4_UnboundedAttestDataGrief
+[PASS] test_largeAttestationPayloadIsUncapped() (gas: 444255)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.27ms (1.82ms CPU time)
+
+Ran 14 tests for test/security/Adapter8004.adversarial.t.sol:AdversarialAdapter8004Test
+[PASS] test1155MultipleHoldersCanRegisterSeparateAgents() (gas: 414126)
+[PASS] test6909MultipleHoldersCanRegisterSeparateAgents() (gas: 407557)
+[PASS] testMaliciousERC1155ReentryIsBlockedByStaticcall() (gas: 1024199285)
+[PASS] testMaliciousERC6909ReentryIsBlockedByStaticcall() (gas: 1024199287)
+[PASS] testMaliciousERC721CanFlipControl() (gas: 775971)
+[PASS] testMaliciousERC721GrantsControlToForcedOwner() (gas: 714966)
+[PASS] testMaliciousERC721ReentryIsBlockedByStaticcall() (gas: 1024218356)
+[PASS] testOverflowRegistryCanStillRegister() (gas: 4423447)
+[PASS] testOwnerRenouncementLocksAdminFunctions() (gas: 3367478)
+[PASS] testRegisterPropagatesRevertingToken() (gas: 141405)
+[PASS] testRegisterPropagatesRevertingToken1155() (gas: 128013)
+[PASS] testRegisterPropagatesRevertingToken6909() (gas: 128036)
+[PASS] testRegisterReentryRevertsWithReentrancyGuardReentrantCall() (gas: 624949)
+[PASS] testRegisterRejectsEoaTokenContract() (gas: 43588)
+Suite result: ok. 14 passed; 0 failed; 0 skipped; finished in 2.86ms (2.14ms CPU time)
+
+Ran 1 test for test/security/GrokR2_3_BatchReservedAtomicity.t.sol:GrokR2_3_BatchReservedAtomicity
+[PASS] test_defense_reservedKeyRevertsTheWholeBatch() (gas: 6804044)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.14ms (454.88µs CPU time)
+
+Ran 1 test for test/security/GrokR2_18_BindAdapterOwnable.t.sol:GrokR2_18_BindAdapterOwnable
+[PASS] test_defense_strangerDoesNotControlAnAdapterOwnableBinding() (gas: 5878929)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.11ms (881.71µs CPU time)
+
+Ran 1 test for test/security/GrokR2_4_RegisterReservedMetadata.t.sol:GrokR2_4_RegisterReservedMetadata
+[PASS] test_defense_registerRejectsReservedMetadataBeforeMint() (gas: 6607512)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 525.67µs (312.92µs CPU time)
+
+Ran 1 test for test/security/GrokR2_5_UnboundViewForwarding.t.sol:GrokR2_5_UnboundViewForwarding
+[PASS] test_defense_unboundViewsDoNotMakeIsControllerTrue() (gas: 5827777)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 484.92µs (290.25µs CPU time)
+
+Ran 1 test for test/security/SdR3_12_ConfirmRevokeToggle.t.sol:SdR3_12_ConfirmRevokeToggle
+[PASS] test_confirmThenSelfRevokeToggle() (gas: 28276)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 808.25µs (146.04µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_11_PhantomUbid.t.sol:GrokExploit_11_PhantomUbid
+[PASS] test_defense_phantomAccountTokenIdDoesNotCollideWithCanonicalIdentity() (gas: 295101)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.37ms (608.21µs CPU time)
+
+Ran 1 test for test/security/GrokR2_6_CrossProxyUbid.t.sol:GrokR2_6_CrossProxyUbid
+[PASS] test_defense_twoProxiesDoNotShareAUbid() (gas: 10011593)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 786.79µs (450.33µs CPU time)
+
+Ran 22 tests for test/Adapter8004.attestation.t.sol:Adapter8004AttestationTest
+[PASS] testAttestRejectsUnspecifiedType() (gas: 18672)
+[PASS] testAttestRejectsZeroTarget() (gas: 16578)
+[PASS] testAttestationSurfaceIsDeliberatelyNotReentrancyGuarded() (gas: 48215)
+[PASS] testConfirmAndAttestProduceByteIdenticalEvents() (gas: 37973)
+[PASS] testConfirmRejectsZeroTarget() (gas: 16155)
+[PASS] testConfirmUsesTheConfirmAccountType() (gas: 26099)
+[PASS] testEmittedAttesterIsAlwaysTheCaller() (gas: 42150)
+[PASS] testEnumNumberingIsPinned() (gas: 720)
+[PASS] testEventTopicsAndSelectors() (gas: 23485)
+[PASS] testGasCosts() (gas: 48056)
+Logs:
+  gas: attest (small payload): 7682
+  gas: confirmAdditionalAccount: 6945
+  gas: revoke: 2703
+
+[PASS] testIdentifierBindsTheProxyNotTheImplementation() (gas: 38655)
+[PASS] testNegativeEncodingsAllDiffer() (gas: 39621)
+[PASS] testNoFunctionWritesAnyStorageSlot() (gas: 36520)
+[PASS] testOutOfRangeTypeIsRejectedByTheDecoder() (gas: 31658)
+[PASS] testPayloadBytesAreThePayersCost() (gas: 80311)
+Logs:
+  gas per payload byte: 9
+
+[PASS] testRevokeAcceptsAnyIdentifierIncludingZero() (gas: 24053)
+[PASS] testRuntimeSizeKeepsTheRequiredMargin() (gas: 5295)
+[PASS] testSlotsAfterTheDeclaredLayoutStayZero() (gas: 39788)
+[PASS] testTheSurfaceAddsThreeEntryPointsAndNoReaders() (gas: 41339)
+[PASS] testTheTwoDerivationSchemesCannotCollide() (gas: 37892)
+[PASS] testTypeCheckPrecedesTargetCheck() (gas: 16571)
+[PASS] testUnresolvedTargetIsAccepted() (gas: 24659)
+Suite result: ok. 22 passed; 0 failed; 0 skipped; finished in 14.47ms (10.21ms CPU time)
+
+Ran 1 test for test/security/GrokR2_7_EncodePreimage.t.sol:GrokR2_7_EncodePreimage
+[PASS] test_defense_addressAndTokenIdOccupySeparateEncodeWords() (gas: 5673717)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 431.21µs (236.67µs CPU time)
+
+Ran 1 test for test/security/GrokR2_8_MaxTokenIdAccount.t.sol:GrokR2_8_MaxTokenIdAccount
+[PASS] test_defense_maxTokenIdOnAccountRevertsAndDoesNotCollide() (gas: 5898113)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 536.79µs (349.00µs CPU time)
+
+Ran 1 test for test/security/GrokR2_9_ChainIdZero.t.sol:GrokR2_9_ChainIdZero
+[PASS] test_defense_chainIdZeroRevertsInvalidChainId() (gas: 6529718)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 447.17µs (240.17µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_17_FrontrunRevocation.t.sol:GrokExploit_17_FrontrunRevocation
+[PASS] test_defense_strangerFrontrunRevokeDoesNotKillTheStatement() (gas: 41699)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.41ms (150.67µs CPU time)
+
+Ran 2 tests for test/security/GrokExploit_12_UbidOneToMany.t.sol:GrokExploit_12_UbidOneToMany
+[PASS] test_defense_nonHolderCannotMintADuplicateRowAndFirstBindingStaysPut() (gas: 472566)
+[PASS] test_defense_strangerCannotDuplicateA721Row() (gas: 294421)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 1.76ms (786.42µs CPU time)
+
+Ran 1 test for test/security/SdR3_5_UnboundedBatchLoopGrief.t.sol:SdR3_5_UnboundedBatchLoopGrief
+[PASS] test_largeBatchIsAcceptedAndWrites() (gas: 7632093)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.38ms (3.86ms CPU time)
+
+Ran 1 test for test/security/SdR3_6_BatchDuplicateKeySupersession.t.sol:SdR3_6_BatchDuplicateKeySupersession
+[PASS] test_duplicateKeyBatchKeepsLastValue() (gas: 299636)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 629.17µs (139.88µs CPU time)
+
+Ran 1 test for test/security/SdR3_13_CrossAttesterIdForgeryBlocked.t.sol:SdR3_13_CrossAttesterIdForgeryBlocked
+[PASS] test_attackerCannotReproduceVictimId() (gas: 39717)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 580.79µs (60.33µs CPU time)
+
+Ran 30 tests for test/security/Adapter8004.security.t.sol:SecurityAdapter8004Test
+[PASS] test1155TransferOutDropsControl() (gas: 246405)
+[PASS] test6909TransferOutDropsControl() (gas: 235779)
+[PASS] testBindingOfHappyPath() (gas: 217309)
+[PASS] testBindingOfUnknownAgentReverts() (gas: 19716)
+[PASS] testCannotReinitializeProxy() (gas: 17967)
+[PASS] testConstructorRejectsZeroRegistry() (gas: 62454)
+[PASS] testImplementationInitializerIsDisabled() (gas: 12974)
+[PASS] testInitializeRejectsZeroOwner() (gas: 3429860)
+[PASS] testIsController1155TracksBalance() (gas: 233699)
+[PASS] testIsController6909TracksBalance() (gas: 233657)
+[PASS] testIsControllerTracksTokenOwnership() (gas: 249376)
+[PASS] testIsControllerUnknownAgentReturnsFalse() (gas: 17470)
+[PASS] testOnERC721ReceivedReturnsSelector() (gas: 11110)
+[PASS] testRegister1155NonControllerReverts() (gas: 49213)
+[PASS] testRegister6909NonControllerReverts() (gas: 49181)
+[PASS] testRegisterEmitsAgentBound() (gas: 217593)
+[PASS] testRegisterRejectsZeroTokenContract() (gas: 39479)
+[PASS] testRegisterSameTokenAcrossStandardsProducesDistinctAgents() (gas: 528455)
+[PASS] testSetAgentURINonControllerReverts() (gas: 224703)
+[PASS] testSetAgentURIUnknownAgentReverts() (gas: 43467)
+[PASS] testSetAgentWalletNonControllerReverts() (gas: 226611)
+[PASS] testSetAgentWalletUnknownAgentReverts() (gas: 45314)
+[PASS] testSetMetadataBatchEmitsMetadataSetPerEntryInOrder() (gas: 352062)
+[PASS] testSetMetadataBatchEmptyEmitsNothingFromTheAdapter() (gas: 221084)
+[PASS] testSetMetadataBatchNonControllerReverts() (gas: 224992)
+[PASS] testSetMetadataBatchUnknownAgentReverts() (gas: 43717)
+[PASS] testSetMetadataUnknownAgentReverts() (gas: 44408)
+[PASS] testUnsetAgentWalletControllerHappyPath() (gas: 229265)
+[PASS] testUnsetAgentWalletNonControllerReverts() (gas: 224410)
+[PASS] testUnsetAgentWalletUnknownAgentReverts() (gas: 43108)
+Suite result: ok. 30 passed; 0 failed; 0 skipped; finished in 2.77ms (1.92ms CPU time)
+
+Ran 1 test for test/security/SdR3_7_RegistryReentrantAttest.t.sol:SdR3_7_RegistryReentrantAttest
+[PASS] test_registryReentersUnguardedAttestDuringRegister() (gas: 137596)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 410.42µs (62.54µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_18_KeyNormalization.t.sol:GrokExploit_18_KeyNormalization
+[PASS] test_defense_variantKeysDoNotOverwriteCanonicalAgentBinding() (gas: 379892)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.45ms (521.21µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_13_SameChainidForkReplay.t.sol:GrokExploit_13_SameChainidForkReplay
+[PASS] test_defense_identifiersBindToChainIdSoASameIdForkIsTheSameChain() (gas: 63264)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.47ms (469.25µs CPU time)
+
+Ran 1 test for test/security/SdR3_8_RegistrarEmitterSkew.t.sol:SdR3_8_RegistrarEmitterSkew
+[PASS] test_delegateRegistersAndAppearsAsRegisteredBy() (gas: 273296)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 641.33µs (83.38µs CPU time)
+
+Ran 19 tests for test/Adapter8004.interfaces.t.sol:Adapter8004InterfacesTest
+[PASS] testBindingHashOfIsReachableThroughTheBindingsInterface() (gas: 261104)
+[PASS] testBothCounterfactualRegisterOverloadsResolveThroughTheInterface() (gas: 74961)
+[PASS] testCounterfactualAndEncodingInterfaceCastsAndSelectors() (gas: 36420)
+[PASS] testGetAgentWalletForwardsRegistryRevert() (gas: 3966433)
+[PASS] testGetMetadataForwardsRegistryRevert() (gas: 3969000)
+[PASS] testIdentityRecordInterfaceCastReadsMatchRegistry() (gas: 269787)
+[PASS] testIdentityRecordInterfaceCastWritesGoThroughControllerCheck() (gas: 322991)
+[PASS] testOwnerOfForwardsRegistryRevert() (gas: 3966587)
+[PASS] testPrimaryEventTopicsAreSystemSpecific() (gas: 269)
+[PASS] testPrimaryInterfacesCastAndSelectors() (gas: 36170)
+[PASS] testRegistryRegisterBareOverload() (gas: 117833)
+[PASS] testRegistryRegisterOverloadsIncrementAgentId() (gas: 270266)
+[PASS] testRegistryRegisterWithURIOnlyOverload() (gas: 140548)
+[PASS] testRemovedSignedPrimaryAgentEventTopicsAreUnused() (gas: 34497)
+[PASS] testRemovedSignedPrimaryAgentSelectorsDoNotResolve() (gas: 51715)
+[PASS] testRenamedWalletIdEventTopicsAreUnused() (gas: 36142)
+[PASS] testRenamedWalletIdSelectorsDoNotResolveUnderTheirOldNames() (gas: 97598)
+[PASS] testStandardValuesAreAdditive() (gas: 587)
+[PASS] testTokenURIForwardsRegistryRevert() (gas: 3967639)
+Suite result: ok. 19 passed; 0 failed; 0 skipped; finished in 6.03ms (5.06ms CPU time)
+
+Ran 2 tests for test/security/GrokExploit_14_PreclaimKeyPoison.t.sol:GrokExploit_14_PreclaimKeyPoison
+[PASS] test_defense_strangerCannotPoisonUnmintedMetadata() (gas: 47894)
+[PASS] test_trustBoundary_collectionCanPlantAKeyAndVictimCanOverwriteIt() (gas: 102491)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 595.46µs (99.58µs CPU time)
+
+Ran 1 test for test/Adapter8004.sepolia-fork.t.sol:Adapter8004SepoliaForkTest
+[SKIP] testSepoliaUpgradeAgainstLiveContracts() (gas: 0)
+Suite result: ok. 0 passed; 0 failed; 1 skipped; finished in 994.25µs (799.00µs CPU time)
+
+Ran 1 test for test/security/SdR3_9_CounterfactualWalletUnconsentedAssoc.t.sol:SdR3_9_CounterfactualWalletUnconsentedAssoc
+[PASS] test_controllerForgesAgentToVictimWalletClaim() (gas: 62029)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 555.29µs (42.25µs CPU time)
+
+Ran 1 test for test/security/SdR3_14_UpgradeToCodelessImpl.t.sol:SdR3_14_UpgradeToCodelessImpl
+[PASS] test_upgradeToCodelessAddressReverts() (gas: 31274)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.93ms (2.54ms CPU time)
+
+Ran 2 tests for test/security/GrokExploit_15_OneBlockPermanentLink.t.sol:GrokExploit_15_OneBlockPermanentLink
+[PASS] test_defense_longTermHolderCanSupersedeForwardHalfOnly() (gas: 807608)
+[PASS] test_exploit_oneBlockOfAuthorityEmitsBothDirectionsThenLapses() (gas: 816644)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 1.90ms (629.13µs CPU time)
+
+Ran 1 test for test/security/SdR3_15_WalletSigAgentBound.t.sol:SdR3_15_WalletSigAgentBound
+[PASS] test_walletSignatureIsNotReplayableAcrossAgents() (gas: 456588)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.51ms (938.46µs CPU time)
+
+Ran 1 test for test/security/SdR3_16_TokenURIUnboundPassthrough.t.sol:SdR3_16_TokenURIUnboundPassthrough
+[PASS] test_tokenURIForwardsForUnboundIdentity() (gas: 155690)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 497.88µs (51.25µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_16_ReputationLaundering.t.sol:GrokExploit_16_ReputationLaundering
+[PASS] test_exploit_buyingTheNftBuysTheAttestationHistory() (gas: 348855)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.16ms (229.21µs CPU time)
+
+Ran 9 tests for test/Adapter8004.counterfactualReturns.t.sol:Adapter8004CounterfactualReturnsTest
+[PASS] testEveryCounterfactualFunctionAgreesOnTheIdentity() (gas: 335200)
+[PASS] testRegistrationHashOfMatchesTheCoordinateFormAcrossStandards() (gas: 1663207)
+[PASS] testRegistrationHashOfRevertsForAnUnknownAgent() (gas: 30373)
+[PASS] testRegistrationHashOfSurvivesATokenTransfer() (gas: 285408)
+[PASS] testSetAgentURIReturnsTheDerivedHash() (gas: 60022)
+[PASS] testSetAgentWalletReturnsTheDerivedHash() (gas: 61331)
+[PASS] testSetMetadataBatchReturnsTheOneDerivedHash() (gas: 75583)
+[PASS] testSetMetadataReturnsTheDerivedHash() (gas: 61791)
+[PASS] testUnsetAgentWalletReturnsTheDerivedHash() (gas: 58749)
+Suite result: ok. 9 passed; 0 failed; 0 skipped; finished in 1.43ms (848.92µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_19_WalletSigReplay.t.sol:GrokExploit_19_WalletSigReplay
+[PASS] test_defense_walletConsentSignatureDoesNotReplayAcrossAgentIds() (gas: 465936)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 6.09ms (5.28ms CPU time)
+
+Ran 1 test for test/security/SdR3_17_ClearWalletUBIDForCoauthorityGrief.t.sol:SdR3_17_ClearWalletUBIDForCoauthorityGrief
+[PASS] test_ownerCannotClearAccountsOwnDesignation() (gas: 33945)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 1.13ms (151.92µs CPU time)
+
+Ran 24 tests for test/Adapter8004.contract.t.sol:Adapter8004ContractBindingTest
+[PASS] testAgentBoundRawLayoutIsUnchangedForContractBindings() (gas: 227889)
+[PASS] testAgentBoundRawLayoutIsUnchangedForOwnableContractBindings() (gas: 1462350)
+[PASS] testAuthorityCanReassertClaimsButBindingsStayImmutable() (gas: 416437)
+[PASS] testContractAuthorityNeverClosesAsBoundContractStateMoves() (gas: 418480)
+[PASS] testContractPathNeverProbesOwnerOfOrEitherBalanceOf() (gas: 1396766)
+[PASS] testContractRegistersItsOwnAgent() (gas: 248920)
+[PASS] testCounterfactualAgentRegisteredRawLayoutIsUnchangedForContractBindings() (gas: 68337)
+[PASS] testCounterfactualRawLayoutIsUnchangedForOwnableContractBindings() (gas: 1294545)
+[PASS] testDirtyAndWrongLengthOwnerResponsesFailClosed() (gas: 2556366)
+[PASS] testEveryContractBindingWriteEntryPointRejectsANonZeroTokenId() (gas: 342059)
+[PASS] testEveryUnsignedCounterfactualWriterAcceptsTheBoundContract() (gas: 163274)
+[PASS] testEveryUnsignedCounterfactualWriterDeniesHolderAdminAndStranger() (gas: 802408)
+[PASS] testHolderAdminAndStrangerCannotRegisterAContractBinding() (gas: 119184)
+[PASS] testHybridContractGetsOneIdentityPerStandardRatherThanOneShared() (gas: 1326428)
+[PASS] testIdentityRegistryCannotBeBoundAsAContract() (gas: 129983)
+[PASS] testNonTokenContractRegistersItselfAndIsPermanentSoleController() (gas: 818212)
+[PASS] testNonZeroTokenIdRevertsAtTheTokenAuthorityRoute() (gas: 548805)
+[PASS] testOverlongOwnerResponseFailsClosedOnLengthAlone() (gas: 1283168)
+[PASS] testOwnableAuthorityFollowsTransferAndOldOwnerLosesControl() (gas: 1517703)
+[PASS] testOwnableNonZeroTokenIdRevertsOnRegister() (gas: 1277211)
+[PASS] testOwnableOnlyOwnerCanRegisterAndManageWhileOthersAreDenied() (gas: 1607602)
+[PASS] testPostBindMetadataAndWalletControlStaysWithTheBoundContract() (gas: 338135)
+[PASS] testRevertingOwnerFailsClosedSoNobodyCanBind() (gas: 1324977)
+[PASS] testZeroOwnerGrantsNobodySoNobodyCanBind() (gas: 1292359)
+Suite result: ok. 24 passed; 0 failed; 0 skipped; finished in 25.55ms (20.28ms CPU time)
+
+Ran 79 tests for test/Adapter8004.t.sol:Adapter8004Test
+[PASS] test1155ControlIsAnyCurrentHolder() (gas: 294694)
+[PASS] test1155FControlUsesOwnerOfAndFollowsTransfer() (gas: 311758)
+[PASS] test6909ControlIsAnyCurrentHolder() (gas: 290818)
+[PASS] test6909FControlUsesOwnerOfAndFollowsTransfer() (gas: 301017)
+[PASS] test721ControlFollowsTokenTransfer() (gas: 285082)
+[PASS] test721ControllerCanUpdateRegistryFields() (gas: 297085)
+[PASS] testAdapterImplementsIERC8217Interface() (gas: 217349)
+[PASS] testAdminCanUpgradeImplementation() (gas: 3385782)
+[PASS] testBindingMetadataEncodingIsTwentyByteAddress() (gas: 5922)
+[PASS] testBindingVerifierRoundTripUsesStoredBindingContract() (gas: 224474)
+[PASS] testCannotRegisterWithoutCurrentTokenControl() (gas: 51823)
+[PASS] testCounterfactualRegisterAcceptsCfRegistrationKey() (gas: 62312)
+[PASS] testCounterfactualRegisterEmitsEventAndReturnsHash() (gas: 70618)
+[PASS] testCounterfactualRegisterEmptyMetadataOverload() (gas: 58093)
+[PASS] testCounterfactualRegisterRejectsNonController() (gas: 51852)
+[PASS] testCounterfactualRegisterRejectsRegistryAsTokenContract() (gas: 44458)
+[PASS] testCounterfactualRegisterRejectsReservedBindingMetadataKey() (gas: 55375)
+[PASS] testCounterfactualRegisterRejectsZeroTokenContract() (gas: 39615)
+[PASS] testCounterfactualRegistrationHashChangesWithAdapterAddress() (gas: 3574410)
+[PASS] testCounterfactualRegistrationHashChangesWithChainId() (gas: 62093)
+[PASS] testCounterfactualRegistrationHashChangesWithTokenContract() (gas: 72590)
+[PASS] testCounterfactualRegistrationHashChangesWithTokenId() (gas: 70079)
+[PASS] testCounterfactualRegistrationHashIsStableForSameInputs() (gas: 66007)
+[PASS] testCounterfactualSetAgentURIEmits() (gas: 61453)
+[PASS] testCounterfactualSetAgentURIRejectsNonController() (gas: 51116)
+[PASS] testCounterfactualSetAgentURIRejectsRegistryAsTokenContract() (gas: 43655)
+[PASS] testCounterfactualSetAgentURIRejectsZeroTokenContract() (gas: 38756)
+[PASS] testCounterfactualSetAgentWalletEmits() (gas: 62267)
+[PASS] testCounterfactualSetAgentWalletRejectsNonController() (gas: 53098)
+[PASS] testCounterfactualSetAgentWalletRejectsRegistryAsTokenContract() (gas: 45718)
+[PASS] testCounterfactualSetAgentWalletRejectsZeroTokenContract() (gas: 40735)
+[PASS] testCounterfactualSetMetadataAcceptsCfRegistrationKey() (gas: 57889)
+[PASS] testCounterfactualSetMetadataBatchAcceptsCfRegistrationKey() (gas: 61455)
+[PASS] testCounterfactualSetMetadataBatchEmits() (gas: 76080)
+[PASS] testCounterfactualSetMetadataBatchRejectsNonController() (gas: 52146)
+[PASS] testCounterfactualSetMetadataBatchRejectsRegistryAsTokenContract() (gas: 43912)
+[PASS] testCounterfactualSetMetadataBatchRejectsReservedBindingMetadataKey() (gas: 55143)
+[PASS] testCounterfactualSetMetadataBatchRejectsZeroTokenContract() (gas: 38964)
+[PASS] testCounterfactualSetMetadataEmits() (gas: 64230)
+[PASS] testCounterfactualSetMetadataRejectsNonController() (gas: 51699)
+[PASS] testCounterfactualSetMetadataRejectsRegistryAsTokenContract() (gas: 44254)
+[PASS] testCounterfactualSetMetadataRejectsReservedBindingMetadataKey() (gas: 51411)
+[PASS] testCounterfactualSetMetadataRejectsZeroTokenContract() (gas: 39426)
+[PASS] testCounterfactualUnsetAgentWalletEmits() (gas: 59289)
+[PASS] testCounterfactualUnsetAgentWalletRejectsNonController() (gas: 50740)
+[PASS] testCounterfactualUnsetAgentWalletRejectsRegistryAsTokenContract() (gas: 43333)
+[PASS] testCounterfactualUnsetAgentWalletRejectsZeroTokenContract() (gas: 38436)
+[PASS] testFirstMintedAgentIdIsZero() (gas: 251760)
+[PASS] testFreshProxyGetsRegistryFromImmutableWhileSlotZeroIsEmpty() (gas: 13436)
+[PASS] testHybridTokenContractHashIsStandardSpecific() (gas: 262223)
+[PASS] testImplementationGetterDoesNotDependOnItsOwnEmptySlotZero() (gas: 3349775)
+[PASS] testInitializeSetsAdminAndRegistry() (gas: 18245)
+[PASS] testLayoutIsTwoSlotsAndSlotZeroStaysDead() (gas: 247440)
+[PASS] testNonAdminCannotUpgradeImplementation() (gas: 3375162)
+[PASS] testRegisterAcceptsCfRegistrationKey() (gas: 251579)
+[PASS] testRegisterArrayOverloadWithEmptyMetadata() (gas: 254062)
+[PASS] testRegisterNoMetadataOverloadEnforcesTokenControl() (gas: 51171)
+[PASS] testRegisterNoMetadataOverloadProducesIdenticalBinding() (gas: 255295)
+[PASS] testRegisterRejectsRegistryAsTokenContract() (gas: 44493)
+[PASS] testRegisterRejectsReservedBindingMetadataKey() (gas: 55434)
+[PASS] testRegisters721AndClearsInitialAdapterWallet() (gas: 326936)
+[PASS] testRegistrationHashIncludesStandard() (gas: 26546)
+[PASS] testRegistrationHashViewMatchesEncodingAndCounterfactualEventTopic() (gas: 65056)
+[PASS] testRegistryCannotBeRepointedByAnyone() (gas: 33968)
+[PASS] testRegistryGetterAnswersThroughTheProxy() (gas: 12678)
+[PASS] testSameTokenCanRegisterMultipleAgents() (gas: 346201)
+[PASS] testSetAgentURIEmitsAdapterEvent() (gas: 258171)
+[PASS] testSetAgentWalletEmitsAdapterEvent() (gas: 266919)
+[PASS] testSetAgentWalletPassesThroughNativeSignatureCheck() (gas: 263131)
+[PASS] testSetAgentWalletRejectsInvalidSignature() (gas: 238490)
+[PASS] testSetMetadataAcceptsCfRegistrationKey() (gas: 258536)
+[PASS] testSetMetadataBatch() (gas: 301748)
+[PASS] testSetMetadataBatchAcceptsCfRegistrationKey() (gas: 261894)
+[PASS] testSetMetadataBatchRejectsReservedBindingMetadataKey() (gas: 226862)
+[PASS] testSetMetadataEmitsAdapterEvent() (gas: 261100)
+[PASS] testSetMetadataRejectsReservedBindingMetadataKey() (gas: 223400)
+[PASS] testUnsetAgentWalletEmitsAdapterEvent() (gas: 231098)
+[PASS] testUpgradeAcceptsAnImplementationBakedWithTheSameRegistry() (gas: 3384493)
+[PASS] testUpgradeToADifferentRegistryIsNotBlockedOnChain() (gas: 3382690)
+Suite result: ok. 79 passed; 0 failed; 0 skipped; finished in 26.83ms (22.02ms CPU time)
+
+Ran 1 test for test/security/GrokExploit_1_RevertingOwnerOf.t.sol:GrokExploit_1_RevertingOwnerOf
+[PASS] test_exploit_collectionKeepsCounterfactualAuthorityAfterSale() (gas: 492529)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.22ms (1.37ms CPU time)
+
+Ran 3 tests for test/security/GrokExploit_20_RegistryMismatchSpoof.t.sol:GrokExploit_20_RegistryMismatchSpoof
+[PASS] test_defense_nonOwnerCannotInstallASpoofImpl() (gas: 115266)
+[PASS] test_evidence_removedCheckCouldBeSpoofedByOwnerApprovedCode() (gas: 118721)
+[PASS] test_trustBoundary_ownerCanRepointToAnHonestDifferentRegistry() (gas: 3372104)
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 775.92µs (170.83µs CPU time)
+
+Ran 1 test for test/security/SdR3_18_ReservedKeyIntegrityAfterAdjacentWrites.t.sol:SdR3_18_ReservedKeyIntegrityAfterAdjacentWrites
+[PASS] test_canonicalBindingRecordSurvivesAdjacentWrites() (gas: 334018)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.39ms (489.96µs CPU time)
+
+Ran 4 tests for test/Adapter8004.storage-v014.t.sol:Adapter8004StorageV014Test
+[PASS] testAppendedContractStandardDoesNotRenumberStoredStandards() (gas: 4969851)
+[PASS] testDirectUpgradeFromMainnetBaseLiveBaselinePreservesSlotsZeroAndOne() (gas: 4373443)
+[PASS] testDirectUpgradeFromSepoliaLiveBaselineRetainsDelegateXyzBehavior() (gas: 4893161)
+[PASS] testStorageBackedRegistryGetterIsZeroOnImplementationAddress() (gas: 956639)
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 5.21ms (683.17µs CPU time)
+
+Ran 3 tests for test/security/GrokExploit_2_IsControllerNotTotal.t.sol:GrokExploit_2_IsControllerNotTotal
+[PASS] test_defense_burnRevertsIsControllerAndDoesNotReturnWrongBool() (gas: 270157)
+[PASS] test_defense_honest721ReturnsCorrectBools() (gas: 301830)
+[PASS] test_defense_reverting1155BalanceOfDoesNotReturnTrue() (gas: 127441)
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 789.00µs (244.58µs CPU time)
+
+Ran 11 tests for test/Adapter8004.walletAndID.t.sol:Adapter8004WalletAndIDTest
+[PASS] testCounterfactualCombinedMatchesTwoSeparateCalls() (gas: 89917)
+[PASS] testCounterfactualCombinedOverwritesAnExistingDesignation() (gas: 92784)
+[PASS] testCounterfactualCombinedRequiresTokenAuthority() (gas: 50683)
+[PASS] testCounterfactualCombinedReturnsTheDerivedHash() (gas: 77597)
+[PASS] testCounterfactualCombinedWritesTheReversePointerForTheCallerOnly() (gas: 90049)
+[PASS] testCounterfactualForwardFailureLeavesNoReversePointer() (gas: 40362)
+[PASS] testCounterfactualLoopVerifiesAfterTheCombinedCall() (gas: 67440)
+[PASS] testRemovedWalletUBIDForRejectsInvalidCoordinates() (gas: 25659)
+[PASS] testWalletUBIDRejectsCoordinatesNoClaimCanMatch() (gas: 56304)
+[PASS] testWalletUBIDStillAcceptsAnUnmintedTokenId() (gas: 29843)
+[PASS] testWalletUBIDStillAcceptsEveryClaimableCoordinate() (gas: 99579)
+Suite result: ok. 11 passed; 0 failed; 0 skipped; finished in 2.34ms (645.08µs CPU time)
+
+Ran 1 test for test/Adapter8004.robinhood-fork.t.sol:Adapter8004RobinhoodForkTest
+[SKIP] testRobinhoodFactoryRegistryDelegatesAndRealSafeUpgrade() (gas: 0)
+Suite result: ok. 0 passed; 0 failed; 1 skipped; finished in 432.75µs (12.08µs CPU time)
+
+Ran 2 tests for test/security/GrokExploit_3_FlashBorrowedControl.t.sol:GrokExploit_3_FlashBorrowedControl
+[PASS] test_exploit_flash1155RewritesUriWithOneWei() (gas: 1012803)
+[PASS] test_exploit_flash6909RewritesUriWithOneWei() (gas: 847781)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 924.00µs (364.08µs CPU time)
+
+Ran 2 tests for test/DeployAdapterImplementation.t.sol:DeployAdapterImplementationScriptTest
+[PASS] testRunRejectsMismatchedProxyForChainBeforeFileWrite() (gas: 4654876)
+[PASS] testRunRejectsRegistryEnvThatDoesNotMatchLiveProxyBeforeBroadcast() (gas: 4662460)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 924.25µs (758.29µs CPU time)
+
+Ran 2 tests for test/security/GrokExploit_4_TxOriginOwner.t.sol:GrokExploit_4_TxOriginOwner
+[PASS] test_defense_honestOwnableDoesNotEchoTxOrigin() (gas: 305971)
+[PASS] test_trustBoundary_txOriginOwnableLiesToEverySelfCaller() (gas: 275479)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 650.13µs (173.46µs CPU time)
+
+Ran 5 tests for test/DeployAdapterImplementationEventSignatures.t.sol:DeployScriptEventSignaturesTest
+[PASS] testPrintedAgentBoundSignatureMatchesTheContract() (gas: 450)
+[PASS] testPrintedAttestationSignaturesMatchTheContract() (gas: 761)
+[PASS] testPrintedCounterfactualSignaturesMatchTheContract() (gas: 1923)
+[PASS] testPrintedSampleRegistrationHashMatchesTheContract() (gas: 5533135)
+[PASS] testPrintedWalletUBIDSignatureMatchesTheContract() (gas: 449)
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 458.79µs (220.08µs CPU time)
+
+Ran 3 tests for test/security/GrokExploit_5_PermissiveAdminRole.t.sol:GrokExploit_5_PermissiveAdminRole
+[PASS] test_defense_strangerCannotSeizeHonestAdminIdentity() (gas: 325642)
+[PASS] test_trustBoundary_fallbackCanonicalTrueGrantsEveryone() (gas: 267326)
+[PASS] test_trustBoundary_publicGrantIsTheBoundContractsRoleModel() (gas: 379718)
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 760.67µs (280.58µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_10_EnumFallthrough.t.sol:GrokExploit_10_EnumFallthrough
+[PASS] test_defense_outOfRangeStandardIsRejectedByAbiDecoder() (gas: 254917)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 565.04µs (92.88µs CPU time)
+
+Ran 22 tests for test/Adapter8004.delegate.t.sol:Adapter8004DelegateTest
+[PASS] testAllWalletDelegateWorks() (gas: 301698)
+[PASS] testContractLevelDelegateWorks() (gas: 299420)
+[PASS] testCounterfactualERC721DelegateCanEmitEveryFunction() (gas: 186979)
+[PASS] testCounterfactualFTypeDelegateCanEmit() (gas: 145307)
+[PASS] testCounterfactualWrongDelegateRevertsNotController() (gas: 136858)
+[PASS] testDirectOwnerStillRegistersAndManages() (gas: 296790)
+[PASS] testERC1155DelegateIsNotController() (gas: 296583)
+[PASS] testERC1155FDelegateCanRegisterAndManage() (gas: 309784)
+[PASS] testERC6909DelegateIsNotController() (gas: 296526)
+[PASS] testERC6909FDelegateCanRegisterAndManage() (gas: 309917)
+[PASS] testEmptyRightsDelegateWorks() (gas: 287466)
+[PASS] testIsControllerReflectsDelegateLifecycle() (gas: 272713)
+[PASS] testNoCodeRegistryDirectOwnerWorksDelegateFails() (gas: 264328)
+[PASS] testNonDelegateRevertsNotController() (gas: 240889)
+[PASS] testPriorOwnerDelegationFailsAfterTransfer() (gas: 343935)
+[PASS] testReservedMetadataKeyStillRejectedForDelegate() (gas: 265436)
+[PASS] testRevokedDelegationReverts() (gas: 288102)
+[PASS] testTokenLevelDelegateCanManageEveryControllerGatedFunction() (gas: 434039)
+[PASS] testTokenLevelDelegateCanRegister() (gas: 293051)
+[PASS] testUnknownAgentStillRevertsForDelegatePath() (gas: 78177)
+[PASS] testWrongRightsValueFails() (gas: 266985)
+[PASS] testZeroOwnerGrantsNobodyEvenIfTheRegistryRecordsADelegation() (gas: 193019)
+Suite result: ok. 22 passed; 0 failed; 0 skipped; finished in 8.62ms (7.63ms CPU time)
+
+Ran 2 tests for test/security/GrokExploit_6_AccountBlanketDelegate.t.sol:GrokExploit_6_AccountBlanketDelegate
+[PASS] test_defense_unrelatedContractScopedGrantDoesNotSeizeAccount() (gas: 257305)
+[PASS] test_exploit_preexistingBlanketDelegateAllSeizesAccountAtBind() (gas: 265950)
+Suite result: ok. 2 passed; 0 failed; 0 skipped; finished in 749.13µs (200.13µs CPU time)
+
+Ran 7 tests for test/Adapter8004.ownable-delegate.t.sol:Adapter8004OwnableDelegateTest
+[PASS] testBoundContractIsRejected() (gas: 338587)
+[PASS] testDelegationScopedToAnotherRightConfersNothing() (gas: 358272)
+[PASS] testDirectAuthorityDoesNotConsultTheRegistry() (gas: 323995)
+[PASS] testFormerOwnerDelegationStopsWorkingAfterTransfer() (gas: 391335)
+[PASS] testOwnerDelegateIsAuthorized() (gas: 382316)
+[PASS] testRenouncingOwnershipFreezesTheIdentity() (gas: 345794)
+[PASS] testTokenScopedDelegationDoesNotConferContractAuthority() (gas: 359530)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 1.35ms (777.46µs CPU time)
+
+Ran 1 test for test/security/SdR3_19_AgentWalletDefaultCleared.t.sol:SdR3_19_AgentWalletDefaultCleared
+[PASS] test_adapterClearsForeignDefaultWallet() (gas: 184682)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.70ms (315.42µs CPU time)
+
+Ran 1 test for test/security/GrokExploit_7_DelegationRoundTrip.t.sol:GrokExploit_7_DelegationRoundTrip
+[PASS] test_exploit_delegationReactivatesWhenTokenReturnsToOriginalOwner() (gas: 361406)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 806.96µs (209.08µs CPU time)
+
+Ran 16 tests for test/security/Adapter8004.counterfactual-unminted.t.sol:CounterfactualUnmintedTest
+[PASS] testAfterMintCollectionEveryUnsignedWriteRevertsButOwnerCanOverwrite() (gas: 1208385)
+[PASS] testBurnReopensOnlyCollectionOwnerlessWindow() (gas: 844324)
+[PASS] testCollectionCanStillCallAfterMintWhenItIsNormalController() (gas: 850209)
+[PASS] testERC721OwnerlessCollectionCanUseFullRegisterOverload() (gas: 843910)
+[PASS] testERC721OwnerlessCollectionCanUseShortRegisterOverload() (gas: 836722)
+[PASS] testMalformedSuccessfulOwnerOfResponsesFailClosed() (gas: 353126)
+[PASS] testMintThenRegisterRevertsAtomically() (gas: 857066)
+[PASS] testMultipleOwnerlessRegistrationsUseSameHashAndLastLogWins() (gas: 862423)
+[PASS] testOwnerOfCannotReenterUnsignedCounterfactualWrite() (gas: 242842)
+[PASS] testOwnerlessAndPostMintClosureForEverySingleOwnerStandard() (gas: 2566643)
+[PASS] testOwnerlessCollectionCanUseEveryUnsignedSetter() (gas: 913552)
+[PASS] testPlainERC1155AndERC6909HaveNoOwnerlessCollectionAuthority() (gas: 452959)
+[PASS] testPlainERC1155AndERC6909PositiveHolderBehaviorIsUnchanged() (gas: 478643)
+[PASS] testRegisterThenMintOrdersRegistrationBeforeTransfer() (gas: 871962)
+[PASS] testStrangerCannotClaimOwnerlessIdAndEOACannotMasqueradeAsCollection() (gas: 855366)
+[PASS] testZeroOwnerResponseOpensWindowAndNonzeroOwnerClosesIt() (gas: 864529)
+Suite result: ok. 16 passed; 0 failed; 0 skipped; finished in 8.15ms (7.49ms CPU time)
+
+Ran 9 tests for test/security/Adapter8004.counterfactual.t.sol:CounterfactualSecurityTest
+[PASS] testAllCounterfactualSettersHaveNoRegistryOrAdapterSideEffects() (gas: 128881)
+[PASS] testCounterfactualReclaimEmitsRepeatedEventsAndChainDoesNotDedupe() (gas: 89807)
+[PASS] testCounterfactualRegisterDoesNotMintRegistryAgent() (gas: 64543)
+[PASS] testCounterfactualRegisterDoesNotWriteAdapterBindingStorage() (gas: 61933)
+[PASS] testCounterfactualRegisterDoesNotWriteBindingMetadata() (gas: 65505)
+[PASS] testCounterfactualSetAgentURIReentryRevertsWithReentrancyGuardReentrantCall() (gas: 621039)
+[PASS] testCounterfactualSetAgentWalletRequiresNoSignatureAndCannotMutateRegistry() (gas: 60696)
+[PASS] testCounterfactualSurfaceRefusesNonController() (gas: 257279)
+[PASS] testTopic0DiscriminatesSchemaWithoutAPayloadVersion() (gas: 58308)
+Suite result: ok. 9 passed; 0 failed; 0 skipped; finished in 1.23ms (629.33µs CPU time)
+
+Ran 4 tests for test/VanityInputs.t.sol:VanityInputsTest
+[PASS] testAtomicOwnerInitializationAndActualCreate2Address() (gas: 3492661)
+[PASS] testFuzzRejectUnknownChains(uint64) (runs: 257, μ: 17029, ~: 17029)
+[PASS] testRobinhoodFrozenHashesAndIndependentAddresses() (gas: 23963)
+[PASS] testSupportedRegistrySelection() (gas: 106901)
+Logs:
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A818BFB912233c491871b3d84c89A494BD9e
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0xd6514E63ccBbf8A5489b64E502AcB3411026e884
+  impl init code hash:
+  0x11d0d70dde83ee0a41287c2d5d2aae21b588acf3ced03f5cddbe6c76181d9863
+
+  >>> mine against this proxy init code hash:
+  0x7da276597e41654fe6293949aabe765c427818268d87595b914a7f462032f5ac
+
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 19.83ms (18.83ms CPU time)
+
+Ran 10 tests for test/Adapter8004.primaryAgent.t.sol:Adapter8004PrimaryAgentTest
+[PASS] testCounterfactualHashZeroIsRepresentable() (gas: 5627252)
+[PASS] testCounterfactualPrimaryIsPerStandard() (gas: 37486)
+[PASS] testEventsCarryTypedValuesAndCoordinates() (gas: 33563)
+[PASS] testFuzzWalletEventsAlwaysNameImmediateCaller(address,uint256) (runs: 257, μ: 37217, ~: 37217)
+[PASS] testIdempotentClearStillEmits() (gas: 19195)
+[PASS] testOwnersDirectCallsOnlyNameTheOwner() (gas: 229639)
+[PASS] testRemovedForSelectorsRejectSelfOwnersAdminsAndStrangers() (gas: 402564)
+[PASS] testSetAndClearAreRecordedAndStoreNothing() (gas: 36043)
+[PASS] testSmartWalletExecutesItsOwnSetAndClear() (gas: 236010)
+[PASS] testUnauthorizedCallerCannotExecuteThroughSmartWallet() (gas: 206053)
+Suite result: ok. 10 passed; 0 failed; 0 skipped; finished in 31.06ms (30.59ms CPU time)
+
+Ran 13 tests for test/Adapter8004.contract-admin.t.sol:Adapter8004ContractAdminTest
+[PASS] testAdminBindsAndManages() (gas: 365080)
+[PASS] testBoundContractIsRejected() (gas: 353624)
+[PASS] testContractWithoutHasRoleCannotBeBound() (gas: 119209)
+[PASS] testDirtyBooleanReturnCannotAuthorizeRegistration() (gas: 98224)
+[PASS] testFuzzRoleResponseOnlyAcceptsCanonicalTrue(uint256) (runs: 257, μ: 364599, ~: 364598)
+[PASS] testFuzzWrongLengthRoleResponseIsDenied(uint8) (runs: 257, μ: 364701, ~: 364624)
+[PASS] testMalformedBooleanWordsDenyExistingAdmin() (gas: 467625)
+[PASS] testNoDelegationRouteExists() (gas: 349618)
+[PASS] testNonAdminIsDenied() (gas: 355886)
+[PASS] testNonZeroTokenIdRevertsOnCounterfactualPath() (gas: 170678)
+[PASS] testNonZeroTokenIdRevertsOnRegister() (gas: 170676)
+[PASS] testRevertingRoleProbeDeniesExistingAdmin() (gas: 363995)
+[PASS] testRevokingTheRoleRemovesAuthorityOnTheNextCall() (gas: 331391)
+Suite result: ok. 13 passed; 0 failed; 0 skipped; finished in 164.56ms (208.55ms CPU time)
+
+Ran 25 tests for test/Adapter8004.erc7930.t.sol:Adapter8004ERC7930Test
+[PASS] testCanonicalFormulaAndNegativeEncodings() (gas: 29580)
+[PASS] testChainIdZeroRejected() (gas: 15847)
+[PASS] testChainIdentifierHandoffAtTwentySeven() (gas: 78067)
+[PASS] testEachDomainCoordinateChangesHash() (gas: 21967)
+[PASS] testErc7930SpecReferenceExamples() (gas: 25971)
+[PASS] testEveryStandardIsADistinctIdentityForOnePair() (gas: 40857)
+[PASS] testFallbackAndFastPathAreBothReachedAtLengthSeven() (gas: 36539)
+[PASS] testFuzzInteroperableAddressAppendsLengthAndRawAddress(uint256,address) (runs: 257, μ: 23859, ~: 21867)
+[PASS] testFuzzMinimalBigEndianIdentifier(uint256) (runs: 257, μ: 13956, ~: 12795)
+[PASS] testFuzzOpenZeppelinDifferentialChainIdentifierOnly(uint256,uint8) (runs: 257, μ: 13795, ~: 14072)
+[PASS] testFuzzOpenZeppelinDifferentialWithAddress(uint256,uint8,address) (runs: 257, μ: 14048, ~: 13957)
+[PASS] testFuzzReferenceFastPathDoesNotWritePastTheAllocation(uint256,uint8,address) (runs: 257, μ: 58176, ~: 52558)
+[PASS] testFuzzRoundTripThroughOpenZeppelinParser(uint256,uint8,address) (runs: 257, μ: 16841, ~: 16742)
+[PASS] testFuzzStandardIsLoadBearingInThePreimage(address,uint256,uint8,uint8) (runs: 257, μ: 15648, ~: 15531)
+[PASS] testFuzzWordAlignedMatchesReferenceChainIdentifierOnly(uint256,uint8) (runs: 257, μ: 20227, ~: 19197)
+[PASS] testFuzzWordAlignedMatchesReferenceWithAddress(uint256,uint8,address) (runs: 257, μ: 26227, ~: 24214)
+[PASS] testHandoffBoundaryIsIdenticalOnBothSides() (gas: 304373)
+[PASS] testLiveAdapterEnvelopeRoundTripsThroughOpenZeppelin() (gas: 15060)
+[PASS] testLocalKnownChainIdentifiers() (gas: 24911)
+[PASS] testLocalKnownInteroperableAddresses() (gas: 20783)
+[PASS] testOpenZeppelinDifferentialAtRealChainIdsAndHandoffs() (gas: 102813)
+[PASS] testPublishedCrossNamespaceVectors() (gas: 14906)
+[PASS] testPublishedPerStandardVectors() (gas: 14730)
+[PASS] testSupersededVectorsNoLongerMatch() (gas: 29825)
+[PASS] testZeroChainIdIsRejectedLocallyButNotByOpenZeppelin() (gas: 11846)
+Suite result: ok. 25 passed; 0 failed; 0 skipped; finished in 167.89ms (345.41ms CPU time)
+
+Ran 8 tests for test/security/Adapter8004.fuzz.t.sol:FuzzAdapter8004Test
+[PASS] testFuzzControl1155FollowsBalances(address,address,uint256,uint128,uint128) (runs: 257, μ: 285334, ~: 285596)
+[PASS] testFuzzControl6909FollowsBalances(address,address,uint256,uint128,uint128) (runs: 257, μ: 283738, ~: 284013)
+[PASS] testFuzzControl721FollowsOwner(address,address,uint256) (runs: 257, μ: 297992, ~: 298302)
+[PASS] testFuzzDuplicate721RegisterProducesDistinctAgents(address,uint256) (runs: 257, μ: 392710, ~: 393499)
+[PASS] testFuzzNobodyCanSwapRegistry(address,address) (runs: 257, μ: 22209, ~: 22229)
+[PASS] testFuzzNonControllerCannotWrite(address,uint256) (runs: 257, μ: 300234, ~: 300544)
+[PASS] testFuzzNonOwnerCannotUpgrade(address) (runs: 257, μ: 3365176, ~: 3365176)
+[PASS] testFuzzRegister721BindingIsConsistent(address,uint256) (runs: 257, μ: 270317, ~: 270503)
+Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 141.31ms (549.20ms CPU time)
+
+Ran 6 tests for test/security/Adapter8004.invariants.t.sol:SecurityAdapter8004InvariantsTest
+[PASS] testFuzzBindingImmutableAcrossAllWrites(address,uint256,bytes) (runs: 257, μ: 468800, ~: 456158)
+[PASS] testFuzzCanonicalBindingMetadataMatchesEncoder(address,uint256) (runs: 257, μ: 273402, ~: 273954)
+[PASS] testFuzzInitialWalletClearedAfterRegister(address,uint256) (runs: 257, μ: 269136, ~: 269446)
+[PASS] testFuzzUnknownAgentRevertsAcrossAllGatedReads(uint256) (runs: 257, μ: 160410, ~: 160410)
+[PASS] testOwnershipTransferIsSingleStepAndIrreversible() (gas: 27638)
+[PASS] testRegisterRevertsCleanlyWhenRegistryFails() (gas: 4106703)
+Suite result: ok. 6 passed; 0 failed; 0 skipped; finished in 159.57ms (299.44ms CPU time)
+
+Ran 26 tests for test/Adapter8004.erc7930-frozen.t.sol:Adapter8004Erc7930FrozenTest
+[PASS] testAdapterLiveEnvelopeIsExactAndRoundTrips() (gas: 27061)
+[PASS] testAttestationIdentifierMatchesPublishedVectorEndToEnd() (gas: 3374541)
+[PASS] testChainIdZeroDivergenceFromOpenZeppelinSurvives() (gas: 13051)
+[PASS] testChainIdZeroRevertsOnBothShapes() (gas: 14521)
+[PASS] testCounterfactualEventCarriesThePublishedHash() (gas: 4307365)
+[PASS] testErc7930SpecExamplesThroughProduction() (gas: 19489)
+[PASS] testEveryReferenceLengthAgreesAddressShape() (gas: 2392672)
+[PASS] testEveryReferenceLengthAgreesBareShape() (gas: 1310430)
+[PASS] testFuzzAddressLengthByteAndPlacement(uint256,uint8,address) (runs: 257, μ: 20886, ~: 20892)
+[PASS] testFuzzBareEnvelopeParsesAsChainWithNoAddress(uint256,uint8) (runs: 257, μ: 11315, ~: 11604)
+[PASS] testFuzzDistinctInputsProduceDistinctEnvelopes(uint256,uint256,address,address) (runs: 257, μ: 22074, ~: 22074)
+[PASS] testFuzzEnvelopeLengthsAreExact(uint256,uint8,address) (runs: 257, μ: 12365, ~: 12327)
+[PASS] testFuzzReferenceHasNoLeadingZeroByte(uint256,uint8,address) (runs: 257, μ: 9408, ~: 9685)
+[PASS] testFuzzReferenceLengthByteMatchesTheReference(uint256,uint8,address) (runs: 257, μ: 12049, ~: 11799)
+[PASS] testFuzzRoundTripThroughParseEvmV1(uint256,uint8,address) (runs: 257, μ: 11617, ~: 11916)
+[PASS] testFuzzRoundTripThroughTryParseEvmV1(uint256,uint8,address) (runs: 257, μ: 11566, ~: 11490)
+[PASS] testFuzzThreeWayAgreementAddressShape(uint256,uint8,address) (runs: 257, μ: 40167, ~: 41127)
+[PASS] testFuzzThreeWayAgreementBareShape(uint256,uint8) (runs: 257, μ: 26077, ~: 22700)
+[PASS] testFuzzVersionAndChainTypePrefixIsFixed(uint256,uint8,address) (runs: 257, μ: 9900, ~: 9822)
+[PASS] testNonTargetChainEnvelopesAreExactBytes() (gas: 44889)
+[PASS] testNonTargetChainIdentifiersAreExactBytes() (gas: 42883)
+[PASS] testOpenZeppelinEncodingIsFrozen() (gas: 12244)
+[PASS] testRegistrationHashMatchesPublishedVectorsEndToEnd() (gas: 3374394)
+[PASS] testTargetChainEnvelopesAreExactBytes() (gas: 19753)
+[PASS] testTargetChainIdentifiersAreExactBytes() (gas: 19119)
+[PASS] testThreeWayAgreementAtEveryTargetChain() (gas: 75662)
+Suite result: ok. 26 passed; 0 failed; 0 skipped; finished in 146.12ms (232.19ms CPU time)
+
+Ran 88 test suites in 280.47ms (1.06s CPU time): 486 tests passed, 0 failed, 2 skipped (488 total tests)

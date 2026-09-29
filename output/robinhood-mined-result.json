@@ -1,0 +1,18 @@
+{
+  "factory": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+  "registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+  "owner": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+  "implementationInitCodeHash": "0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558",
+  "implementation": "0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231",
+  "proxyInitCodeHash": "0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953",
+  "salt": "0x18d9d345878344f0000000000000000b0000000000000000000000007ac92f65",
+  "address": "0x00000000003b7536DFDF148C6D9075690F8cc5A2",
+  "leadingZeroNibbles": 10,
+  "leadingZeroBytes": 5,
+  "attempts": 49211768832,
+  "elapsedSeconds": 1800.4,
+  "threads": 12,
+  "budgetSeconds": 1800,
+  "verification": "Independent Python PyCryptodome Keccak + manual ABI encoding + CREATE2 formula",
+  "create2Preimage": "0xff4e59b44847b379578588920ca78fbf26c0b4956c18d9d345878344f0000000000000000b0000000000000000000000007ac92f65bb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953"
+}

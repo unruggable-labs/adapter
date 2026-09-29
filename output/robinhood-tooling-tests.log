@@ -1,0 +1,50 @@
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 955.56ms
+Compiler run successful!
+
+Ran 4 tests for test/VanityInputs.t.sol:VanityInputsTest
+[PASS] testAtomicOwnerInitializationAndActualCreate2Address() (gas: 3492661)
+[PASS] testFuzzRejectUnknownChains(uint64) (runs: 257, μ: 17029, ~: 17029)
+[PASS] testRobinhoodFrozenHashesAndIndependentAddresses() (gas: 23963)
+[PASS] testSupportedRegistrySelection() (gas: 106901)
+Logs:
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  impl init code hash:
+  0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558
+
+  >>> mine against this proxy init code hash:
+  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+  CREATE2 factory (deployer): 0x4e59b44847b379578588920cA78FbF26c0B4956C
+  registry baked in: 0x8004A818BFB912233c491871b3d84c89A494BD9e
+  owner baked in: 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  impl deterministic address: 0xd6514E63ccBbf8A5489b64E502AcB3411026e884
+  impl init code hash:
+  0x11d0d70dde83ee0a41287c2d5d2aae21b588acf3ced03f5cddbe6c76181d9863
+
+  >>> mine against this proxy init code hash:
+  0x7da276597e41654fe6293949aabe765c427818268d87595b914a7f462032f5ac
+
+Suite result: ok. 4 passed; 0 failed; 0 skipped; finished in 10.19ms (12.89ms CPU time)
+
+Ran 1 test suite in 149.75ms (10.19ms CPU time): 4 tests passed, 0 failed, 0 skipped (4 total tests)

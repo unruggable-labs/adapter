@@ -1,0 +1,141 @@
+deployer        0x4e59b44847b379578588920ca78fbf26c0b4956c
+init code hash  0xbb43a76de1130e845b39e4d6ff11934b8ccf9b4aae11084e955d7f7219cc9953
+threads         12
+budget          1800s
+mining...
+
+[+]  1 zero nibbles (0 zero bytes)  0x04626cd943ada36cef6234f1080ebc214807b102  salt 0x18d9d345878344f0000000000000000000000000000000000000000000000000  (+0s)
+[+]  2 zero nibbles (1 zero bytes)  0x00a080cad8b19a3145c7d142690e177089112448  salt 0x18d9d345878344f000000000000000020000000000000000000000000000006c  (+0s)
+[+]  3 zero nibbles (1 zero bytes)  0x0008d71bdf61f0d4b8f77720ae8d918bd887bbed  salt 0x18d9d345878344f000000000000000020000000000000000000000000000018b  (+0s)
+[+]  4 zero nibbles (2 zero bytes)  0x000097d060c90345ab1e06fa6f524a404b8598a8  salt 0x18d9d345878344f0000000000000000000000000000000000000000000001c30  (+0s)
+[+]  6 zero nibbles (3 zero bytes)  0x000000df60a40d08fd14c1475169bc391ba26b1b  salt 0x18d9d345878344f0000000000000000800000000000000000000000000018e1e  (+0s)
+[+]  7 zero nibbles (3 zero bytes)  0x0000000447119bd472f7cf096cbf6cea3a90fd54  salt 0x18d9d345878344f0000000000000000600000000000000000000000000276108  (+1s)
+    15.0s  347M attempts  23.1 Mhash/s
+    30.0s  753M attempts  25.1 Mhash/s
+    45.0s  1148M attempts  25.5 Mhash/s
+    60.0s  1528M attempts  25.4 Mhash/s
+    75.0s  1912M attempts  25.5 Mhash/s
+[+]  8 zero nibbles (4 zero bytes)  0x000000009d62675362a58911e3f32fecf46f5e18  salt 0x18d9d345878344f000000000000000040000000000000000000000000a632f3f  (+82s)
+    90.1s  2311M attempts  25.7 Mhash/s
+    105.1s  2716M attempts  25.8 Mhash/s
+    120.1s  3107M attempts  25.9 Mhash/s
+    135.1s  3507M attempts  26.0 Mhash/s
+    150.1s  3881M attempts  25.9 Mhash/s
+    165.1s  4276M attempts  25.9 Mhash/s
+    180.1s  4693M attempts  26.1 Mhash/s
+    195.1s  5098M attempts  26.1 Mhash/s
+    210.1s  5519M attempts  26.3 Mhash/s
+    225.1s  5931M attempts  26.3 Mhash/s
+    240.1s  6365M attempts  26.5 Mhash/s
+    255.1s  6780M attempts  26.6 Mhash/s
+    270.1s  7189M attempts  26.6 Mhash/s
+    285.1s  7603M attempts  26.7 Mhash/s
+    300.2s  8030M attempts  26.8 Mhash/s
+    315.2s  8452M attempts  26.8 Mhash/s
+    330.2s  8889M attempts  26.9 Mhash/s
+    345.2s  9297M attempts  26.9 Mhash/s
+    360.2s  9735M attempts  27.0 Mhash/s
+    375.2s  10158M attempts  27.1 Mhash/s
+    390.2s  10591M attempts  27.1 Mhash/s
+    405.2s  11000M attempts  27.1 Mhash/s
+    420.2s  11411M attempts  27.2 Mhash/s
+    435.2s  11760M attempts  27.0 Mhash/s
+    450.2s  12108M attempts  26.9 Mhash/s
+    465.2s  12427M attempts  26.7 Mhash/s
+    480.2s  12775M attempts  26.6 Mhash/s
+    495.3s  13162M attempts  26.6 Mhash/s
+    510.3s  13547M attempts  26.5 Mhash/s
+    525.3s  13943M attempts  26.5 Mhash/s
+    540.3s  14364M attempts  26.6 Mhash/s
+    555.3s  14742M attempts  26.5 Mhash/s
+    570.3s  15150M attempts  26.6 Mhash/s
+    585.3s  15566M attempts  26.6 Mhash/s
+    600.3s  15995M attempts  26.6 Mhash/s
+    615.3s  16406M attempts  26.7 Mhash/s
+    630.3s  16804M attempts  26.7 Mhash/s
+    645.3s  17187M attempts  26.6 Mhash/s
+    660.3s  17606M attempts  26.7 Mhash/s
+    675.3s  18024M attempts  26.7 Mhash/s
+    690.3s  18429M attempts  26.7 Mhash/s
+    705.4s  18832M attempts  26.7 Mhash/s
+    720.4s  19258M attempts  26.7 Mhash/s
+    735.4s  19667M attempts  26.7 Mhash/s
+    750.4s  20087M attempts  26.8 Mhash/s
+[+]  9 zero nibbles (4 zero bytes)  0x000000000f2c8200519e7ccd78c8dc6e07066b6d  salt 0x18d9d345878344f00000000000000004000000000000000000000000649936e9  (+755s)
+    765.4s  20500M attempts  26.8 Mhash/s
+    780.4s  20931M attempts  26.8 Mhash/s
+    795.4s  21344M attempts  26.8 Mhash/s
+    810.4s  21757M attempts  26.8 Mhash/s
+    825.4s  22165M attempts  26.9 Mhash/s
+    840.4s  22578M attempts  26.9 Mhash/s
+    855.4s  22998M attempts  26.9 Mhash/s
+    870.4s  23402M attempts  26.9 Mhash/s
+    885.4s  23781M attempts  26.9 Mhash/s
+    900.4s  24193M attempts  26.9 Mhash/s
+    915.4s  24594M attempts  26.9 Mhash/s
+[+] 10 zero nibbles (5 zero bytes)  0x00000000003b7536dfdf148c6d9075690f8cc5a2  salt 0x18d9d345878344f0000000000000000b0000000000000000000000007ac92f65  (+920s)
+    930.5s  25007M attempts  26.9 Mhash/s
+    945.5s  25415M attempts  26.9 Mhash/s
+    960.5s  25846M attempts  26.9 Mhash/s
+    975.5s  26248M attempts  26.9 Mhash/s
+    990.5s  26658M attempts  26.9 Mhash/s
+    1005.5s  27054M attempts  26.9 Mhash/s
+    1020.5s  27472M attempts  26.9 Mhash/s
+    1035.5s  27883M attempts  26.9 Mhash/s
+    1050.5s  28303M attempts  26.9 Mhash/s
+    1065.6s  28695M attempts  26.9 Mhash/s
+    1080.6s  29098M attempts  26.9 Mhash/s
+    1095.6s  29514M attempts  26.9 Mhash/s
+    1110.6s  29923M attempts  26.9 Mhash/s
+    1125.6s  30343M attempts  27.0 Mhash/s
+    1140.6s  30776M attempts  27.0 Mhash/s
+    1155.6s  31189M attempts  27.0 Mhash/s
+    1170.6s  31601M attempts  27.0 Mhash/s
+    1185.7s  32003M attempts  27.0 Mhash/s
+    1200.7s  32426M attempts  27.0 Mhash/s
+    1215.7s  32839M attempts  27.0 Mhash/s
+    1230.7s  33263M attempts  27.0 Mhash/s
+    1245.7s  33665M attempts  27.0 Mhash/s
+    1260.7s  34090M attempts  27.0 Mhash/s
+    1275.7s  34451M attempts  27.0 Mhash/s
+    1290.7s  34846M attempts  27.0 Mhash/s
+    1305.7s  35243M attempts  27.0 Mhash/s
+    1320.8s  35682M attempts  27.0 Mhash/s
+    1335.8s  36108M attempts  27.0 Mhash/s
+    1350.8s  36534M attempts  27.0 Mhash/s
+    1365.8s  36952M attempts  27.1 Mhash/s
+    1380.8s  37388M attempts  27.1 Mhash/s
+    1395.8s  37801M attempts  27.1 Mhash/s
+    1410.8s  38217M attempts  27.1 Mhash/s
+    1425.8s  38642M attempts  27.1 Mhash/s
+    1440.8s  39080M attempts  27.1 Mhash/s
+    1455.8s  39511M attempts  27.1 Mhash/s
+    1470.8s  39940M attempts  27.2 Mhash/s
+    1485.8s  40345M attempts  27.2 Mhash/s
+    1500.9s  40775M attempts  27.2 Mhash/s
+    1515.9s  41189M attempts  27.2 Mhash/s
+    1530.9s  41607M attempts  27.2 Mhash/s
+    1545.9s  42024M attempts  27.2 Mhash/s
+    1560.9s  42464M attempts  27.2 Mhash/s
+    1575.9s  42888M attempts  27.2 Mhash/s
+    1590.9s  43315M attempts  27.2 Mhash/s
+    1605.9s  43713M attempts  27.2 Mhash/s
+    1620.9s  44145M attempts  27.2 Mhash/s
+    1635.9s  44575M attempts  27.2 Mhash/s
+    1650.9s  44988M attempts  27.3 Mhash/s
+    1665.9s  45410M attempts  27.3 Mhash/s
+    1680.9s  45843M attempts  27.3 Mhash/s
+    1695.9s  46265M attempts  27.3 Mhash/s
+    1711.0s  46681M attempts  27.3 Mhash/s
+    1726.0s  47110M attempts  27.3 Mhash/s
+    1741.0s  47537M attempts  27.3 Mhash/s
+    1756.0s  47970M attempts  27.3 Mhash/s
+    1771.0s  48384M attempts  27.3 Mhash/s
+    1786.0s  48800M attempts  27.3 Mhash/s
+
+=== best ===
+address         0x00000000003b7536dfdf148c6d9075690f8cc5a2
+salt            0x18d9d345878344f0000000000000000b0000000000000000000000007ac92f65
+leading zeros   10 nibbles (5 bytes)
+attempts        49211768832 (49212M)
+elapsed         1800.4s  (27.3 Mhash/s)

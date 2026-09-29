@@ -1,0 +1,10 @@
+No files changed, compilation skipped
+
+Ran 1 test for test/Adapter8004.robinhood-fork.t.sol:Adapter8004RobinhoodForkTest
+[PASS] testRobinhoodFactoryRegistryDelegatesAndRealSafeUpgrade() (gas: 16056514)
+Logs:
+  rehearsed proxy: 0x00000000003b7536DFDF148C6D9075690F8cc5A2
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 10.14s (10.14s CPU time)
+
+Ran 1 test suite in 10.15s (10.14s CPU time): 1 tests passed, 0 failed, 0 skipped (1 total tests)

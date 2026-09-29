@@ -1,0 +1,15 @@
+{
+  "blockNumber": "0x483da86",
+  "blockHash": "0xccfae7c2152df4ae73ff99decc8f5ca9a2534717c5ac60a743d83aa9fc17e62b",
+  "implementation": "0x3d74ff0c1e0a78c5a291fa91f82f15bd54335231",
+  "implementationRuntimeHash": "0x89df8d1ddb712742b9d7bdfa4048cbcdb651e5abc204b8e1714f8a431c5dad90",
+  "implementationCreationEstimate": "0x95389b",
+  "implementationFactoryResult": "0x3d74ff0c1e0a78c5a291fa91f82f15bd54335231",
+  "implementationFactoryEstimate": "0x959a2f",
+  "proxyCreationRuntimeHash": "0xa9c092f12ac0cf28336ae9fc3aa7c6e11411d6dbbb033cedb4f41a93da2eb17a",
+  "proxyCreationEstimate": "0xd4e10",
+  "proxyFactoryResult": "0xbe8285aa4ac8bb1641cb91ae7926e705aea31eab",
+  "proxyFactoryEstimate": "0xd9650",
+  "rehearsalSalt": "0x000000000000000000000000000000000000000000000000000000000000002a",
+  "rehearsalProxy": "0xbe8285aa4ac8bb1641cb91ae7926e705aea31eab"
+}

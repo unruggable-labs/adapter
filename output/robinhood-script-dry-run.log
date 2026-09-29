@@ -1,0 +1,33 @@
+No files changed, compilation skipped
+Script ran successfully.
+
+== Logs ==
+  chain id: 4663
+  registry: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  owner (Safe): 0x03302Df40186D9B85faEA4fbb6cC5da028B23149
+  predicted impl: 0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231
+  predicted proxy: 0x00000000003b7536DFDF148C6D9075690F8cc5A2
+  proxy leading zero nibbles: 10
+  deployed impl
+  deployed proxy: 0x00000000003b7536DFDF148C6D9075690F8cc5A2
+  verified owner == Safe and identityRegistry == registry
+
+## Setting up 1 EVM.
+
+==========================
+
+Chain 4663
+
+Estimated gas price: 0.041656001 gwei
+
+Estimated total gas used for script: 5554824
+
+Estimated amount required: 0.000231391754098824 ETH
+
+==========================
+
+SIMULATION COMPLETE. To broadcast these transactions, add --broadcast and wallet configuration(s) to the previous command. See forge script --help for more.
+
+Transactions saved to: /Users/nxt3d/projects/adapter-0.0.17/broadcast/DeployVanityProxy.s.sol/4663/dry-run/run-latest.json
+
+Sensitive values saved to: /Users/nxt3d/projects/adapter-0.0.17/cache/DeployVanityProxy.s.sol/4663/dry-run/run-latest.json
