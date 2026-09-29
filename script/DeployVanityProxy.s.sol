@@ -5,44 +5,21 @@ import {Script, console2} from "forge-std/Script.sol";
 import {AdapterImplementation} from "../src/AdapterImplementation.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-/// @notice Deploys the canonical AdapterImplementation proxy at a CREATE2 vanity address.
-///
-/// **These scripts describe a deployment that was never performed.** As of 2026-08-19 the live
-/// proxies and implementations sit at unrelated addresses on all three chains:
-/// implementations `0xa6D23f27…` (Mainnet), `0x0f81bd4E…` (Base), `0x31a68E5b…` (Sepolia), and
-/// proxies `0xde152AfB…`, `0x270d25D2…`, `0x7621630c…`. Mainnet and Base run identical source, so
-/// CREATE2 at a fixed salt would have put their implementations at one address; it did not. The
-/// 2026-04-05 report records why — each chain got "a fresh implementation contract and a fresh
-/// `ERC1967Proxy`" — and `DeployAdapterImplementation.s.sol`, the script upgrades actually use,
-/// calls plain `new AdapterImplementation()` with no salt, so every future implementation is nonce-derived
-/// and per-chain by construction. Cross-chain address determinism is therefore a property this
-/// deployment has never had, and no change to the contract can cost it something it does not hold.
-/// Treat the paragraphs below as a design sketch for a future redeployment, not a description of
-/// what is live.
-///
-/// Two CREATE2 deploys via the canonical factory (forge-std `CREATE2_FACTORY`,
-/// 0x4e59...), both idempotent:
-///   1. The implementation at a fixed salt, which WOULD put it at the same address
-///      on every chain. The live implementations are not deployed this way, see the
-///      note above. The address is cosmetic; the proxy stays upgradeable via UUPS.
-///   2. The proxy at the mined `PROXY_SALT`, with `initialize(registry, owner)`
-///      baked into the constructor data so deployment is atomic (no front-run
-///      window). On chains that share REGISTRY + OWNER (Mainnet + Base) the init
-///      code is identical, so the same salt yields the same vanity address.
-///
-/// The deploy is permissionless: any funded EOA can run it; ownership is set to
-/// the Safe by the baked initializer, not by the deployer.
-///
-/// Usage (simulate):  PROXY_SALT=0x... forge script script/DeployVanityProxy.s.sol --rpc-url <url>
-/// Usage (broadcast): PROXY_SALT=0x... forge script script/DeployVanityProxy.s.sol --rpc-url <url> --broadcast
+import {VanityChainConfig} from "./VanityChainConfig.sol";
+
+/// @notice Deploy a fresh vanity proxy; existing Base/Ethereum proxies upgrade in place.
+/// @dev Two CREATE2 factory calls: salt-zero implementation, then mined-salt proxy.
+/// Implementation addresses depend on registry, bytecode and factory. Proxy addresses also
+/// depend on owner and salt. Matching inputs can be reused on Ethereum, Base and Robinhood;
+/// Sepolia has a different registry and requires separate mining.
+/// The proxy constructor atomically calls initialize(owner); ownership goes to the Safe.
+/// Only the implementation deployment is idempotent; an existing proxy is rejected.
+/// Simulate: PROXY_SALT=0x... forge script script/DeployVanityProxy.s.sol --rpc-url <url>
 contract DeployVanityProxy is Script {
     bytes32 constant IMPL_SALT = bytes32(0);
 
-    /// Safe multisig owner, identical across all three chains.
+    /// Safe multisig owner, fixed for the approved rollout.
     address constant OWNER = 0x03302Df40186D9B85faEA4fbb6cC5da028B23149;
-
-    address constant REGISTRY_MAINNET_BASE = 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432;
-    address constant REGISTRY_SEPOLIA = 0x8004A818BFB912233c491871b3d84c89A494BD9e;
 
     function run() external {
         bytes32 proxySalt = vm.envBytes32("PROXY_SALT");
@@ -95,16 +72,7 @@ contract DeployVanityProxy is Script {
     }
 
     function _registryForChain() internal view returns (address) {
-        if (block.chainid == 1 || block.chainid == 8453) {
-            return REGISTRY_MAINNET_BASE;
-        }
-        if (block.chainid == 11155111) {
-            // NOTE: Sepolia's registry differs, so a salt mined for Mainnet/Base
-            // will NOT produce the same vanity address here. Mine a Sepolia-specific
-            // salt against the Sepolia init code if a testnet vanity is wanted.
-            return REGISTRY_SEPOLIA;
-        }
-        revert("unsupported chain");
+        return VanityChainConfig.registryForChain(block.chainid);
     }
 
     function _leadingZeroNibbles(address a) internal pure returns (uint256 n) {
