@@ -1,0 +1,10 @@
+{
+  "phase": "proxy",
+  "blockNumber": 75785792,
+  "blockHash": "0xe01c682f896466aa3478bb6ea4b892b2a88b283dbd227d878db399c31777039b",
+  "deployerNonce": 2,
+  "deployerBalanceWei": 1920252942744000,
+  "safeThreshold": 2,
+  "safeNonce": 0,
+  "passed": true
+}
