@@ -66,8 +66,12 @@ proxy runtime 163 bytes (`0xa9c0…b17a`); EIP-1967 slot = `0x3d74…5231`; `own
 Safe still 2-of-4, nonce 0; deployer nonce 2.
 
 Source verification: Sourcify exact match (creation + runtime) for both, implementation match
-54030657, proxy match 54031560. The Blockscout API sits behind a Cloudflare challenge from this
-environment; Blockscout reads Sourcify matches.
+54030657, proxy match 54031560. Blockscout: the implementation was picked up automatically (verifier
+alliance / eth-bytecode-db, fully verified 16:17 UTC). The proxy was submitted from a browser session
+(the Blockscout API sits behind a Cloudflare challenge for CLI clients) as the Sourcify standard-JSON
+input via `/api/v2/smart-contracts/{addr}/verification/via/standard-input`; it shows "Contract source
+code verified (exact match)" as `ERC1967Proxy` at 16:18 UTC, with EIP-1967 detection linking
+`AdapterImplementation` (Read/Write proxy tab available).
 
 Note: `test/Adapter8004.robinhood-fork.t.sol` is a pre-deployment rehearsal and asserts both CREATE2
 destinations are empty, so it now fails at blocks after 75784376 by design. Pin
@@ -106,6 +110,7 @@ There is no previous implementation. Repairs go through the owner Safe (2-of-4) 
     "deployProxy": "0xb029f85fa738dab5a98423734fc7f7ff36337364eb5d942c8b658337f37ae3e3"
   },
   "blocks": { "deployImplementation": 75784376, "deployProxy": 75785682 },
-  "sourcify": { "implementation": "exact_match", "proxy": "exact_match" }
+  "sourcify": { "implementation": "exact_match", "proxy": "exact_match" },
+  "blockscout": { "implementation": "verified", "proxy": "verified" }
 }
 ```
