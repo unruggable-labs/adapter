@@ -73,6 +73,14 @@ input via `/api/v2/smart-contracts/{addr}/verification/via/standard-input`; it s
 code verified (exact match)" as `ERC1967Proxy` at 16:18 UTC, with EIP-1967 detection linking
 `AdapterImplementation` (Read/Write proxy tab available).
 
+RobinScan (robin.etherscan.io, Etherscan): verified through the web form (Solidity Standard-JSON-Input,
+v0.8.30+commit.73712a01, MIT) with the same standard-JSON inputs, saved in `output/robinscan/`.
+The API route (`api.etherscan.io/v2/api?chainid=4663`, `verifysourcecode`) accepted three submissions
+at about 20:10 UTC, but they stayed "Pending in queue" for more than an hour, and forge 1.3.5 refuses
+chain 4663 for Etherscan. Result, read back through the API: proxy `ERC1967Proxy`, flagged
+`Proxy = 1` with `Implementation = 0x3d74…5231`; implementation `AdapterImplementation` (42 ABI
+functions); both prague, 200 runs, MIT, with constructor arguments matching the deployment.
+
 `test/Adapter8004.robinhood-fork.t.sol` now has separate pre-deployment and live-proxy acceptance
 modes. The rehearsal defaults to block 75784375 and the deployed eight-nibble salt; it rejects
 blocks after that pre-deployment boundary. Live acceptance uses `ROBINHOOD_LIVE_BLOCK` and starts
@@ -113,6 +121,7 @@ There is no previous implementation. Repairs go through the owner Safe (2-of-4) 
   },
   "blocks": { "deployImplementation": 75784376, "deployProxy": 75785682 },
   "sourcify": { "implementation": "exact_match", "proxy": "exact_match" },
-  "blockscout": { "implementation": "verified", "proxy": "verified" }
+  "blockscout": { "implementation": "verified", "proxy": "verified" },
+  "robinscan": { "implementation": "verified", "proxy": "verified" }
 }
 ```
