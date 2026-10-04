@@ -1,5 +1,7 @@
 # Adapter8004 — ERC-7930 UBID fixture
 
+These are formula and event-schema fixtures for v0.0.17, not a live-chain status check. v0.0.17 is deployed on [Robinhood Chain mainnet](../../deployments/2026-09-29-robinhood-v0.0.17-deployment-report.md) and [Sepolia](../../deployments/v0.0.17-sepolia-preflight.md). [Base local acceptance](../../deployments/2026-09-29-base-v0.0.17-preparation.md) did not deploy its production implementation or upgrade its proxy; Ethereum requires separate acceptance. Decode each chain's history at its actual deployment or upgrade boundary.
+
 Canonical formula:
 
 ```text
@@ -149,9 +151,9 @@ identity. That aliasing is what v0.0.17 removes.
 
 ## Superseded: pre-v0.0.15 scheme (no `extraData`, no ERC-7930)
 
-Retained for identification only. Do not implement. **This is the scheme still running on every live
-proxy** as of 2026-08-19, so an indexer reading mainnet, Base or Sepolia today reproduces this table
-and no other.
+Retained for identification only. Do not implement for v0.0.17 writes. **This was the scheme on the
+Ethereum, Base and Sepolia proxies checked on 2026-08-19.** The table remains a historical vector
+for pre-upgrade logs; Sepolia has since upgraded, and Robinhood's new proxy began on v0.0.17.
 
 ```text
 keccak256(abi.encode(block.chainid, adapterAddress, boundAddress, tokenId))
@@ -159,7 +161,7 @@ keccak256(abi.encode(block.chainid, adapterAddress, boundAddress, tokenId))
 
 With the live proxy addresses, token `0x0000…0001`, token ID `0`:
 
-| Chain | Proxy | Live hash |
+| Chain | Proxy | Historical pre-v0.0.17 hash |
 |---|---|---|
 | Ethereum | `0xde152AfB7db5373F34876E1499fbD893A82dD336` | `0xe07366d2d52aa30e7d2cd2a2b9144d4a95e22f8f8973662aad59983b630957c8` |
 | Base | `0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27` | `0x8d4d84d0cd3f4009b540e98b0376832e91569e65d695c4b147c29ab81f10405c` |
@@ -170,8 +172,8 @@ deployed, `abi.encode(adapterInteroperableAddress, boundAddress, tokenId)`. For 
 the vector tables above its Ethereum value is
 `0x7f28a61447dba6ca306a9b3c0af2184fb625679ab3da0c8469cf04734670875e`.
 
-If your implementation reproduces the live table, you are on the deployed scheme and must cut over
-before the upgrade.
+If a decoder reproduces this historical table, it implements the pre-v0.0.17 scheme. Apply it only
+to logs before that chain's verified cutover; do not infer current proxy state from these vectors.
 
 The counterfactual event signatures changed alongside each scheme, and `topic0` is the keccak of the
 full signature, so it discriminates schema on its own. At v0.0.15 every event gained a non-indexed

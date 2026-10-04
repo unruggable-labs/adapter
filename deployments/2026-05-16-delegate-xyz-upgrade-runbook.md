@@ -1,5 +1,13 @@
 # Adapter8004 delegate.xyz Upgrade Runbook - 2026-05-16
 
+> **Historical runbook.** Its threshold, implementation, and signing steps
+> describe the 2026-05-16 delegate.xyz rollout. Sepolia subsequently
+> [upgraded to v0.0.17](v0.0.17-sepolia-preflight.md); Robinhood
+> [deployed v0.0.17 directly](2026-09-29-robinhood-v0.0.17-deployment-report.md).
+> Base's later [local fork acceptance](2026-09-29-base-v0.0.17-preparation.md)
+> did not execute a production upgrade. Use fresh chain reads and the
+> [v0.0.17 plan](v0.0.17-rollout-plan.md) for any remaining rollout.
+
 ## Summary
 
 This runbook covers the UUPS upgrade that rolls out delegate.xyz v2 ERC-721

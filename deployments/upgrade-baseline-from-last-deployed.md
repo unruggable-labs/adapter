@@ -2,6 +2,16 @@
 
 Last verified: 2026-07-29
 
+> **Historical baseline audit.** The active-implementation table and `0.0.14`
+> storage discussion below describe the 2026-07-29 state and an unreleased
+> source design, not the current release layout or current Sepolia/Robinhood
+> state. Sepolia later [upgraded to v0.0.17](v0.0.17-sepolia-preflight.md), and
+> Robinhood later [deployed a new v0.0.17 proxy](2026-09-29-robinhood-v0.0.17-deployment-report.md).
+> For Base local acceptance and remaining production gates, see the
+> [Base preparation record](2026-09-29-base-v0.0.17-preparation.md) and
+> [v0.0.17 rollout plan](v0.0.17-rollout-plan.md). Re-read the proxy slot
+> at a fresh block before using any baseline for an upgrade.
+
 ## Rule
 
 For a UUPS upgrade, the baseline is the implementation currently selected by

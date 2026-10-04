@@ -300,15 +300,18 @@ Use proxy addresses for integrations.
 | Ethereum | `0xde152AfB7db5373F34876E1499fbD893A82dD336` | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
 | Base | `0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27` | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
 | Sepolia | `0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92` | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
+| Robinhood Chain mainnet (4663) | `0x000000009d62675362a58911e3f32FEcf46F5E18` | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
 
-| Chain | Last checked | Active implementation at that check |
+| Chain | Evidence date / snapshot | Implementation at that check |
 | --- | --- | --- |
-| Ethereum | 2026-07-29 | `0xa6D23f27D3b1780B12488482a008cB3c3787135f` |
-| Base | 2026-07-29 | `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9` |
+| Ethereum | 2026-09-29 rollout snapshot, block 26083172 | `0xa6D23f27D3b1780B12488482a008cB3c3787135f` |
+| Base | 2026-09-29, block 51954357 | `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9` |
 | Sepolia | 2026-09-08 | `0xab4188FA94aBA7a6cf4605032CCd1Be461406719` |
+| Robinhood Chain mainnet | 2026-09-29, post-deployment block 75785792 | `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231` (v0.0.17) |
 
 Sepolia runs v0.0.17 following the [Safe upgrade transaction](https://sepolia.etherscan.io/tx/0x3643c86ae00ccc92a51be5ee7741baebb6c37f6d6d4cbd03ea47fd1b3afa9cb2).
 The [deployment record](./deployments/v0.0.17-sepolia-preflight.md) records verification and the indexer cutover at block `11662078`, transaction index `71`, log index `272`.
+Robinhood Chain mainnet runs v0.0.17 at a newly deployed proxy; see the [deployment and verification record](./deployments/2026-09-29-robinhood-v0.0.17-deployment-report.md). Base passed [local fork acceptance](./deployments/2026-09-29-base-v0.0.17-preparation.md), but that record reports no production implementation deployment or proxy upgrade. Ethereum still requires independent v0.0.17 acceptance and execution. These dated records are not fresh chain-state checks; verify the implementation slot before integrating.
 
 ## Build and test
 

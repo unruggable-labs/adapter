@@ -4,53 +4,64 @@ All notable changes to the Adapter8004 contract are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the contract aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-via the `@custom:version` tag in [`src/Adapter8004.sol`](./src/Adapter8004.sol).
+via the `@custom:version` tag in [`src/AdapterImplementation.sol`](./src/AdapterImplementation.sol).
 
 Formal `@custom:version` numbering began at `0.0.6`. Earlier upgrades were
 tracked by dated deployment reports in [`deployments/`](./deployments) and are
 listed under "Earlier history" below by deployment date.
 
-The adapter is a Safe-owned UUPS proxy. A source version is not live until its
-implementation is deployed and the proxy is upgraded via the multisig. Confirm
-the live implementation on a block explorer before relying on a version.
+The adapter is a Safe-owned UUPS proxy. A new proxy can start on a version at
+deployment; an existing proxy needs an executed upgrade. Confirm its active
+implementation before relying on a version.
 
-**Currently live on-chain (verified from EIP-1967 slots on 2026-07-29; per-chain — they differ):**
+**Deployment status in the cited records (not a fresh chain-state check):**
 
-- **Sepolia** (`0x7621…`): the **delegate.xyz v2** implementation
-  (`0x31a68E5b…`). Proxy was upgraded, so delegate.xyz support is live here.
-- **Base** (`0x270d…`): the **2026-05-15 counterfactual** implementation
-  (`0x0f81bd4E…`). delegate.xyz is NOT live (its impl was deployed but the proxy
-  was not upgraded).
-- **Mainnet** (`0xde15…`): the counterfactual implementation
-  (`0xa6D23f27…`). delegate.xyz is NOT live (its impl was never deployed here).
+- **Robinhood Chain mainnet** (`0x000000009d62675362a58911e3f32FEcf46F5E18`):
+  v0.0.17 implementation `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231`
+  deployed with a new proxy on 2026-09-29; both sources were verified. See the
+  [deployment report](./deployments/2026-09-29-robinhood-v0.0.17-deployment-report.md).
+- **Sepolia** (`0x7621630cB63a73a194f45A3E6801B8C6A7eC2f92`):
+  v0.0.17 implementation `0xab4188FA94aBA7a6cf4605032CCd1Be461406719`,
+  upgraded via Safe; see the [Sepolia record](./deployments/v0.0.17-sepolia-preflight.md).
+- **Base** (`0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27`):
+  implementation `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9`
+  at the 2026-09-29 fork snapshot. The v0.0.17 local Safe rehearsal passed;
+  [production implementation deployment and proxy upgrade were still pending](./deployments/2026-09-29-base-v0.0.17-preparation.md).
+- **Ethereum mainnet** (`0xde152AfB7db5373F34876E1499fbD893A82dD336`):
+  implementation `0xa6D23f27D3b1780B12488482a008cB3c3787135f`
+  at the 2026-09-29 [rollout snapshot](./deployments/v0.0.17-rollout-plan.md).
+  v0.0.17 requires independent fork acceptance, implementation deployment, and Safe execution.
 
-Numbered source versions `0.0.6`-`0.0.17` are not live on any chain. In
-particular, the primary-agent layouts in `0.0.9`-`0.0.13` are not production
+Intermediate primary-agent layouts in `0.0.9`-`0.0.13` were never production
 upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
-on this summary; see the
+on these dated snapshots; see the
 [last-deployed baseline audit](./deployments/upgrade-baseline-from-last-deployed.md).
 
-Re-verified on 2026-08-19 for the `0.0.17` identifier change, reading the
+**Historical 2026-08-19 baseline, before the Sepolia and Robinhood v0.0.17 deployments.**
+The following was verified for the `0.0.17` identifier change by reading the
 EIP-1967 slot on each chain and calling through each proxy:
 
-- the three implementation addresses above are still the active ones;
-- all three proxies still compute the **pre-ERC-7930** registration hash
+- the then-active implementations were `0x31a68E5bc0224ad081d6Ec20229B05F558609257`
+  on Sepolia, `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9` on Base, and
+  `0xa6D23f27D3b1780B12488482a008cB3c3787135f` on Ethereum;
+- all three proxies then computed the **pre-ERC-7930** registration hash
   `keccak256(abi.encode(block.chainid, address(this), boundAddress, tokenId))`,
-  reproduced exactly off chain for each chain, so every live identifier is on the
+  reproduced exactly off chain for each chain, so every then-live identifier was on the
   scheme `0.0.14` already supersedes;
-- `interoperableAddress(address)` reverts on the Mainnet and Base proxies, so no
-  live implementation has the ERC-7930 surface at all;
-- `walletUBIDOf(address)` reverts on all three, so no live
-  implementation exposes the counterfactual-primary surface and **slot 3, the
+- `interoperableAddress(address)` reverted on the Mainnet and Base proxies, so
+  none of those three implementations had the ERC-7930 surface;
+- `walletUBIDOf(address)` reverted on all three, so none of those
+  implementations exposed the counterfactual-primary surface and **slot 3, the
   only slot that could hold a counterfactual identifier, is unreachable and has
   never been written on any deployment.** The two deployed source baselines
   (`a20035c`, `4647ddd`) declare regular slots 0 and 1 only, which is the same
   conclusion from the other direction.
 
-Together these mean the `0.0.17` identifier change costs nothing on chain: it
-rides the cutover `0.0.14` already forces, and re-keys no stored value.
+At that baseline, these meant the `0.0.17` identifier change required no
+stored-value migration: it rode the cutover `0.0.14` already forced and
+re-keyed no stored value.
 
-## [0.0.17] - Unreleased
+## [0.0.17] - deployed per chain (Robinhood mainnet 2026-09-29)
 
 **Canonical admin-role responses:** `CONTRACT_ADMIN` now requires `hasRole` to return exactly
 one 32-byte word equal to `1`. Other words, including nonzero malformed booleans, deny authority
@@ -70,11 +81,12 @@ remains for `CONTRACT_ADMIN` identity management. Earlier entries below describe
 unreleased designs; their acting-for wallet APIs and authorization policies are superseded by
 this removal.
 
-**This is the version the artifact carries.** `0.0.14` through `0.0.17` are one
-implementation, not four releases. None has been deployed. They are separate
-sections because they group unrelated work, not because they ship separately:
+**This is the version the artifact carries.** `0.0.14` through `0.0.17` describe one
+implementation, not four deployed releases. The resulting v0.0.17 implementation
+is deployed on Robinhood mainnet and Sepolia as recorded above. They are separate
+sections because they group unrelated work, not because they shipped separately:
 the sections record what changed, and `@custom:version` in
-[`src/Adapter8004.sol`](./src/Adapter8004.sol) records what the single resulting
+[`src/AdapterImplementation.sol`](./src/AdapterImplementation.sol) records what the single resulting
 implementation is called. Read all four together when reviewing an upgrade.
 
 Adds no storage slot and upgrades from the same deployed baselines with empty
@@ -396,8 +408,9 @@ Recorded under Removed below.
   names are in no selector and no event `topic0`, so **every event topic is
   unchanged** and the total selector count stays 53.
 
-  **Not renamed, deliberately.** The pre-ERC-7930 scheme every live proxy still
-  computes is a genuinely different value, not a UBID, so it keeps the words
+  **Not renamed, deliberately.** The pre-ERC-7930 scheme computed by the
+  pre-v0.0.17 proxies is a genuinely different value, not a UBID, so it keeps
+  the words
   registration hash wherever it is described, here and in the fixture. Superseded
   fixture tables keep the terminology of the scheme they document, because renaming
   them would misdescribe history rather than clarify it.
@@ -734,8 +747,8 @@ Recorded under Removed below.
   **Storage now ends at slot 3.** `_primaryAgentNonces` was slot 4, the last one,
   with nothing after it, so it is removed outright rather than left as a gap or a
   deprecated placeholder. That is safe because it was never written on any chain:
-  verified on 2026-08-19 by calling `primaryAgentNonces(address)` on all three live
-  proxies, where it reverts because no live implementation exposes it, and by
+  verified on 2026-08-19 by calling `primaryAgentNonces(address)` on the three
+  then-live proxies, where it reverted because none exposed it, and by
   reading raw slot 4 on each, which is zero. The storage header, the
   upgrade-validation tests and
   [`docs/fixtures/adapter-v014-storage-layout.md`](./docs/fixtures/adapter-v014-storage-layout.md)
@@ -995,7 +1008,8 @@ size, not gas.
   contract conforms to the ERC; the adapter probes authority and never calls
   `supportsInterface`.
 
-  **Cost on chain: none.** Every live proxy still runs the pre-ERC-7930 preimage
+  **Cost on chain at the 2026-08-19 baseline: none.** The three then-live
+  proxies ran the pre-ERC-7930 preimage
   `keccak256(abi.encode(block.chainid, address(this), boundAddress, tokenId))`,
   verified directly against Ethereum, Base and Sepolia on 2026-08-19. The
   ERC-7930 rewrite at `0.0.14` already forces a hard re-index, and no proxy ever
@@ -1055,8 +1069,8 @@ size, not gas.
   hash.
 
   **Cost on chain: none**, for the same reason the standard's insertion was free.
-  No proxy ever ran a preimage containing `extraData`; every live proxy still runs
-  the pre-ERC-7930 scheme, so this rides the `0.0.14` cutover rather than adding
+  No proxy ran a preimage containing `extraData`; the three proxies checked on
+  2026-08-19 ran the pre-ERC-7930 scheme, so this rides the `0.0.14` cutover rather than adding
   one. The two superseded `extraData` schemes are retained under their own headings
   in the hash fixture so a reimplementer can tell which formula their output
   matches.
@@ -1794,7 +1808,7 @@ report dates, not source-tag dates.
   live threshold/owners on-chain before relying on it. Any 0.0.6 / 0.0.7 deploy on
   mainnet now needs 3 of 4 signatures.
 
-### 2026-05-15 — counterfactual registration family + full event coverage + reentrancy guards (current live implementation)
+### 2026-05-15 — counterfactual registration family + full event coverage + reentrancy guards (historical Base/Ethereum baseline)
 - Emit-only counterfactual register family (`counterfactualRegister` plus five
   `counterfactual*` setters): mirrors the on-chain register surface but emits
   events only, keyed by `registrationHash(chainid, adapter, boundAddress, tokenId)`
