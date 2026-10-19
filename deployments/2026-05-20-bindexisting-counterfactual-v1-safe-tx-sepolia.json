@@ -1,3 +1,4 @@
+// SUPERSEDED by v0.0.17 on 2026-10-19. DO NOT EXECUTE. Importing this payload would downgrade the proxy. Kept only as a historical record.
 {
   "version": "1.0",
   "chainId": "11155111",

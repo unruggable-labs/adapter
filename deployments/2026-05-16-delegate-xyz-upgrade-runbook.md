@@ -7,6 +7,8 @@
 > Base's later [local fork acceptance](2026-09-29-base-v0.0.17-preparation.md)
 > did not execute a production upgrade. Use fresh chain reads and the
 > [v0.0.17 plan](v0.0.17-rollout-plan.md) for any remaining rollout.
+>
+> The six May 2026 Safe Transaction Builder payloads in this folder, `2026-05-16-delegate-xyz-safe-tx-*.json` and `2026-05-20-bindexisting-counterfactual-v1-safe-tx-*.json`, are superseded by v0.0.17 and intentionally broken with a leading comment line so they cannot be imported or executed. They are kept only as a historical record.
 
 ## Summary
 
