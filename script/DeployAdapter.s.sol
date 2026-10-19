@@ -4,9 +4,16 @@ pragma solidity ^0.8.24;
 import {Script} from "forge-std/Script.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {AdapterImplementation} from "../src/AdapterImplementation.sol";
+import {VanityChainConfig} from "./VanityChainConfig.sol";
 
+/// @notice Fresh deployment of an implementation plus a deployer-owned proxy, for a chain with no
+/// adapter yet. Chains that already run a proxy (Ethereum, Base, Sepolia, Robinhood) are refused,
+/// they upgrade in place through `PrepareChainUpgrade.s.sol` and the Safe.
 contract DeployAdapterScript is Script {
     function run() external returns (AdapterImplementation adapter) {
+        // 0. Refuse chains that already have a live proxy, before reading any key.
+        VanityChainConfig.requireNoLiveProxy(block.chainid);
+
         // 1. Load the target ERC-8004 registry the adapter will forward into.
         address identityRegistry = vm.envAddress("IDENTITY_REGISTRY_ADDRESS");
 

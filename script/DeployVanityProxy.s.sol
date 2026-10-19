@@ -13,7 +13,8 @@ import {VanityChainConfig} from "./VanityChainConfig.sol";
 /// depend on owner and salt. Matching inputs can be reused on Ethereum, Base and Robinhood;
 /// Sepolia has a different registry and requires separate mining.
 /// The proxy constructor atomically calls initialize(owner); ownership goes to the Safe.
-/// Only the implementation deployment is idempotent; an existing proxy is rejected.
+/// Only the implementation deployment is idempotent; an existing proxy is rejected, and a chain
+/// listed in VanityChainConfig.liveProxyForChain is refused outright.
 /// Simulate: PROXY_SALT=0x... forge script script/DeployVanityProxy.s.sol --rpc-url <url>
 contract DeployVanityProxy is Script {
     bytes32 constant IMPL_SALT = bytes32(0);
@@ -24,6 +25,9 @@ contract DeployVanityProxy is Script {
     function run() external {
         bytes32 proxySalt = vm.envBytes32("PROXY_SALT");
         address registry = _registryForChain();
+        // Every configured chain now runs a live proxy, so this refuses until a new chain is added
+        // to VanityChainConfig without a proxy entry. Existing proxies upgrade in place.
+        VanityChainConfig.requireNoLiveProxy(block.chainid);
 
         // 1. Predict + (idempotently) deploy the implementation.
         bytes32 implInitCodeHash =
