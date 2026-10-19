@@ -51,6 +51,7 @@ contract DeployAdapterImplementationScript is Script {
     /// and `DeployAdapterImplementationEventSignatures.t.sol` fails if any drifts from the contract.
     string internal constant SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET =
         "WalletUBIDSet(address,bytes32,address,uint256,uint8,address)";
+    string internal constant SIG_WALLET_UBID_CLEARED = "WalletUBIDCleared(address,address)";
     string internal constant SIG_CF_REGISTERED =
         "CounterfactualAgentRegistered(bytes32,address,uint256,uint8,string,(string,bytes)[],address)";
     string internal constant SIG_CF_URI_SET = "CounterfactualAgentURISet(bytes32,address,uint256,uint8,string,address)";
@@ -123,8 +124,9 @@ contract DeployAdapterImplementationScript is Script {
         console2.log("Sample hashBinding(proxy, standard=ERC721, boundAddress=0x1, tokenId=0):");
         console2.logBytes32(_sampleUbid(proxyInteroperableAddress, IERC8217.Standard.ERC721, address(1), 0));
 
-        console2.log("=== New wallet-id event topic[0] hashes ===");
-        console2.logBytes32(keccak256(bytes(SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET)));
+        console2.log("=== New wallet-id event topic[0] hashes (subscribe to both post-upgrade) ===");
+        _logSignature("WalletUBIDSet", SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET);
+        _logSignature("WalletUBIDCleared", SIG_WALLET_UBID_CLEARED);
 
         console2.log("=== Counterfactual event topic[0] hashes (subscribe to these post-upgrade) ===");
         _logSignature("CounterfactualAgentRegistered", SIG_CF_REGISTERED);

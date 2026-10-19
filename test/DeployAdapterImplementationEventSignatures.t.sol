@@ -60,6 +60,9 @@ contract DeployScriptEventSignaturesTest is Test, DeployAdapterImplementationScr
         _assertSig(
             SIG_PRIMARY_COUNTERFACTUAL_AGENT_SET, IERC8004AdapterCounterfactual.WalletUBIDSet.selector, "WalletUBIDSet"
         );
+        _assertSig(
+            SIG_WALLET_UBID_CLEARED, IERC8004AdapterCounterfactual.WalletUBIDCleared.selector, "WalletUBIDCleared"
+        );
     }
 
     function testPrintedAttestationSignaturesMatchTheContract() external pure {
