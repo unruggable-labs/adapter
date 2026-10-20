@@ -668,16 +668,15 @@ Recorded under Removed below.
   it, reopens G2-01 immediately. If the write is ever wanted on a mutable
   registry, it needs its own collision guard first.
 
-  **`_authorizeUpgrade` now enforces the same property across upgrades**, refusing
-  any implementation whose `identityRegistry()` differs from this one, with a new
-  `RegistryMismatch` error. This works because of the immutability rather than in
-  spite of it. `upgradeToAndCall` executes against the CURRENT implementation, so
-  the outgoing one calls `_authorizeUpgrade(newImplementation)` before the switch
-  and can read the incoming implementation directly. An immutable is compiled into
-  each implementation's own runtime code, so that read returns the incoming
-  implementation's baked value. A storage variable would return that
-  implementation's own slot 0, which is zero and never initialized, so the check
-  would be unwritable.
+  **Registry consistency across upgrades is checked by the scripts, not on chain.**
+  `_authorizeUpgrade` only requires the owner. There is no `RegistryMismatch` error
+  and the contract does not compare the incoming implementation's
+  `identityRegistry()` with its own. An earlier version of this entry said
+  otherwise and was wrong. `DeployAdapterImplementation.s.sol` and
+  `PrepareChainUpgrade.s.sol` read the live proxy's registry and refuse an
+  implementation whose registry differs, so an upgrade prepared through those
+  scripts cannot repoint the registry. An upgrade prepared any other way has no
+  such check, which is why the Safe signs only payloads those scripts produce.
 
   **The storage consequence, which is the risky part.** `identityRegistry`
   occupied slot 0 on all three live proxies, each with a real address written.
@@ -685,16 +684,15 @@ Recorded under Removed below.
   __deadRegistrySlot` placeholder now holds slot 0 down and **slot 0 must never be
   reused.** Without the placeholder every mapping slides down one slot and
   `_bindings` lands on top of the old registry address, which was verified with
-  `forge inspect` rather than reasoned about. Regular storage now runs from slot 1
-  to slot 3.
+  `forge inspect` rather than reasoned about. Regular storage now holds the
+  `_bindings` mapping at slot 1, with slot 0 reserved.
 
-  **Deploy scripts carry a second layer for the bootstrap hop.** The on-chain check
-  lives in the outgoing implementation, and the implementation currently deployed
-  is the storage-based one with no such check, so the first hop is unguarded on
-  chain by design. `DeployAdapterImplementation.s.sol` therefore reads the live
-  proxy's `identityRegistry()`, requires the configured value to match it, and
-  requires the freshly constructed implementation to report it back, refusing to
-  proceed otherwise. Every hop after the first is guarded by the contract.
+  **The deploy script is the registry guard for every hop.**
+  `DeployAdapterImplementation.s.sol` reads the live proxy's `identityRegistry()`,
+  requires the configured value to match it, and requires the freshly constructed
+  implementation to report it back, refusing to proceed otherwise.
+  `PrepareChainUpgrade.s.sol` repeats the comparison when it builds the Safe
+  payload. No hop is guarded by the contract itself.
 
 - **`cf-registration` is no longer a reserved metadata key**, and its
   `CF_REGISTRATION_KEY()` getter is gone with it, so that selector no longer

@@ -313,6 +313,18 @@ Sepolia runs v0.0.17 following the [Safe upgrade transaction](https://sepolia.et
 The [deployment record](./deployments/v0.0.17-sepolia-preflight.md) records verification and the indexer cutover at block `11662078`, transaction index `71`, log index `272`.
 Robinhood Chain mainnet runs v0.0.17 at a newly deployed proxy; see the [deployment and verification record](./deployments/2026-09-29-robinhood-v0.0.17-deployment-report.md). Base passed [local fork acceptance](./deployments/2026-09-29-base-v0.0.17-preparation.md), but that record reports no production implementation deployment or proxy upgrade. Ethereum still requires independent v0.0.17 acceptance and execution. These dated records are not fresh chain-state checks; verify the implementation slot before integrating.
 
+## Upgrading to v0.0.17, what holders and integrators should know
+
+The Base proxy `0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27` and the Ethereum proxy `0xde152AfB7db5373F34876E1499fbD893A82dD336` will be upgraded to the v0.0.17 implementation `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231`, and the proxy addresses do not change.
+Existing agents, bindings and metadata carry over unchanged.
+
+**delegate.xyz.** After the upgrade, any wallet you have given a delegate.xyz grant, including a blanket delegate all grant, can control your agents, which covers the agent URI, the metadata and the payment wallet.
+If you do not want that, revoke the grant at delegate.xyz before the upgrade.
+
+**Payment wallet.** An agent's payment wallet stays set when the bound NFT changes hands, by design.
+Payers and integrators should treat the stored wallet as valid only while the person who set it still controls the agent, which `isController` answers.
+A new owner should reset it with `setAgentWallet` or clear it with `unsetAgentWallet`.
+
 ## Build and test
 
 The [Foundry configuration](./foundry.toml) pins solc 0.8.30, Prague, and 200 optimizer runs.
