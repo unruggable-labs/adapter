@@ -1,1 +1,21 @@
-{"version":"1.0","chainId":"1","createdAt":1792441739000,"meta":{"name":"Adapter v0.0.17 upgrade","description":"Upgrade only; no initializer. Rehearsed Safe nonce 3 at block 26229015; runtime 0x89df8d1ddb712742b9d7bdfa4048cbcdb651e5abc204b8e1714f8a431c5dad90. Recheck nonce/configuration before signing. Indexer cutover required.","txBuilderVersion":"1.18.0","createdFromSafeAddress":"0x03302Df40186D9B85faEA4fbb6cC5da028B23149","createdFromOwnerAddress":""},"transactions":[{"to":"0xde152AfB7db5373F34876E1499fbD893A82dD336","value":"0","data":"0x4f1ef2860000000000000000000000003d74ff0c1e0a78c5a291fa91f82f15bd5433523100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000","contractMethod":null,"contractInputsValues":null}]}
+{
+  "version": "1.0",
+  "chainId": "1",
+  "createdAt": 1792441739000,
+  "meta": {
+    "name": "Adapter v0.0.17 upgrade",
+    "description": "Upgrade only; no initializer. Rehearsed Safe nonce 3 at block 26229015; runtime 0x89df8d1ddb712742b9d7bdfa4048cbcdb651e5abc204b8e1714f8a431c5dad90. Recheck nonce/configuration before signing. Indexer cutover required.",
+    "txBuilderVersion": "1.18.0",
+    "createdFromSafeAddress": "0x03302Df40186D9B85faEA4fbb6cC5da028B23149",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0xde152AfB7db5373F34876E1499fbD893A82dD336",
+      "value": "0",
+      "data": "0x4f1ef2860000000000000000000000003d74ff0c1e0a78c5a291fa91f82f15bd5433523100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}
