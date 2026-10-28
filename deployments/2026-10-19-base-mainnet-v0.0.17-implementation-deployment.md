@@ -1,5 +1,7 @@
 # v0.0.17 implementation deployment, Base and Ethereum
 
+**Update 2026-10-28.** Both Safe upgrades have since been executed and both proxies now run v0.0.17. See [Safe upgrades executed](#safe-upgrades-executed) at the end. The text below is the 2026-10-19 record.
+
 Date 2026-10-19. Deployed by Prem from the deployer `0xF8e03bd4436371E0e2F7C02E529b2172fe72b4EF` with `output/deploy-impl-create2.sh`. The implementations are deployed only. **No proxy was upgraded.** The Base and Ethereum proxies still point to their previous implementations until the Safe upgrade.
 
 Method. The CREATE2 factory `0x4e59b44847b379578588920cA78FbF26c0B4956C` with salt zero and init code `AdapterImplementation` creation code plus `abi.encode(0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)`, the same as Robinhood. So the implementation has the same address on all three chains. The init-code hash is `0x5b3785cf0fbcd80f67ead4953f7a775604ad6f9bbbba55040810e25f1aef1558`, built from `src/` unchanged since the audited `5f5c7fa`.
@@ -20,3 +22,17 @@ Method. The CREATE2 factory `0x4e59b44847b379578588920cA78FbF26c0B4956C` with sa
 The runtime hash equals the Robinhood implementation at the same address. On Base, the script's receipt read failed after the transaction was sent, because a public RPC refused an archive request. The deployment was confirmed afterwards from the deployer nonce, the code at the address and Sourcify's deployment record. The script was then changed to send asynchronously and read the receipt from a second RPC.
 
 Next. Per the final audit (`/Users/nxt3d/projects/idchain-audit/adapter-v0.0.17/CONSOLIDATED-FINDINGS.md`), before the Safe signs the Base upgrade, publish the F1 holder notice and the F2 wallet policy, correct the CHANGELOG, update the indexer, then produce the payload with `PrepareChainUpgrade.s.sol` against `NEW_IMPL=0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231` after a fresh pinned re-read. Ethereum follows after the Base soak period.
+
+## Safe upgrades executed
+
+The owner Safe `0x03302Df40186D9B85faEA4fbb6cC5da028B23149` executed the upgrade on both chains. Each transaction emitted the Safe's `ExecutionSuccess` and the proxy's `Upgraded(0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231)`.
+
+| | Base (8453) | Ethereum (1) |
+|---|---|---|
+| Safe transaction | [`0x148b82c71199725cd389bd15e50f21dcb98b5f731e873ad1bccbf1c3100c0626`](https://basescan.org/tx/0x148b82c71199725cd389bd15e50f21dcb98b5f731e873ad1bccbf1c3100c0626) | [`0xd94bed0c243e8ed29d652b4a1014619c71a11188296dac89f7188b2712d33470`](https://etherscan.io/tx/0xd94bed0c243e8ed29d652b4a1014619c71a11188296dac89f7188b2712d33470) |
+| Block | 52991843 | 26285388 |
+| Date (UTC) | 2026-10-23 16:30:33 | 2026-10-27 16:57:11 |
+| Status | success | success |
+| Proxy now points to | `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231` | `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231` |
+
+The EIP-1967 implementation slot of both proxies was read again on 2026-10-28, at Base block 53209163 and Ethereum block 26292656, and holds `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231` on both. On Base the Safe transaction was submitted through a relayer, so the outer transaction goes to `0x781388759EacB9892f60D77D9A99c9BE2F7F4ada` and the Safe executes inside it. v0.0.17 now runs on all four deployments, Ethereum, Base, Robinhood Chain and Sepolia.

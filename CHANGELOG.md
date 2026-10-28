@@ -24,13 +24,15 @@ implementation before relying on a version.
   v0.0.17 implementation `0xab4188FA94aBA7a6cf4605032CCd1Be461406719`,
   upgraded via Safe; see the [Sepolia record](./deployments/v0.0.17-sepolia-preflight.md).
 - **Base** (`0x270d25D2c59A8bcA1B0f40ad95fF7806c0025c27`):
-  implementation `0x0f81bd4EDD4879734361A1A44460264CBf6F94c9`
-  at the 2026-09-29 fork snapshot. The v0.0.17 local Safe rehearsal passed;
-  [production implementation deployment and proxy upgrade were still pending](./deployments/2026-09-29-base-v0.0.17-preparation.md).
+  v0.0.17 implementation `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231`,
+  upgraded via Safe on 2026-10-23 in transaction
+  [`0x148b82c71199725cd389bd15e50f21dcb98b5f731e873ad1bccbf1c3100c0626`](https://basescan.org/tx/0x148b82c71199725cd389bd15e50f21dcb98b5f731e873ad1bccbf1c3100c0626), block 52991843.
+  See the [deployment record](./deployments/2026-10-19-base-mainnet-v0.0.17-implementation-deployment.md).
 - **Ethereum mainnet** (`0xde152AfB7db5373F34876E1499fbD893A82dD336`):
-  implementation `0xa6D23f27D3b1780B12488482a008cB3c3787135f`
-  at the 2026-09-29 [rollout snapshot](./deployments/v0.0.17-rollout-plan.md).
-  v0.0.17 requires independent fork acceptance, implementation deployment, and Safe execution.
+  v0.0.17 implementation `0x3d74ff0c1E0A78C5a291fA91F82f15bd54335231`,
+  upgraded via Safe on 2026-10-27 in transaction
+  [`0xd94bed0c243e8ed29d652b4a1014619c71a11188296dac89f7188b2712d33470`](https://etherscan.io/tx/0xd94bed0c243e8ed29d652b4a1014619c71a11188296dac89f7188b2712d33470), block 26285388.
+  See the [deployment record](./deployments/2026-10-19-base-mainnet-v0.0.17-implementation-deployment.md).
 
 Intermediate primary-agent layouts in `0.0.9`-`0.0.13` were never production
 upgrade baselines. Re-verify the EIP-1967 implementation slot before relying
@@ -61,7 +63,7 @@ At that baseline, these meant the `0.0.17` identifier change required no
 stored-value migration: it rode the cutover `0.0.14` already forced and
 re-keyed no stored value.
 
-## [0.0.17] - deployed per chain (Robinhood mainnet 2026-09-29)
+## [0.0.17] - deployed per chain (Robinhood mainnet 2026-09-29, Base 2026-10-23, Ethereum 2026-10-27)
 
 **Canonical admin-role responses:** `CONTRACT_ADMIN` now requires `hasRole` to return exactly
 one 32-byte word equal to `1`. Other words, including nonzero malformed booleans, deny authority
